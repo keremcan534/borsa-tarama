@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+yfinance
+pydantic
+pydantic-settings
+apscheduler
+pytest
