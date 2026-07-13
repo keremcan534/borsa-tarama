@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export async function fetchScreener(market, { live = false } = {}) {
   const url = `${API_BASE}/api/screener/${market}${live ? "?live=true" : ""}`;
