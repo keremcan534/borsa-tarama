@@ -1,7 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+// "static" modunda backend yerine build'e gömülü JSON dosyaları okunur
+// (GitHub Pages gibi sunucusuz yayın için).
+export const STATIC_MODE = API_BASE === "static";
+
 export async function fetchScreener(market, { live = false } = {}) {
-  const url = `${API_BASE}/api/screener/${market}${live ? "?live=true" : ""}`;
+  const url = STATIC_MODE
+    ? `${import.meta.env.BASE_URL}data/${market}.json`
+    : `${API_BASE}/api/screener/${market}${live ? "?live=true" : ""}`;
+
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

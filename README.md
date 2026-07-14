@@ -61,28 +61,43 @@ npm run build      # production build + PWA dosyaları -> dist/
 Backend adresini değiştirmek için (`localhost:8000` yerine deploy edilmiş adres)
 `frontend/.env` içine `VITE_API_BASE_URL=https://senin-backend-adresin` ekle ve yeniden build et.
 
+## Yayın Altyapısı (GitHub Actions + GitHub Pages, sunucusuz)
+Canlı adres: **https://keremcan534.github.io/borsa-tarama/**
+
+`.github/workflows/scan-and-deploy.yml` hafta içi günde iki kez (BIST kapanışı sonrası
+~18:45 TR ve ABD kapanışı sonrası ~00:15 TR) çalışır:
+1. `scripts/scan_to_json.py` her iki marketi tarar, sonuçları JSON'a yazar
+2. Frontend `VITE_API_BASE_URL=static` ile build edilir — arayüz backend yerine
+   build'e gömülü bu JSON dosyalarını okur ("Canlı Tara" butonu bu modda gizlenir,
+   son tarama zamanı gösterilir)
+3. Çıktı GitHub Pages'e deploy edilir
+
+Yani ayrı bir backend sunucusu barındırmadan, tamamen ücretsiz çalışır. Elle tetiklemek
+için: GitHub → Actions → "Tarama ve GitHub Pages yayını" → Run workflow
+(veya `gh workflow run scan-and-deploy.yml`).
+
+Not: yfinance, GitHub'ın datacenter IP'lerinden zaman zaman rate-limit yiyebilir;
+workflow başarısız olursa bir önceki yayın yerinde kalır, sonraki zamanlanmış
+çalıştırmada kendini toparlar.
+
 ## Google Play'e Yayınlama Yol Haritası
 Mevcut strateji: native uygulama yazmak yerine web arayüzünü PWA→TWA (Trusted Web Activity)
 ile Android paketine sarmalamak — mevcut React kodu değişmeden kullanılır.
 
-1. **Backend'i internete aç.** Railway/Render gibi bir servise deploy et (`Procfile` hazır:
-   `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`). Hesap açma işlemini kendin yapman
-   gerekiyor (ödeme/kimlik gerektirebilir).
-2. **CORS'u güncelle.** `app/core/config.py`'deki `cors_origins`, `CORS_ORIGINS` ortam
-   değişkeninden okunuyor (pydantic-settings) — deploy edilen frontend adresini oraya ekle.
-3. **Frontend'i internete aç.** Statik `dist/` çıktısını Vercel/Netlify/Render Static Site gibi
-   bir yere deploy et; `VITE_API_BASE_URL`'i deploy edilen backend adresine ayarla.
-4. **PWA doğrulaması.** Yayındaki adreste Chrome DevTools → Lighthouse → PWA denetimini çalıştır,
+1. ~~Uygulamayı internete aç.~~ Tamamlandı: yukarıdaki GitHub Pages altyapısı ile yayında.
+   (İleride anlık tarama/canlı veri istenirse `Procfile` ile Railway/Render'a backend
+   deploy edilebilir; şimdilik gerek yok.)
+2. **PWA doğrulaması.** Yayındaki adreste Chrome DevTools → Lighthouse → PWA denetimini çalıştır,
    manifest/service worker/ikonlar eksiksiz mi kontrol et.
-5. **TWA paketleme.** [Bubblewrap CLI](https://github.com/GoogleChromeLabs/bubblewrap) ile
+3. **TWA paketleme.** [Bubblewrap CLI](https://github.com/GoogleChromeLabs/bubblewrap) ile
    yayındaki PWA adresinden bir Android App Bundle (`.aab`) üret; `assetlinks.json` dosyasını
-   backend/frontend'in `.well-known/` klasörüne koyup domain sahipliğini doğrula.
-6. **Google Play Developer hesabı.** play.google.com/console üzerinden hesap aç (tek seferlik
+   sitenin `.well-known/` klasörüne koyup domain sahipliğini doğrula.
+4. **Google Play Developer hesabı.** play.google.com/console üzerinden hesap aç (tek seferlik
    25$ ücret + kimlik doğrulama) — bu adımı kendin yapman gerekiyor.
-7. **Gizlilik politikası.** Play Store zorunlu kılıyor; basit bir statik sayfa yeterli
+5. **Gizlilik politikası.** Play Store zorunlu kılıyor; basit bir statik sayfa yeterli
    (hangi veri toplanıyor/toplanmıyor — bu uygulama kullanıcı verisi toplamıyor, bunu belirt).
-8. **İçerik/finans politikası dikkat.** Google Play, finansal içerikli uygulamalar için ek
+6. **İçerik/finans politikası dikkat.** Google Play, finansal içerikli uygulamalar için ek
    inceleme yapabiliyor. Uygulamanın "yatırım tavsiyesi değildir" ifadesini arayüzde ve
    store açıklamasında belirtmek incelemeyi kolaylaştırır.
-9. **Store listing + yükleme.** Ekran görüntüleri, açıklama, içerik derecelendirme anketini
+7. **Store listing + yükleme.** Ekran görüntüleri, açıklama, içerik derecelendirme anketini
    doldur, `.aab`'yi yükle, önce "Internal testing" ile dene, sonra production'a aç.

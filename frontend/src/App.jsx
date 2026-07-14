@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { fetchScreener } from './api'
+import { fetchScreener, STATIC_MODE } from './api'
 
 const MARKETS = [
   { key: 'bist100', label: 'BIST 100' },
@@ -65,16 +65,33 @@ function App() {
 
       <div className="status-bar">
         <span>
-          {data ? `${data.count} hisse bulundu` : loading ? 'Yükleniyor...' : ''}
+          {data
+            ? `${data.count} hisse bulundu${
+                data.generated_at
+                  ? ` · Son tarama: ${new Date(data.generated_at).toLocaleString('tr-TR')}`
+                  : ''
+              }`
+            : loading
+              ? 'Yükleniyor...'
+              : ''}
         </span>
         <div className="actions">
-          <button className="btn" disabled={loading} onClick={() => load(false)}>
-            Cache'ten Yenile
-          </button>
-          <button className="btn primary" disabled={loading} onClick={() => load(true)}>
-            {loading && <span className="spinner" />}
-            Canlı Tara
-          </button>
+          {STATIC_MODE ? (
+            <button className="btn" disabled={loading} onClick={() => load(false)}>
+              {loading && <span className="spinner" />}
+              Yenile
+            </button>
+          ) : (
+            <>
+              <button className="btn" disabled={loading} onClick={() => load(false)}>
+                Cache'ten Yenile
+              </button>
+              <button className="btn primary" disabled={loading} onClick={() => load(true)}>
+                {loading && <span className="spinner" />}
+                Canlı Tara
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -82,7 +99,9 @@ function App() {
 
       {!error && data && data.results.length === 0 && (
         <div className="empty-box">
-          Şu an filtreyi geçen hisse yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.
+          {STATIC_MODE
+            ? 'Son taramada filtreyi geçen hisse çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.'
+            : 'Şu an filtreyi geçen hisse yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.'}
         </div>
       )}
 
