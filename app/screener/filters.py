@@ -2,6 +2,23 @@ import pandas as pd
 
 DEFAULT_EMA_PERIODS = [9, 21, 50, 200]
 
+# Bir mumun kapsadığı ortalama işlem günü sayısı (ciroyu günlüğe çevirmek için)
+BARS_PER_DAY = {"1d": 1, "1wk": 5, "1mo": 21}
+
+
+def passes_liquidity_filter(df: pd.DataFrame, interval: str, min_daily_turnover: float) -> bool:
+    """
+    Son 20 mumun ortalama GÜNLÜK cirosu (hacim x kapanış) eşiğin üzerinde mi?
+    Haftalık/aylık mumlarda ciro, mumun kapsadığı gün sayısına bölünerek
+    günlük yaklaşık değere çevrilir.
+    """
+    try:
+        turnover_per_bar = (df["volume"] * df["close"]).tail(20).mean()
+        daily_turnover = turnover_per_bar / BARS_PER_DAY.get(interval, 1)
+        return bool(daily_turnover >= min_daily_turnover)
+    except (KeyError, TypeError):
+        return False
+
 
 def passes_filters(row: pd.Series, ema_periods: list[int] = DEFAULT_EMA_PERIODS) -> bool:
     """

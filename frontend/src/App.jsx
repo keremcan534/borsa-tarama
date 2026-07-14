@@ -134,6 +134,7 @@ function App() {
             <li>Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
             <li>MACD &gt; 0 → momentum pozitif</li>
             <li>RSI &lt; 70, Stokastik %K &lt; 80, Stokastik RSI &lt; 80 → henüz aşırı alım bölgesinde değil</li>
+            <li>Ortalama günlük işlem hacmi (ciro) yeterli → düşük likiditeli hisseler elenir</li>
           </ul>
           <p>
             <strong>Zaman dilimleri:</strong> aynı kriterler seçtiğin zaman diliminin mumlarıyla
@@ -141,7 +142,9 @@ function App() {
             haftalar–aylar, <em>Aylık</em> sinyaller aylar ve ötesi ölçeğinde anlamlıdır. Uzun
             zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır. Aylık görünümde
             EMA200 yerine 9/21/50 kullanılır (çoğu hissede 17 yıllık veri bulunmadığından) ve en az
-            5 yıllık geçmişi olan hisseler taranabilir.
+            5 yıllık geçmişi olan hisseler taranabilir. Haftalık ve aylık sinyaller yalnızca{' '}
+            <em>kapanmış</em> mumlara dayanır: içinde bulunulan haftanın/ayın tamamlanmamış mumu
+            hesaba katılmaz, böylece sinyaller mum kapanana kadar değişkenlik göstermez.
           </p>
           <p>
             <strong>Ne kadar geçerli?</strong> Bunlar kapanış verisine dayalı <em>momentum</em>{' '}

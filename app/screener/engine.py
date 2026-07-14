@@ -5,8 +5,29 @@ from app.indicators.ema import calculate_multi_ema
 from app.indicators.macd import calculate_macd
 from app.indicators.rsi import calculate_rsi
 from app.indicators.stochastic import calculate_stochastic, calculate_stochastic_rsi
-from app.screener.filters import DEFAULT_EMA_PERIODS, passes_filters
+from app.screener.filters import DEFAULT_EMA_PERIODS, passes_filters, passes_liquidity_filter
 from app.screener.timeframes import TIMEFRAMES
+
+
+def drop_in_progress_bar(df: pd.DataFrame, interval: str, now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """
+    Haftalık/aylık veride SON mum henüz kapanmadıysa (içinde bulunduğumuz
+    hafta/ay) onu düşürür: göstergeler tamamlanmamış muma göre hesaplanırsa
+    mum kapanana kadar sinyal değişebilir. Günlük veri olduğu gibi bırakılır
+    (taramalar zaten seans kapanışından sonra çalışır).
+    """
+    if df.empty or interval == "1d":
+        return df
+
+    last = df.index[-1]
+    if now is None:
+        now = pd.Timestamp.now(tz=last.tz) if last.tz is not None else pd.Timestamp.now()
+
+    if interval == "1wk" and now < last + pd.Timedelta(days=7):
+        return df.iloc[:-1]
+    if interval == "1mo" and (now.year == last.year and now.month == last.month):
+        return df.iloc[:-1]
+    return df
 
 
 def compute_indicators(df: pd.DataFrame, ema_periods: list[int] = DEFAULT_EMA_PERIODS) -> pd.DataFrame:
@@ -34,13 +55,22 @@ def compute_indicators(df: pd.DataFrame, ema_periods: list[int] = DEFAULT_EMA_PE
     return df
 
 
-def screen_symbol(symbol: str, fetcher: BaseFetcher, timeframe: str = "daily") -> dict | None:
+def screen_symbol(
+    symbol: str,
+    fetcher: BaseFetcher,
+    timeframe: str = "daily",
+    min_daily_turnover: float | None = None,
+) -> dict | None:
     """Tek bir sembolü verilen zaman diliminde çeker, gösterge hesaplar, filtreden geçirir."""
     config = TIMEFRAMES[timeframe]
     df = fetcher.fetch_ohlcv(symbol, period=config["period"], interval=config["interval"])
+    df = drop_in_progress_bar(df, config["interval"])
 
     if len(df) < config["min_bars"]:
         return None  # bu zaman diliminde yeterli geçmiş veri yok
+
+    if min_daily_turnover and not passes_liquidity_filter(df, config["interval"], min_daily_turnover):
+        return None  # ortalama günlük ciro eşiğin altında (likidite yetersiz)
 
     ema_periods = config["ema_periods"]
     df = compute_indicators(df, ema_periods)
@@ -69,12 +99,17 @@ def screen_symbol(symbol: str, fetcher: BaseFetcher, timeframe: str = "daily") -
     return result
 
 
-def run_screener(symbols: list[str], fetcher: BaseFetcher, timeframe: str = "daily") -> list[dict]:
+def run_screener(
+    symbols: list[str],
+    fetcher: BaseFetcher,
+    timeframe: str = "daily",
+    min_daily_turnover: float | None = None,
+) -> list[dict]:
     """Sembol listesini tarar, filtreden geçenleri piyasa değerine göre büyükten küçüğe sıralar."""
     results = []
     for symbol in symbols:
         try:
-            result = screen_symbol(symbol, fetcher, timeframe)
+            result = screen_symbol(symbol, fetcher, timeframe, min_daily_turnover)
             if result:
                 results.append(result)
         except Exception as e:

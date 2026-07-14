@@ -88,7 +88,7 @@ def test_run_screener_sorts_by_market_cap_descending(monkeypatch):
         "C": {"symbol": "C", "market_cap": 250.0},
     }
 
-    def fake_screen_symbol(symbol, fetcher, timeframe="daily"):
+    def fake_screen_symbol(symbol, fetcher, timeframe="daily", min_daily_turnover=None):
         return fake_results[symbol]
 
     monkeypatch.setattr(engine, "screen_symbol", fake_screen_symbol)

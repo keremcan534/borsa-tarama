@@ -44,6 +44,15 @@ API: `GET /api/screener/bist100?timeframe=weekly`. Statik yayında dosyalar:
 Uzun zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır
 (örn. güçlü trenddeki hisselerin haftalık stokastiği çoğu zaman 80 üstündedir).
 
+Ek kurallar:
+- **Tamamlanmamış mum düşürülür** (`drop_in_progress_bar`): haftalık/aylık taramada
+  içinde bulunulan haftanın/ayın henüz kapanmamış mumu hesaba katılmaz; sinyaller
+  yalnızca kapanmış mumlara dayanır. Günlük tarama zaten seans kapanışından sonra çalışır.
+- **Likidite tabanı** (`passes_liquidity_filter`, eşikler `app/core/config.py`
+  `min_daily_turnover`): son 20 mumun ortalama günlük cirosu (hacim x kapanış)
+  BIST'te 50M TRY, S&P'de 10M USD altındaysa hisse elenir. Haftalık/aylık mumlarda
+  ciro gün sayısına bölünerek günlüğe çevrilir.
+
 ## Yapılacaklar (production'a geçmeden önce)
 1. ~~`app/data/symbols/bist100.json` ve `sp500.json` içindeki listeler örnek/kısaltılmıştır.~~
    Tamamlandı: `bist100.json` Borsa İstanbul'un resmi endeks bileşen verisinden (100 sembol),

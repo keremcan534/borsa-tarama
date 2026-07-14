@@ -3,6 +3,7 @@ from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.core.config import settings
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.screener.engine import run_screener
 from app.screener.timeframes import TIMEFRAMES
@@ -21,8 +22,9 @@ def _run_scan(market: str) -> None:
     fetcher = YFinanceFetcher()
     with open(SYMBOLS_DIR / MARKET_FILES[market], encoding="utf-8") as f:
         symbols = json.load(f)
+    min_turnover = settings.min_daily_turnover.get(market)
     for timeframe in TIMEFRAMES:
-        _cache[f"{market}:{timeframe}"] = run_screener(symbols, fetcher, timeframe)
+        _cache[f"{market}:{timeframe}"] = run_screener(symbols, fetcher, timeframe, min_turnover)
         print(
             f"[SCHEDULER] {market}/{timeframe} taraması tamamlandı: "
             f"{len(_cache[f'{market}:{timeframe}'])} sonuç"

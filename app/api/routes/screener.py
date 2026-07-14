@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.config import settings
 from app.core.scheduler import get_cached_results
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.models.schemas import ScreenerResponse
@@ -49,7 +50,7 @@ def get_screened_stocks(market: str, live: bool = False, timeframe: str = "daily
                 results=cached,
             )
 
-    results = run_screener(symbols, fetcher, timeframe)
+    results = run_screener(symbols, fetcher, timeframe, settings.min_daily_turnover.get(market))
     return ScreenerResponse(
         market=market.upper(),
         timeframe=timeframe,

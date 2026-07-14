@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.config import settings
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.screener.engine import run_screener
@@ -28,8 +29,9 @@ def main() -> None:
         with open(SYMBOLS_DIR / filename, encoding="utf-8") as f:
             symbols = json.load(f)
 
+        min_turnover = settings.min_daily_turnover.get(market)
         for timeframe in TIMEFRAMES:
-            results = run_screener(symbols, fetcher, timeframe)
+            results = run_screener(symbols, fetcher, timeframe, min_turnover)
             payload = {
                 "market": market.upper(),
                 "timeframe": timeframe,
