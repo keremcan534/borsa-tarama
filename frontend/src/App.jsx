@@ -7,6 +7,12 @@ const MARKETS = [
   { key: 'sp500', label: 'S&P 500' },
 ]
 
+const TIMEFRAMES = [
+  { key: 'daily', label: 'Günlük', horizon: 'günler–haftalar' },
+  { key: 'weekly', label: 'Haftalık', horizon: 'haftalar–aylar' },
+  { key: 'monthly', label: 'Aylık', horizon: 'aylar ve ötesi' },
+]
+
 function formatMarketCap(value) {
   if (value == null) return '—'
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
@@ -22,6 +28,7 @@ function chartUrl(symbol) {
 
 function App() {
   const [market, setMarket] = useState('bist100')
+  const [timeframe, setTimeframe] = useState('daily')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -29,7 +36,7 @@ function App() {
   function load(live, ignoreRef) {
     setLoading(true)
     setError(null)
-    fetchScreener(market, { live })
+    fetchScreener(market, { live, timeframe })
       .then((result) => {
         if (!ignoreRef || !ignoreRef.current) setData(result)
       })
@@ -49,29 +56,44 @@ function App() {
       ignoreRef.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [market])
+  }, [market, timeframe])
+
+  const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
 
   return (
     <>
       <div className="header">
         <h1>Borsa Tarama</h1>
-        <div className="tabs">
-          {MARKETS.map((m) => (
-            <button
-              key={m.key}
-              className={`tab ${market === m.key ? 'active' : ''}`}
-              onClick={() => setMarket(m.key)}
-            >
-              {m.label}
-            </button>
-          ))}
+        <div className="tab-groups">
+          <div className="tabs">
+            {MARKETS.map((m) => (
+              <button
+                key={m.key}
+                className={`tab ${market === m.key ? 'active' : ''}`}
+                onClick={() => setMarket(m.key)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="tabs">
+            {TIMEFRAMES.map((t) => (
+              <button
+                key={t.key}
+                className={`tab ${timeframe === t.key ? 'active' : ''}`}
+                onClick={() => setTimeframe(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="status-bar">
         <span>
           {data
-            ? `${data.scanned ? `${data.scanned} hisse tarandı, ` : ''}${data.count} tanesi kriterleri geçti${
+            ? `${data.scanned ? `${data.scanned} hisse tarandı, ` : ''}${data.count} tanesi kriterleri geçti · Sinyal ufku: ${activeTimeframe.horizon}${
                 data.generated_at
                   ? ` · Son tarama: ${new Date(data.generated_at).toLocaleString('tr-TR')}`
                   : ''
@@ -109,15 +131,23 @@ function App() {
             kriterlerin <em>hepsini birden</em> sağlayanlar listeye girer, kalanlar elenir:
           </p>
           <ul>
-            <li>Fiyat 9, 21, 50 ve 200 günlük üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
+            <li>Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
             <li>MACD &gt; 0 → momentum pozitif</li>
             <li>RSI &lt; 70, Stokastik %K &lt; 80, Stokastik RSI &lt; 80 → henüz aşırı alım bölgesinde değil</li>
           </ul>
           <p>
-            <strong>Ne kadar geçerli?</strong> Sinyaller günlük kapanış verisine dayalı{' '}
-            <em>momentum</em> sinyalleridir; tipik olarak günler–haftalar ölçeğinde anlamlıdır,
-            aylarca/yıllarca geçerli bir analiz değildir. Liste her iş günü iki kez (BIST ve ABD
-            kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en sağlıklısıdır.
+            <strong>Zaman dilimleri:</strong> aynı kriterler seçtiğin zaman diliminin mumlarıyla
+            hesaplanır. <em>Günlük</em> sinyaller günler–haftalar, <em>Haftalık</em> sinyaller
+            haftalar–aylar, <em>Aylık</em> sinyaller aylar ve ötesi ölçeğinde anlamlıdır. Uzun
+            zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır. Aylık görünümde
+            EMA200 yerine 9/21/50 kullanılır (çoğu hissede 17 yıllık veri bulunmadığından) ve en az
+            5 yıllık geçmişi olan hisseler taranabilir.
+          </p>
+          <p>
+            <strong>Ne kadar geçerli?</strong> Bunlar kapanış verisine dayalı <em>momentum</em>{' '}
+            sinyalleridir; kalıcı bir "al ve unut" analizi değildir. Liste her iş günü iki kez
+            (BIST ve ABD kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en
+            sağlıklısıdır.
           </p>
           <p>Hisse koduna tıklayarak detaylı grafiğe ulaşabilirsin.</p>
         </div>

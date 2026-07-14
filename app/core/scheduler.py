@@ -5,11 +5,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.screener.engine import run_screener
+from app.screener.timeframes import TIMEFRAMES
 
 scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
 
-# Basit in-memory cache. Kalıcı olması gerekirse Redis/SQLite'a taşınabilir.
-_cache: dict[str, list[dict]] = {"bist100": [], "sp500": []}
+# Basit in-memory cache, anahtar: "market:timeframe".
+# Kalıcı olması gerekirse Redis/SQLite'a taşınabilir.
+_cache: dict[str, list[dict]] = {}
 
 SYMBOLS_DIR = Path(__file__).resolve().parents[1] / "data" / "symbols"
 MARKET_FILES = {"bist100": "bist100.json", "sp500": "sp500.json"}
@@ -19,8 +21,12 @@ def _run_scan(market: str) -> None:
     fetcher = YFinanceFetcher()
     with open(SYMBOLS_DIR / MARKET_FILES[market], encoding="utf-8") as f:
         symbols = json.load(f)
-    _cache[market] = run_screener(symbols, fetcher)
-    print(f"[SCHEDULER] {market} taraması tamamlandı: {len(_cache[market])} sonuç")
+    for timeframe in TIMEFRAMES:
+        _cache[f"{market}:{timeframe}"] = run_screener(symbols, fetcher, timeframe)
+        print(
+            f"[SCHEDULER] {market}/{timeframe} taraması tamamlandı: "
+            f"{len(_cache[f'{market}:{timeframe}'])} sonuç"
+        )
 
 
 def start_scheduler() -> None:
@@ -30,5 +36,5 @@ def start_scheduler() -> None:
     scheduler.start()
 
 
-def get_cached_results(market: str) -> list[dict]:
-    return _cache.get(market, [])
+def get_cached_results(market: str, timeframe: str = "daily") -> list[dict]:
+    return _cache.get(f"{market}:{timeframe}", [])

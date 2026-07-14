@@ -7,6 +7,12 @@
   margin-bottom: 20px;
 }
 
+.tab-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tabs {
   display: flex;
   gap: 8px;

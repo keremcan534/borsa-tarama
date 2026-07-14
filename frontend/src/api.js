@@ -4,10 +4,11 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 // (GitHub Pages gibi sunucusuz yayın için).
 export const STATIC_MODE = API_BASE === "static";
 
-export async function fetchScreener(market, { live = false } = {}) {
+export async function fetchScreener(market, { live = false, timeframe = "daily" } = {}) {
+  const suffix = timeframe === "daily" ? "" : `_${timeframe}`;
   const url = STATIC_MODE
-    ? `${import.meta.env.BASE_URL}data/${market}.json`
-    : `${API_BASE}/api/screener/${market}${live ? "?live=true" : ""}`;
+    ? `${import.meta.env.BASE_URL}data/${market}${suffix}.json`
+    : `${API_BASE}/api/screener/${market}?timeframe=${timeframe}${live ? "&live=true" : ""}`;
 
   const res = await fetch(url);
   if (!res.ok) {

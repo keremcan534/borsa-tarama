@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.screener.engine import run_screener
+from app.screener.timeframes import TIMEFRAMES
 
 
 def main() -> None:
@@ -27,17 +28,21 @@ def main() -> None:
         with open(SYMBOLS_DIR / filename, encoding="utf-8") as f:
             symbols = json.load(f)
 
-        results = run_screener(symbols, fetcher)
-        payload = {
-            "market": market.upper(),
-            "count": len(results),
-            "scanned": len(symbols),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "results": results,
-        }
-        out_path = out_dir / f"{market}.json"
-        out_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        print(f"[SCAN] {market}: {len(results)} sonuç -> {out_path}")
+        for timeframe in TIMEFRAMES:
+            results = run_screener(symbols, fetcher, timeframe)
+            payload = {
+                "market": market.upper(),
+                "timeframe": timeframe,
+                "count": len(results),
+                "scanned": len(symbols),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "results": results,
+            }
+            # Günlük dosya adı geriye dönük uyumluluk için eksiz kalır.
+            suffix = "" if timeframe == "daily" else f"_{timeframe}"
+            out_path = out_dir / f"{market}{suffix}.json"
+            out_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            print(f"[SCAN] {market}/{timeframe}: {len(results)} sonuç -> {out_path}")
 
 
 if __name__ == "__main__":

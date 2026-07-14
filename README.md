@@ -20,13 +20,29 @@ GET /api/screener/bist100?live=true   -> anlık tarama yapar (yavaş)
 ## Tarama Stratejisi: "Teknik Görünümü Güçlü Hisseler"
 BIST 100 ve S&P 500 endeksindeki, aşağıdaki şartların **hepsini birden** sağlayan hisseler
 piyasa değerine göre büyükten küçüğe sıralı şekilde listelenir:
-- Fiyat, 9/21/50/200 günlük EMA'ların hepsinin üstünde (güçlü, teyitli yükseliş trendi)
+- Fiyat, 9/21/50/200 periyotluk EMA'ların hepsinin üstünde (güçlü, teyitli yükseliş trendi)
 - MACD Line > 0
 - RSI < 70 (henüz aşırı alım bölgesinde değil)
 - Stokastik %K < 80
 - Stokastik RSI %K < 80
 
 Yani zaten yükselişte olan ama henüz aşırı ısınmamış hisseleri bulur (momentum/trend takibi).
+
+### Zaman Dilimleri
+Aynı kriterler üç zaman diliminin mumlarıyla ayrı ayrı hesaplanır
+(`app/screener/timeframes.py`):
+
+| Timeframe | Mum | Veri | EMA seti | Min. geçmiş | Sinyal ufku |
+|-----------|-----|------|----------|-------------|-------------|
+| `daily`   | günlük  | 1y  | 9/21/50/200 | 200 gün | günler–haftalar |
+| `weekly`  | haftalık | 10y | 9/21/50/200 | 200 hafta (~4 yıl) | haftalar–aylar |
+| `monthly` | aylık   | max | 9/21/50 | 60 ay (~5 yıl) | aylar ve ötesi |
+
+Aylıkta EMA200 kullanılmaz çünkü 200 aylık (~17 yıl) veri çoğu hissede yok.
+API: `GET /api/screener/bist100?timeframe=weekly`. Statik yayında dosyalar:
+`data/{market}.json` (günlük), `data/{market}_weekly.json`, `data/{market}_monthly.json`.
+Uzun zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır
+(örn. güçlü trenddeki hisselerin haftalık stokastiği çoğu zaman 80 üstündedir).
 
 ## Yapılacaklar (production'a geçmeden önce)
 1. ~~`app/data/symbols/bist100.json` ve `sp500.json` içindeki listeler örnek/kısaltılmıştır.~~

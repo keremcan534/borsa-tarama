@@ -88,9 +88,24 @@ def test_run_screener_sorts_by_market_cap_descending(monkeypatch):
         "C": {"symbol": "C", "market_cap": 250.0},
     }
 
-    def fake_screen_symbol(symbol, fetcher):
+    def fake_screen_symbol(symbol, fetcher, timeframe="daily"):
         return fake_results[symbol]
 
     monkeypatch.setattr(engine, "screen_symbol", fake_screen_symbol)
     results = engine.run_screener(["A", "B", "C"], fetcher=None)
     assert [r["symbol"] for r in results] == ["B", "C", "A"]
+
+
+def test_screen_symbol_weekly_requires_200_bars():
+    fetcher = FakeFetcher(_uptrend_ohlcv(150))
+    assert screen_symbol("XYZ", fetcher, timeframe="weekly") is None
+
+
+def test_screen_symbol_monthly_uses_reduced_ema_set():
+    # 100 aylık mum: EMA200 için yetersiz ama aylık görünümün 9/21/50 seti için yeterli.
+    # 400 barlık yumuşak eğimli serinin son 100 barı alınır (dik seri RSI'ı 70 üstüne itiyor).
+    fetcher = FakeFetcher(_uptrend_ohlcv(400).iloc[-100:])
+    result = screen_symbol("XYZ", fetcher, timeframe="monthly")
+    assert result is not None
+    assert "ema_50" in result
+    assert "ema_200" not in result
