@@ -20,4 +20,5 @@ class ScreenedStock(BaseModel):
 class ScreenerResponse(BaseModel):
     market: str  # "BIST100" | "SP500"
     count: int
+    scanned: Optional[int] = None  # taranan toplam sembol sayısı
     results: list[ScreenedStock]

@@ -29,11 +29,16 @@ def get_screened_stocks(market: str, live: bool = False):
     live=false (varsayılan): scheduler'ın günlük ürettiği cache'ten okur, hızlıdır.
     live=true: anlık tarama yapar, yavaştır ama güncel veri döner.
     """
+    symbols = _load_symbols(market)
+
     if not live:
         cached = get_cached_results(market)
         if cached:
-            return ScreenerResponse(market=market.upper(), count=len(cached), results=cached)
+            return ScreenerResponse(
+                market=market.upper(), count=len(cached), scanned=len(symbols), results=cached
+            )
 
-    symbols = _load_symbols(market)
     results = run_screener(symbols, fetcher)
-    return ScreenerResponse(market=market.upper(), count=len(results), results=results)
+    return ScreenerResponse(
+        market=market.upper(), count=len(results), scanned=len(symbols), results=results
+    )

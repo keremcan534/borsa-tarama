@@ -31,6 +31,7 @@ def main() -> None:
         payload = {
             "market": market.upper(),
             "count": len(results),
+            "scanned": len(symbols),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "results": results,
         }

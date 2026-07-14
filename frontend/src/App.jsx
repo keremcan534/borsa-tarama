@@ -15,6 +15,11 @@ function formatMarketCap(value) {
   return value.toLocaleString('tr-TR')
 }
 
+function chartUrl(symbol) {
+  const tvSymbol = symbol.endsWith('.IS') ? `BIST:${symbol.replace('.IS', '')}` : symbol
+  return `https://tr.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`
+}
+
 function App() {
   const [market, setMarket] = useState('bist100')
   const [data, setData] = useState(null)
@@ -66,7 +71,7 @@ function App() {
       <div className="status-bar">
         <span>
           {data
-            ? `${data.count} hisse bulundu${
+            ? `${data.scanned ? `${data.scanned} hisse tarandı, ` : ''}${data.count} tanesi kriterleri geçti${
                 data.generated_at
                   ? ` · Son tarama: ${new Date(data.generated_at).toLocaleString('tr-TR')}`
                   : ''
@@ -95,6 +100,29 @@ function App() {
         </div>
       </div>
 
+      <details className="info-panel">
+        <summary>Bu liste nasıl oluşuyor? Ne kadar süre geçerli?</summary>
+        <div className="info-content">
+          <p>
+            <strong>Nasıl oluşuyor?</strong> Endeksteki hisselerin <em>tamamı</em> (BIST 100'de 100,
+            S&P 500'de ~503 hisse) her iş günü piyasa kapanışından sonra otomatik taranır. Aşağıdaki
+            kriterlerin <em>hepsini birden</em> sağlayanlar listeye girer, kalanlar elenir:
+          </p>
+          <ul>
+            <li>Fiyat 9, 21, 50 ve 200 günlük üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
+            <li>MACD &gt; 0 → momentum pozitif</li>
+            <li>RSI &lt; 70, Stokastik %K &lt; 80, Stokastik RSI &lt; 80 → henüz aşırı alım bölgesinde değil</li>
+          </ul>
+          <p>
+            <strong>Ne kadar geçerli?</strong> Sinyaller günlük kapanış verisine dayalı{' '}
+            <em>momentum</em> sinyalleridir; tipik olarak günler–haftalar ölçeğinde anlamlıdır,
+            aylarca/yıllarca geçerli bir analiz değildir. Liste her iş günü iki kez (BIST ve ABD
+            kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en sağlıklısıdır.
+          </p>
+          <p>Hisse koduna tıklayarak detaylı grafiğe ulaşabilirsin.</p>
+        </div>
+      </details>
+
       {error && <div className="error-box">{error}</div>}
 
       {!error && data && data.results.length === 0 && (
@@ -122,7 +150,11 @@ function App() {
             <tbody>
               {data.results.map((r) => (
                 <tr key={r.symbol}>
-                  <td className="symbol-cell">{r.symbol}</td>
+                  <td className="symbol-cell">
+                    <a href={chartUrl(r.symbol)} target="_blank" rel="noreferrer">
+                      {r.symbol}
+                    </a>
+                  </td>
                   <td>{r.close.toLocaleString('tr-TR')}</td>
                   <td>{formatMarketCap(r.market_cap)}</td>
                   <td>{r.rsi.toFixed(1)}</td>
