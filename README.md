@@ -80,6 +80,28 @@ Not: yfinance, GitHub'ın datacenter IP'lerinden zaman zaman rate-limit yiyebili
 workflow başarısız olursa bir önceki yayın yerinde kalır, sonraki zamanlanmış
 çalıştırmada kendini toparlar.
 
+## Bildirim Botları (Telegram + X/Twitter)
+Her tarama sonrası sonuç özeti otomatik paylaşılabilir. Kod hazır
+(`app/notify/format.py`, `scripts/notify_telegram.py`, `scripts/notify_twitter.py`);
+workflow'daki adımlar ilgili secret'lar repoya eklenene kadar sessizce atlanır,
+eklendiği anda devreye girer. Secret'lar GitHub → repo → Settings → Secrets and
+variables → Actions → New repository secret'tan (veya `gh secret set AD` ile) eklenir:
+
+- **Telegram**: `TELEGRAM_BOT_TOKEN` (@BotFather'dan /newbot ile al),
+  `TELEGRAM_CHAT_ID` (kanal kullanıcı adı `@kanaladi` veya sayısal id; botu kanala
+  yönetici olarak eklemeyi unutma)
+- **X/Twitter**: `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`,
+  `TWITTER_ACCESS_SECRET` (developer.x.com'da app oluşturup "Read and write" izniyle)
+
+Elle denemek için (secret'ları ortam değişkeni olarak verip):
+`python scripts/notify_telegram.py frontend/public/data`
+
+## Büyüme / Ürünleşme Fikirleri (öncelik sırası netleşecek)
+- Google Play yayını (aşağıdaki yol haritası; Play hesabı mevcut)
+- Telegram/X botları (yukarıda — sadece token bekliyor)
+- Gelir modeli seçenekleri: web'de AdSense, sponsorluk, premium filtreler/uyarılar
+- Kişisel uyarılar (belirli hisse filtreye girince bildirim) — Telegram botu üzerinden
+
 ## Google Play'e Yayınlama Yol Haritası
 Mevcut strateji: native uygulama yazmak yerine web arayüzünü PWA→TWA (Trusted Web Activity)
 ile Android paketine sarmalamak — mevcut React kodu değişmeden kullanılır.

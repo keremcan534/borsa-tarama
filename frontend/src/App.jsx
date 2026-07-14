@@ -135,6 +135,10 @@ function App() {
           </table>
         </div>
       )}
+
+      <p className="disclaimer">
+        Bu uygulama yalnızca teknik göstergelere dayalı veri sunar; yatırım tavsiyesi değildir.
+      </p>
     </>
   )
 }
