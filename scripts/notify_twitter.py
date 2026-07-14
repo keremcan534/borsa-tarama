@@ -19,8 +19,14 @@ from app.notify.format import format_tweet
 from scripts.notify_telegram import load_payloads
 
 
+REQUIRED_VARS = ("TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET")
+
+
 def main() -> None:
     data_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "frontend/public/data")
+    if not all(os.environ.get(v) for v in REQUIRED_VARS):
+        print("[TWITTER] API anahtarları tanımlı değil, paylaşım atlandı")
+        return
 
     payloads = load_payloads(data_dir)
     if not payloads:

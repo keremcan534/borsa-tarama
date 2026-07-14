@@ -32,8 +32,11 @@ def load_payloads(data_dir: Path) -> dict:
 
 def main() -> None:
     data_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "frontend/public/data")
-    token = os.environ["TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("[TELEGRAM] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID tanımlı değil, bildirim atlandı")
+        return
 
     payloads = load_payloads(data_dir)
     if not payloads:

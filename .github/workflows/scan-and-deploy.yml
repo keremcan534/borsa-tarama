@@ -66,11 +66,10 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
 
-      # Bildirim adımları: ilgili secret'lar repoya eklenmediyse sessizce atlanır,
-      # eklendiği anda otomatik devreye girer. Bildirim hatası yayını bozmasın
-      # diye continue-on-error açık.
+      # Bildirim adımları: ilgili secret'lar repoya eklenmediyse scriptler
+      # kendileri atlar (secrets bağlamı step-level if'te kullanılamıyor).
+      # Bildirim hatası yayını bozmasın diye continue-on-error açık.
       - name: Telegram bildirimi gönder
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -78,7 +77,6 @@ jobs:
         run: python scripts/notify_telegram.py frontend/public/data
 
       - name: X (Twitter) paylaşımı gönder
-        if: ${{ secrets.TWITTER_API_KEY != '' }}
         continue-on-error: true
         env:
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
