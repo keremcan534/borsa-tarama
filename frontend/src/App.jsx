@@ -9,6 +9,7 @@ const ADS_ENABLED = false
 const MARKETS = [
   { key: 'bist100', label: 'BIST 100' },
   { key: 'sp500', label: 'S&P 500' },
+  { key: 'etf', label: 'ETF' },
 ]
 
 const TIMEFRAMES = [

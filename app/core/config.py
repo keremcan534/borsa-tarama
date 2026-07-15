@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     min_daily_turnover: dict[str, float] = {
         "bist100": 50_000_000.0,  # 50M TRY
         "sp500": 10_000_000.0,  # 10M USD
+        "etf": 5_000_000.0,  # 5M USD (ETF'ler genelde çok likit)
     }
 
     class Config:
