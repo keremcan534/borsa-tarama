@@ -16,8 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import settings
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
-from app.screener.engine import run_screener
+from app.screener.engine import run_analysis
+from app.screener.filters import passes_filters
 from app.screener.timeframes import TIMEFRAMES
+
+# Arayüzdeki filtre panelinin varsayılan eşikleri (client-side filtreleme için)
+DEFAULT_THRESHOLDS = {"rsi": 70, "stoch_k": 80, "stoch_rsi_k": 80, "macd_positive": True}
 
 
 def main() -> None:
@@ -31,7 +35,9 @@ def main() -> None:
 
         min_turnover = settings.min_daily_turnover.get(market)
         for timeframe in TIMEFRAMES:
-            results = run_screener(symbols, fetcher, timeframe, min_turnover)
+            ema_periods = TIMEFRAMES[timeframe]["ema_periods"]
+            stocks = run_analysis(symbols, fetcher, timeframe, min_turnover)
+            results = [s for s in stocks if passes_filters(s, ema_periods)]
             payload = {
                 "market": market.upper(),
                 "timeframe": timeframe,
@@ -39,6 +45,11 @@ def main() -> None:
                 "scanned": len(symbols),
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "results": results,
+                # Arayüzde kullanıcı tanımlı eşiklerle yeniden filtreleme için
+                # tüm hisselerin gösterge değerleri + varsayılan eşikler
+                "stocks": stocks,
+                "ema_periods": ema_periods,
+                "thresholds": DEFAULT_THRESHOLDS,
             }
             # Günlük dosya adı geriye dönük uyumluluk için eksiz kalır.
             suffix = "" if timeframe == "daily" else f"_{timeframe}"

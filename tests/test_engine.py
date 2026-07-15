@@ -96,6 +96,24 @@ def test_run_screener_sorts_by_market_cap_descending(monkeypatch):
     assert [r["symbol"] for r in results] == ["B", "C", "A"]
 
 
+def test_analyze_symbol_returns_indicators_without_filtering():
+    from app.screener.engine import analyze_symbol
+
+    # Düz seri varsayılan filtreyi geçmez ama analyze yine de değerleri döndürmeli
+    fetcher = FakeFetcher(_flat_ohlcv(400))
+    stock = analyze_symbol("XYZ", fetcher)
+    assert stock is not None
+    assert {"symbol", "close", "rsi", "macd_line", "stoch_k", "ema_200"} <= set(stock)
+
+
+def test_run_analysis_includes_non_passing_stocks(monkeypatch):
+    from app.screener.engine import run_analysis
+
+    fetcher = FakeFetcher(_flat_ohlcv(400))
+    stocks = run_analysis(["AAA", "BBB"], fetcher)
+    assert len(stocks) == 2  # filtreyi geçmeseler de analizde yer alırlar
+
+
 def test_screen_symbol_weekly_requires_200_bars():
     fetcher = FakeFetcher(_uptrend_ohlcv(150))
     assert screen_symbol("XYZ", fetcher, timeframe="weekly") is None

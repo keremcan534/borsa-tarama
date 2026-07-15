@@ -55,13 +55,17 @@ def compute_indicators(df: pd.DataFrame, ema_periods: list[int] = DEFAULT_EMA_PE
     return df
 
 
-def screen_symbol(
+def analyze_symbol(
     symbol: str,
     fetcher: BaseFetcher,
     timeframe: str = "daily",
     min_daily_turnover: float | None = None,
 ) -> dict | None:
-    """Tek bir sembolü verilen zaman diliminde çeker, gösterge hesaplar, filtreden geçirir."""
+    """
+    Tek bir sembolün gösterge değerlerini hesaplar; AL/SAT filtresi UYGULAMAZ.
+    Yeterli geçmişi veya likiditesi olmayan semboller için None döner.
+    Dönen dict, arayüzde kullanıcı tanımlı eşiklerle yeniden filtrelenebilir.
+    """
     config = TIMEFRAMES[timeframe]
     df = fetcher.fetch_ohlcv(symbol, period=config["period"], interval=config["interval"])
     df = drop_in_progress_bar(df, config["interval"])
@@ -76,15 +80,10 @@ def screen_symbol(
     df = compute_indicators(df, ema_periods)
     last_row = df.iloc[-1]
 
-    if not passes_filters(last_row, ema_periods):
-        return None
-
-    market_cap = fetcher.fetch_market_cap(symbol)
-
     result = {
         "symbol": symbol,
         "close": round(float(last_row["close"]), 2),
-        "market_cap": market_cap,
+        "market_cap": fetcher.fetch_market_cap(symbol),
     }
     for p in ema_periods:
         result[f"ema_{p}"] = round(float(last_row[f"ema_{p}"]), 2)
@@ -97,6 +96,44 @@ def screen_symbol(
         }
     )
     return result
+
+
+def screen_symbol(
+    symbol: str,
+    fetcher: BaseFetcher,
+    timeframe: str = "daily",
+    min_daily_turnover: float | None = None,
+) -> dict | None:
+    """Tek bir sembolü çeker, gösterge hesaplar, varsayılan filtreden geçirir."""
+    result = analyze_symbol(symbol, fetcher, timeframe, min_daily_turnover)
+    if result is None:
+        return None
+
+    # passes_filters yalnızca anahtar erişimi yaptığından dict ile de çalışır
+    if not passes_filters(result, TIMEFRAMES[timeframe]["ema_periods"]):
+        return None
+    return result
+
+
+def run_analysis(
+    symbols: list[str],
+    fetcher: BaseFetcher,
+    timeframe: str = "daily",
+    min_daily_turnover: float | None = None,
+) -> list[dict]:
+    """Tüm sembollerin gösterge değerlerini (filtresiz) döner, piyasa değerine göre sıralı."""
+    stocks = []
+    for symbol in symbols:
+        try:
+            stock = analyze_symbol(symbol, fetcher, timeframe, min_daily_turnover)
+            if stock:
+                stocks.append(stock)
+        except Exception as e:
+            print(f"[UYARI] {symbol} atlandı: {e}")
+            continue
+
+    stocks.sort(key=lambda x: x["market_cap"] or 0, reverse=True)
+    return stocks
 
 
 def run_screener(
