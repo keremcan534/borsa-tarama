@@ -37,6 +37,21 @@ def test_tweet_stays_under_limit_even_with_many_results():
     assert SITE_URL in tweet
 
 
+def test_telegram_message_highlights_new_signals():
+    payloads = _payloads(n_bist=2)
+    payloads["bist100"]["results"][0]["is_new"] = True
+    msg = format_telegram_message(payloads)
+    assert "🆕 Yeni sinyal: SYM0" in msg
+
+
+def test_tweet_mentions_new_signal_count():
+    payloads = _payloads(n_bist=2, n_sp=1)
+    payloads["bist100"]["results"][0]["is_new"] = True
+    payloads["sp500"]["results"][0]["is_new"] = True
+    tweet = format_tweet(payloads)
+    assert "🆕 2 yeni sinyal" in tweet
+
+
 def test_tweet_handles_empty_results():
     payloads = {
         "bist100": {"generated_at": "2026-07-14T09:49:06+00:00", "results": []},

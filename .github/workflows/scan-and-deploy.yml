@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # günlük rapor arşivi (reports/) repoya commit'lenir
   pages: write
   id-token: write
 
@@ -34,8 +34,23 @@ jobs:
       - name: Python bağımlılıklarını kur
         run: pip install -r requirements.txt
 
-      - name: Marketleri tara ve JSON üret
-        run: python scripts/scan_to_json.py frontend/public/data
+      - name: Marketleri tara, JSON ve günlük raporu üret
+        run: python scripts/scan_to_json.py frontend/public/data reports
+
+      - name: Rapor arşivini repoya commit'le
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports
+          if ! git diff --staged --quiet; then
+            git commit -m "Günlük rapor arşivi (otomatik)"
+            git push origin HEAD:master || echo "rapor push edilemedi (kritik değil)"
+          else
+            echo "yeni rapor yok, commit atlandı"
+          fi
+
+      - name: Rapor arşivi + sitemap + robots'u siteye hazırla
+        run: python scripts/build_site_meta.py reports frontend/public
 
       - uses: actions/setup-node@v4
         with:

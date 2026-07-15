@@ -28,7 +28,37 @@ def draw_icon(size, padding_ratio=0.0):
     return img
 
 
+def draw_og_image(width=1200, height=630):
+    """Sosyal paylaşım kartı: koyu zemin + logo + başlık."""
+    from PIL import ImageFont
+
+    img = Image.new("RGB", (width, height), (15, 17, 21))
+    draw = ImageDraw.Draw(img)
+
+    icon = draw_icon(220)
+    img.paste(icon, (width // 2 - 110, 110), icon)
+
+    def font(size):
+        for name in ("segoeuib.ttf", "arialbd.ttf", "arial.ttf"):
+            try:
+                return ImageFont.truetype(name, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    def center_text(y, text, size, fill):
+        f = font(size)
+        w = draw.textlength(text, font=f)
+        draw.text(((width - w) / 2, y), text, font=f, fill=fill)
+
+    center_text(370, "Borsa Tarama", 64, (243, 244, 246))
+    center_text(460, "BIST 100 ve S&P 500 · Günlük Teknik Sinyaller", 30, (167, 139, 250))
+    center_text(515, "EMA · MACD · RSI · Stokastik — her gün otomatik", 24, (156, 163, 175))
+    return img
+
+
 draw_icon(192).save("public/icon-192.png")
 draw_icon(512).save("public/icon-512.png")
 draw_icon(512, padding_ratio=0.1).save("public/icon-maskable-512.png")
-print("icons written")
+draw_og_image().save("public/og-image.png")
+print("icons + og-image written")

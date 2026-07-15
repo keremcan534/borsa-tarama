@@ -249,10 +249,20 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
   )
 }
 
+function loadWatchlist() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('watchlist') || '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
 function App() {
   const [view, setView] = useState('screener')
   const [market, setMarket] = useState('bist100')
   const [timeframe, setTimeframe] = useState('daily')
+  const [watchlist, setWatchlist] = useState(loadWatchlist)
+  const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -332,9 +342,28 @@ function App() {
 
   const rows = useMemo(() => {
     if (!data) return []
-    if (data.stocks) return data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
-    return data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
-  }, [data, filters, availableEmas])
+    let list = data.stocks
+      ? data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
+      : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
+    if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
+    return list
+  }, [data, filters, availableEmas, onlyWatchlist, watchlist])
+
+  // Yeni sinyal bilgisi results üzerinde gelir; stocks listesinde göstermek için haritalanır
+  const newSymbols = useMemo(
+    () => new Set((data?.results || []).filter((r) => r.is_new).map((r) => r.symbol)),
+    [data],
+  )
+
+  function toggleWatch(symbol) {
+    setWatchlist((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) next.delete(symbol)
+      else next.add(symbol)
+      localStorage.setItem('watchlist', JSON.stringify([...next]))
+      return next
+    })
+  }
 
   return (
     <>
@@ -422,6 +451,13 @@ function App() {
               : ''}
         </span>
         <div className="actions">
+          <button
+            className={`btn ${onlyWatchlist ? 'primary' : ''}`}
+            title="Sadece favori hisseleri göster"
+            onClick={() => setOnlyWatchlist((v) => !v)}
+          >
+            ⭐ Favoriler{watchlist.size ? ` (${watchlist.size})` : ''}
+          </button>
           {STATIC_MODE ? (
             <button className="btn" disabled={loading} onClick={() => load(false)}>
               {loading && <span className="spinner" />}
@@ -505,6 +541,7 @@ function App() {
           <table>
             <thead>
               <tr>
+                <th></th>
                 <th>Sembol</th>
                 <th>Kapanış</th>
                 <th>Piyasa Değeri</th>
@@ -517,10 +554,20 @@ function App() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.symbol}>
+                  <td className="star-cell">
+                    <button
+                      className={`star-btn ${watchlist.has(r.symbol) ? 'active' : ''}`}
+                      title={watchlist.has(r.symbol) ? 'Favorilerden çıkar' : 'Favorilere ekle'}
+                      onClick={() => toggleWatch(r.symbol)}
+                    >
+                      {watchlist.has(r.symbol) ? '★' : '☆'}
+                    </button>
+                  </td>
                   <td className="symbol-cell">
                     <button className="symbol-btn" onClick={() => setChartSymbol(r.symbol)}>
                       {r.symbol}
                     </button>
+                    {newSymbols.has(r.symbol) && <span className="badge new-badge">YENİ</span>}
                   </td>
                   <td>{r.close.toLocaleString('tr-TR')}</td>
                   <td>{formatMarketCap(r.market_cap)}</td>

@@ -29,6 +29,10 @@ def _symbols_line(results: list[dict], limit: int) -> str:
     return text
 
 
+def _new_symbols(results: list[dict]) -> list[str]:
+    return [r["symbol"].removesuffix(".IS") for r in results if r.get("is_new")]
+
+
 def format_telegram_message(payloads: dict) -> str:
     lines = [f"📊 <b>Borsa Tarama</b> — {_scan_time(payloads)}"]
     for market, payload in payloads.items():
@@ -38,11 +42,15 @@ def format_telegram_message(payloads: dict) -> str:
         lines.append(f"{label}: <b>{len(results)}</b> hisse")
         if results:
             lines.append(_symbols_line(results, 10))
+        new_syms = _new_symbols(results)
+        if new_syms:
+            lines.append(f"🆕 Yeni sinyal: {', '.join(new_syms[:8])}")
     lines += ["", SITE_URL, f"⚠️ {DISCLAIMER}"]
     return "\n".join(lines)
 
 
 def format_tweet(payloads: dict) -> str:
+    total_new = sum(len(_new_symbols(p.get("results", []))) for p in payloads.values())
     for symbol_limit in (5, 3, 0):
         parts = [f"📊 Borsa Tarama {_scan_time(payloads)}"]
         for market, payload in payloads.items():
@@ -52,6 +60,8 @@ def format_tweet(payloads: dict) -> str:
             if results and symbol_limit:
                 line += " — " + _symbols_line(results, symbol_limit)
             parts.append(line)
+        if total_new:
+            parts.append(f"🆕 {total_new} yeni sinyal")
         parts.append(SITE_URL)
         parts.append(f"⚠️ {DISCLAIMER}")
         text = "\n".join(parts)
