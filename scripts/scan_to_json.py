@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import settings
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
 from app.screener.diff import mark_new_signals
@@ -104,6 +105,42 @@ def main() -> None:
         news_path = out_dir / f"news_{market}.json"
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
+
+    # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri)
+    try:
+        fund_results = run_fund_screener()
+        funds_payload = {
+            "market": "FUNDS",
+            "count": len(fund_results),
+            "scanned": len(fund_results),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "results": fund_results,
+            "metrics": [
+                "return_1m",
+                "return_3m",
+                "return_6m",
+                "return_1y",
+                "return_ytd",
+                "volatility",
+                "sharpe",
+                "max_drawdown",
+                "score",
+            ],
+        }
+    except Exception as e:
+        print(f"[FON] tarama başarısız ({e}); boş payload yazılıyor")
+        funds_payload = {
+            "market": "FUNDS",
+            "count": 0,
+            "scanned": 0,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "results": [],
+            "error": str(e),
+            "metrics": [],
+        }
+    funds_path = out_dir / "funds.json"
+    funds_path.write_text(json.dumps(funds_payload, ensure_ascii=False), encoding="utf-8")
+    print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report_path = reports_dir / f"{date_str}.html"

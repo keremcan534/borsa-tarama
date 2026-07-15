@@ -11,6 +11,18 @@ export async function fetchNews(market) {
   return res.json();
 }
 
+export async function fetchFunds() {
+  const url = STATIC_MODE
+    ? `${import.meta.env.BASE_URL}data/funds.json`
+    : `${API_BASE}/api/funds`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Fon verisi yüklenemedi (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function fetchScreener(market, { live = false, timeframe = "daily" } = {}) {
   const suffix = timeframe === "daily" ? "" : `_${timeframe}`;
   const url = STATIC_MODE

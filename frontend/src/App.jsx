@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchNews, fetchScreener, STATIC_MODE } from './api'
+import { fetchFunds, fetchNews, fetchScreener, STATIC_MODE } from './api'
+import { getLang, setLang as persistLang, t } from './i18n'
 
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
 // Açıldığında AdSlot bileşenleri yayın kodunu render edecek.
@@ -103,16 +104,33 @@ function TickerLogo({ symbol }) {
   )
 }
 
-const COLUMNS = [
-  { key: 'symbol', label: 'Sembol', align: 'left' },
+const FUND_COLUMNS = [
+  { key: 'symbol', label: 'Fon', align: 'left' },
   { key: 'score', label: 'Puan' },
-  { key: 'close', label: 'Kapanış' },
-  { key: 'market_cap', label: 'Piyasa Değeri' },
-  { key: 'rsi', label: 'RSI' },
-  { key: 'macd_line', label: 'MACD' },
-  { key: 'stoch_k', label: 'Stoch %K' },
-  { key: 'stoch_rsi_k', label: 'Stoch RSI %K' },
+  { key: 'return_1m', label: '1A %' },
+  { key: 'return_3m', label: '3A %' },
+  { key: 'return_6m', label: '6A %' },
+  { key: 'return_1y', label: '1Y %' },
+  { key: 'return_ytd', label: 'YTD %' },
+  { key: 'volatility', label: 'Vol %' },
+  { key: 'sharpe', label: 'Sharpe' },
+  { key: 'max_drawdown', label: 'Max DD %' },
+  { key: 'portfolio_size', label: 'Büyüklük' },
 ]
+
+function formatPct(value, digits = 1) {
+  if (value == null || Number.isNaN(value)) return '—'
+  const pct = value * 100
+  const sign = pct > 0 ? '+' : ''
+  return `${sign}${pct.toFixed(digits)}%`
+}
+
+function pctTone(value) {
+  if (value == null) return ''
+  if (value > 0.02) return 'pos'
+  if (value < -0.02) return 'neg'
+  return 'flat'
+}
 
 function formatRelativeTime(iso) {
   if (!iso) return ''
@@ -329,6 +347,7 @@ function loadWatchlist() {
 }
 
 function App() {
+  const [lang, setLangState] = useState(getLang)
   const [view, setView] = useState('screener')
   const [market, setMarket] = useState('bist100')
   const [timeframe, setTimeframe] = useState('daily')
@@ -344,6 +363,17 @@ function App() {
   const [news, setNews] = useState(null)
   const [newsLoading, setNewsLoading] = useState(false)
   const [newsError, setNewsError] = useState(null)
+  const [funds, setFunds] = useState(null)
+  const [fundsLoading, setFundsLoading] = useState(false)
+  const [fundsError, setFundsError] = useState(null)
+  const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
+  const [fundSearch, setFundSearch] = useState('')
+
+  function switchLang() {
+    const next = lang === 'tr' ? 'en' : 'tr'
+    persistLang(next)
+    setLangState(next)
+  }
 
   function load(live, ignoreRef) {
     setLoading(true)
@@ -360,6 +390,21 @@ function App() {
       })
   }
 
+  function loadFunds(ignoreRef) {
+    setFundsLoading(true)
+    setFundsError(null)
+    fetchFunds()
+      .then((result) => {
+        if (!ignoreRef || !ignoreRef.current) setFunds(result)
+      })
+      .catch((err) => {
+        if (!ignoreRef || !ignoreRef.current) setFundsError(err.message)
+      })
+      .finally(() => {
+        if (!ignoreRef || !ignoreRef.current) setFundsLoading(false)
+      })
+  }
+
   useEffect(() => {
     const ignoreRef = { current: false }
     setData(null)
@@ -369,6 +414,17 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market, timeframe])
+
+  useEffect(() => {
+    if (view !== 'funds') return
+    if (funds) return
+    const ignoreRef = { current: false }
+    loadFunds(ignoreRef)
+    return () => {
+      ignoreRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
 
   // Haberler: market değişince sıfırla, sekme açılınca veya grafik modalı için lazily yükle
   useEffect(() => {
@@ -439,8 +495,39 @@ function App() {
     return list
   }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort])
 
+  const fundRows = useMemo(() => {
+    if (!funds?.results) return []
+    let list = [...funds.results]
+    const q = fundSearch.trim().toUpperCase()
+    if (q) {
+      list = list.filter(
+        (f) =>
+          f.symbol.toUpperCase().includes(q) ||
+          (f.name || '').toUpperCase().includes(q),
+      )
+    }
+    const { key, dir } = fundSort
+    list.sort((a, b) => {
+      if (key === 'symbol') {
+        return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
+      }
+      const av = a[key] ?? -Infinity
+      const bv = b[key] ?? -Infinity
+      return dir === 'asc' ? av - bv : bv - av
+    })
+    return list
+  }, [funds, fundSearch, fundSort])
+
   function toggleSort(key) {
     setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'symbol' ? 'asc' : 'desc' },
+    )
+  }
+
+  function toggleFundSort(key) {
+    setFundSort((prev) =>
       prev.key === key
         ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
         : { key, dir: key === 'symbol' ? 'asc' : 'desc' },
@@ -469,8 +556,10 @@ function App() {
         <div className="brand">
           <Logo />
           <div>
-            <h1>Borsa Tarama</h1>
-            <p className="tagline">Teknik görünümü güçlü hisseler · {activeTimeframe.horizon}</p>
+            <h1>{t(lang, 'brand')}</h1>
+            <p className="tagline">
+              {t(lang, 'tagline')} · {activeTimeframe.horizon}
+            </p>
           </div>
         </div>
         <div className="tab-groups">
@@ -479,35 +568,59 @@ function App() {
               className={`tab ${view === 'screener' ? 'active' : ''}`}
               onClick={() => setView('screener')}
             >
-              Tarama
+              {t(lang, 'tabScreener')}
+            </button>
+            <button
+              className={`tab ${view === 'funds' ? 'active' : ''}`}
+              onClick={() => setView('funds')}
+            >
+              {t(lang, 'tabFunds')}
             </button>
             <button
               className={`tab ${view === 'news' ? 'active' : ''}`}
               onClick={() => setView('news')}
             >
-              📰 Haberler
+              {t(lang, 'tabNews')}
             </button>
           </div>
-          <div className="tabs">
-            {MARKETS.map((m) => (
-              <button
-                key={m.key}
-                className={`tab ${market === m.key ? 'active' : ''}`}
-                onClick={() => setMarket(m.key)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+          <button className="tab lang-toggle" onClick={switchLang} title="Language / Dil">
+            {t(lang, 'langToggle')}
+          </button>
           {view === 'screener' && (
             <div className="tabs">
-              {TIMEFRAMES.map((t) => (
+              {MARKETS.map((m) => (
                 <button
-                  key={t.key}
-                  className={`tab ${timeframe === t.key ? 'active' : ''}`}
-                  onClick={() => setTimeframe(t.key)}
+                  key={m.key}
+                  className={`tab ${market === m.key ? 'active' : ''}`}
+                  onClick={() => setMarket(m.key)}
                 >
-                  {t.label}
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {view === 'screener' && (
+            <div className="tabs">
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf.key}
+                  className={`tab ${timeframe === tf.key ? 'active' : ''}`}
+                  onClick={() => setTimeframe(tf.key)}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {view === 'news' && (
+            <div className="tabs">
+              {MARKETS.map((m) => (
+                <button
+                  key={m.key}
+                  className={`tab ${market === m.key ? 'active' : ''}`}
+                  onClick={() => setMarket(m.key)}
+                >
+                  {m.label}
                 </button>
               ))}
             </div>
@@ -515,19 +628,168 @@ function App() {
         </div>
       </header>
 
+      {view === 'funds' && (
+        <>
+          <div className="status-bar">
+            <span>
+              {funds
+                ? t(
+                    lang,
+                    'fundsStatus',
+                    funds.count,
+                    funds.generated_at
+                      ? new Date(funds.generated_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
+                      : '',
+                  )
+                : fundsLoading
+                  ? t(lang, 'fundsLoading')
+                  : ''}
+            </span>
+            <div className="actions">
+              <button
+                className="btn"
+                disabled={fundsLoading}
+                onClick={() => {
+                  setFunds(null)
+                  loadFunds()
+                }}
+              >
+                {fundsLoading && <span className="spinner" />}
+                {t(lang, 'refresh')}
+              </button>
+            </div>
+          </div>
+
+          <details className="info-panel">
+            <summary>{t(lang, 'fundsHowTitle')}</summary>
+            <div className="info-content">
+              <p>{t(lang, 'fundsHowBody1')}</p>
+              <p>
+                <strong>{lang === 'en' ? 'Score (0-100):' : 'Puan (0-100):'}</strong>{' '}
+                {t(lang, 'fundsHowBody2')}
+              </p>
+              <p>{t(lang, 'fundsHowBody3')}</p>
+            </div>
+          </details>
+
+          {!fundsError && funds && (
+            <div className="search-row">
+              <input
+                className="search-input"
+                type="search"
+                placeholder={t(lang, 'searchFund')}
+                value={fundSearch}
+                onChange={(e) => setFundSearch(e.target.value)}
+              />
+            </div>
+          )}
+
+          {fundsError && <div className="error-box">{fundsError}</div>}
+
+          {!fundsError && funds && fundRows.length === 0 && (
+            <div className="empty-box">
+              {fundSearch.trim()
+                ? t(lang, 'fundsNoMatch', fundSearch.trim())
+                : t(lang, 'fundsEmpty')}
+            </div>
+          )}
+
+          {!fundsError && fundRows.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    {FUND_COLUMNS.map((c) => (
+                      <th
+                        key={c.key}
+                        className={`sortable ${c.align === 'left' ? 'left' : ''} ${fundSort.key === c.key ? 'sorted' : ''}`}
+                        onClick={() => toggleFundSort(c.key)}
+                      >
+                        {c.key === 'symbol'
+                          ? t(lang, 'colFund')
+                          : c.key === 'score'
+                            ? t(lang, 'colScore')
+                            : c.key === 'portfolio_size'
+                              ? t(lang, 'colSize')
+                              : c.label}
+                        <span className="sort-arrow">
+                          {fundSort.key === c.key ? (fundSort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {fundRows.map((f) => (
+                    <tr key={f.symbol}>
+                      <td className="symbol-cell">
+                        <a
+                          className="symbol-btn fund-link"
+                          href={f.tefas_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={f.name}
+                        >
+                          <TickerLogo symbol={f.symbol} />
+                          <span className="fund-code-wrap">
+                            <strong>{f.symbol}</strong>
+                            <span className="fund-name">{f.name}</span>
+                          </span>
+                        </a>
+                      </td>
+                      <td>
+                        <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
+                      </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_1m)}`}>{formatPct(f.return_1m)}</span>
+                      </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_3m)}`}>{formatPct(f.return_3m)}</span>
+                      </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_6m)}`}>{formatPct(f.return_6m)}</span>
+                      </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
+                      </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_ytd)}`}>{formatPct(f.return_ytd)}</span>
+                      </td>
+                      <td>{f.volatility != null ? `${(f.volatility * 100).toFixed(1)}%` : '—'}</td>
+                      <td>{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</td>
+                      <td>
+                        <span className={`pct ${pctTone(f.max_drawdown)}`}>
+                          {formatPct(f.max_drawdown)}
+                        </span>
+                      </td>
+                      <td>{formatMarketCap(f.portfolio_size)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
+        </>
+      )}
+
       {view === 'news' && (
         <>
           <div className="status-bar">
             <span>
               {news
-                ? `${news.items.length} başlık · Sinyal veren hisselerin haberleri · Güncelleme: ${new Date(news.generated_at).toLocaleString('tr-TR')}`
+                ? t(
+                    lang,
+                    'newsStatus',
+                    news.items.length,
+                    new Date(news.generated_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'),
+                  )
                 : ''}
             </span>
           </div>
           <NewsFeed news={news} loading={newsLoading} error={newsError} onOpenChart={setChartSymbol} />
-          <p className="disclaimer">
-            Haber başlıkları kaynaklarına aittir ve kaynağa yönlendirir. Yatırım tavsiyesi değildir.
-          </p>
+          <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
           {chartSymbol && (
             <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
           )}
@@ -554,21 +816,22 @@ function App() {
             title="Sadece favori hisseleri göster"
             onClick={() => setOnlyWatchlist((v) => !v)}
           >
-            ⭐ Favoriler{watchlist.size ? ` (${watchlist.size})` : ''}
+            ⭐ {t(lang, 'favorites')}
+            {watchlist.size ? ` (${watchlist.size})` : ''}
           </button>
           {STATIC_MODE ? (
             <button className="btn" disabled={loading} onClick={() => load(false)}>
               {loading && <span className="spinner" />}
-              Yenile
+              {t(lang, 'refresh')}
             </button>
           ) : (
             <>
               <button className="btn" disabled={loading} onClick={() => load(false)}>
-                Cache'ten Yenile
+                {t(lang, 'refreshCache')}
               </button>
               <button className="btn primary" disabled={loading} onClick={() => load(true)}>
                 {loading && <span className="spinner" />}
-                Canlı Tara
+                {t(lang, 'liveScan')}
               </button>
             </>
           )}
@@ -673,7 +936,7 @@ function App() {
           <input
             className="search-input"
             type="search"
-            placeholder="🔍 Hisse ara (örn. THYAO)"
+            placeholder={t(lang, 'searchStock')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -707,7 +970,15 @@ function App() {
                     onClick={() => toggleSort(c.key)}
                     title="Sıralamak için tıkla"
                   >
-                    {c.label}
+                    {c.key === 'symbol'
+                      ? t(lang, 'colSymbol')
+                      : c.key === 'score'
+                        ? t(lang, 'colScore')
+                        : c.key === 'close'
+                          ? t(lang, 'colClose')
+                          : c.key === 'market_cap'
+                            ? t(lang, 'colMcap')
+                            : c.label}
                     <span className="sort-arrow">
                       {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
                     </span>
@@ -752,9 +1023,7 @@ function App() {
         </div>
       )}
 
-      <p className="disclaimer">
-        Bu uygulama yalnızca teknik göstergelere dayalı veri sunar; yatırım tavsiyesi değildir.
-      </p>
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
 
       {chartSymbol && (
         <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />

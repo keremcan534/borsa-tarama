@@ -425,6 +425,46 @@ th.sorted {
   color: var(--text);
 }
 
+.pct.pos {
+  color: var(--up);
+}
+
+.pct.neg {
+  color: var(--down);
+}
+
+.pct.flat {
+  opacity: 0.85;
+}
+
+.fund-link {
+  text-decoration: none;
+  align-items: flex-start;
+}
+
+.fund-code-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fund-name {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.lang-toggle {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 44px;
+}
+
 .star-cell {
   width: 34px;
   padding-right: 0;

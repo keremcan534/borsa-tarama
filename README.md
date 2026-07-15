@@ -121,6 +121,12 @@ variables → Actions → New repository secret'tan (veya `gh secret set AD` ile
 Elle denemek için (secret'ları ortam değişkeni olarak verip):
 `python scripts/notify_telegram.py frontend/public/data`
 
+## TEFAS Fonları
+`app/funds/` altında TEFAS YAT fonları için getiri/risk taraması var (RSI/MACD yok;
+1a/3a/6a/1y/YTD getiri, volatilite, Sharpe, max düşüş, 0-100 puan). `scan_to_json.py`
+her çalıştırmada `funds.json` üretir; arayüzde **Fonlar** sekmesi gösterir.
+API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
+
 ## Büyüme / Ürünleşme Fikirleri (öncelik sırası netleşecek)
 - Google Play yayını (aşağıdaki yol haritası; Play hesabı mevcut)
 - Telegram/X botları (yukarıda — sadece token bekliyor)

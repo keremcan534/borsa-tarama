@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import screener
+from app.api.routes import funds, screener
 from app.core.config import settings
 from app.core.scheduler import start_scheduler
 
@@ -16,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(screener.router)
+app.include_router(funds.router)
 
 
 @app.on_event("startup")
