@@ -15,6 +15,18 @@
   gap: 12px;
 }
 
+.lang-switch {
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.lang-switch .tab {
+  min-width: 40px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding-inline: 10px;
+}
+
 .logo {
   width: 44px;
   height: 44px;
@@ -457,12 +469,6 @@ th.sorted {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
-}
-
-.lang-toggle {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  min-width: 44px;
 }
 
 .star-cell {

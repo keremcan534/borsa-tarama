@@ -369,12 +369,6 @@ function App() {
   const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
   const [fundSearch, setFundSearch] = useState('')
 
-  function switchLang() {
-    const next = lang === 'tr' ? 'en' : 'tr'
-    persistLang(next)
-    setLangState(next)
-  }
-
   function load(live, ignoreRef) {
     setLoading(true)
     setError(null)
@@ -561,6 +555,32 @@ function App() {
               {t(lang, 'tagline')} · {activeTimeframe.horizon}
             </p>
           </div>
+          <div className="tabs lang-switch" role="group" aria-label="Language">
+            <button
+              type="button"
+              className={`tab ${lang === 'tr' ? 'active' : ''}`}
+              onClick={() => {
+                if (lang !== 'tr') {
+                  persistLang('tr')
+                  setLangState('tr')
+                }
+              }}
+            >
+              TR
+            </button>
+            <button
+              type="button"
+              className={`tab ${lang === 'en' ? 'active' : ''}`}
+              onClick={() => {
+                if (lang !== 'en') {
+                  persistLang('en')
+                  setLangState('en')
+                }
+              }}
+            >
+              EN
+            </button>
+          </div>
         </div>
         <div className="tab-groups">
           <div className="tabs">
@@ -583,9 +603,6 @@ function App() {
               {t(lang, 'tabNews')}
             </button>
           </div>
-          <button className="tab lang-toggle" onClick={switchLang} title="Language / Dil">
-            {t(lang, 'langToggle')}
-          </button>
           {view === 'screener' && (
             <div className="tabs">
               {MARKETS.map((m) => (
