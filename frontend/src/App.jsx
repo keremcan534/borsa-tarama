@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchScreener, STATIC_MODE } from './api'
+import { fetchNews, fetchScreener, STATIC_MODE } from './api'
+
+// Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
+// Açıldığında AdSlot bileşenleri yayın kodunu render edecek.
+const ADS_ENABLED = false
 
 const MARKETS = [
   { key: 'bist100', label: 'BIST 100' },
@@ -39,6 +43,24 @@ function rsiTone(rsi) {
   return 'cool'
 }
 
+function formatRelativeTime(iso) {
+  if (!iso) return ''
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 60) return `${Math.max(mins, 1)} dk önce`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} sa önce`
+  const days = Math.round(hours / 24)
+  if (days < 7) return `${days} gün önce`
+  return new Date(iso).toLocaleDateString('tr-TR')
+}
+
+function AdSlot({ id }) {
+  // Reklam ağı bağlanana kadar hiçbir şey render edilmez (sahte reklam yok).
+  if (!ADS_ENABLED) return null
+  return <div className="ad-slot" data-slot={id} />
+}
+
 function stockPassesFilters(stock, filters, availableEmas) {
   for (const p of availableEmas) {
     if (filters.emas[p] && !(stock.close > stock[`ema_${p}`])) return false
@@ -67,7 +89,36 @@ function Logo() {
   )
 }
 
-function ChartModal({ symbol, onClose }) {
+function NewsFeed({ news, loading, error, onOpenChart }) {
+  if (loading) return <div className="empty-box">Haberler yükleniyor...</div>
+  if (error) return <div className="error-box">{error}</div>
+  if (!news || news.items.length === 0)
+    return <div className="empty-box">Şu an gösterilecek haber yok. Haberler her taramayla birlikte yenilenir.</div>
+
+  return (
+    <div className="news-list">
+      {news.items.map((item, i) => (
+        <div key={item.link + i}>
+          <article className="news-item">
+            <div className="news-meta">
+              <button className="chip" onClick={() => onOpenChart(item.symbol)}>
+                {item.symbol.replace('.IS', '')}
+              </button>
+              {item.source && <span className="news-source">{item.source}</span>}
+              <span className="news-time">{formatRelativeTime(item.published_at)}</span>
+            </div>
+            <a className="news-title" href={item.link} target="_blank" rel="noreferrer noopener">
+              {item.title}
+            </a>
+          </article>
+          {(i + 1) % 6 === 0 && <AdSlot id={`news-${i}`} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChartModal({ symbol, news, onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -110,6 +161,22 @@ function ChartModal({ symbol, onClose }) {
           </div>
         </div>
         <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
+        {news && news.length > 0 && (
+          <div className="modal-news">
+            <div className="modal-news-title">📰 Son haberler</div>
+            {news.slice(0, 3).map((item, i) => (
+              <a
+                key={item.link + i}
+                className="modal-news-item"
+                href={item.link}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <span className="news-time">{formatRelativeTime(item.published_at)}</span> {item.title}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -183,6 +250,7 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
 }
 
 function App() {
+  const [view, setView] = useState('screener')
   const [market, setMarket] = useState('bist100')
   const [timeframe, setTimeframe] = useState('daily')
   const [data, setData] = useState(null)
@@ -190,6 +258,9 @@ function App() {
   const [error, setError] = useState(null)
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })
   const [chartSymbol, setChartSymbol] = useState(null)
+  const [news, setNews] = useState(null)
+  const [newsLoading, setNewsLoading] = useState(false)
+  const [newsError, setNewsError] = useState(null)
 
   function load(live, ignoreRef) {
     setLoading(true)
@@ -216,7 +287,36 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market, timeframe])
 
+  // Haberler: market değişince sıfırla, sekme açılınca veya grafik modalı için lazily yükle
+  useEffect(() => {
+    setNews(null)
+    setNewsError(null)
+  }, [market])
+
+  useEffect(() => {
+    if (view !== 'news' && !chartSymbol) return
+    if (news) return // bu market için zaten yüklü (market değişince sıfırlanır)
+    let ignore = false
+    setNewsLoading(true)
+    setNewsError(null)
+    fetchNews(market)
+      .then((result) => {
+        if (!ignore) setNews(result)
+      })
+      .catch((err) => {
+        if (!ignore) setNewsError(err.message)
+      })
+      .finally(() => setNewsLoading(false))
+    return () => {
+      ignore = true
+    }
+  }, [view, chartSymbol, market, news])
+
   const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
+  const chartNews = useMemo(() => {
+    if (!chartSymbol || !news) return null
+    return news.items.filter((n) => n.symbol === chartSymbol)
+  }, [chartSymbol, news])
   const availableEmas = data?.ema_periods || (timeframe === 'monthly' ? [9, 21, 50] : [9, 21, 50, 200])
 
   const isCustom = useMemo(() => {
@@ -248,6 +348,20 @@ function App() {
         </div>
         <div className="tab-groups">
           <div className="tabs">
+            <button
+              className={`tab ${view === 'screener' ? 'active' : ''}`}
+              onClick={() => setView('screener')}
+            >
+              Tarama
+            </button>
+            <button
+              className={`tab ${view === 'news' ? 'active' : ''}`}
+              onClick={() => setView('news')}
+            >
+              📰 Haberler
+            </button>
+          </div>
+          <div className="tabs">
             {MARKETS.map((m) => (
               <button
                 key={m.key}
@@ -258,20 +372,43 @@ function App() {
               </button>
             ))}
           </div>
-          <div className="tabs">
-            {TIMEFRAMES.map((t) => (
-              <button
-                key={t.key}
-                className={`tab ${timeframe === t.key ? 'active' : ''}`}
-                onClick={() => setTimeframe(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {view === 'screener' && (
+            <div className="tabs">
+              {TIMEFRAMES.map((t) => (
+                <button
+                  key={t.key}
+                  className={`tab ${timeframe === t.key ? 'active' : ''}`}
+                  onClick={() => setTimeframe(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
+      {view === 'news' && (
+        <>
+          <div className="status-bar">
+            <span>
+              {news
+                ? `${news.items.length} başlık · Sinyal veren hisselerin haberleri · Güncelleme: ${new Date(news.generated_at).toLocaleString('tr-TR')}`
+                : ''}
+            </span>
+          </div>
+          <NewsFeed news={news} loading={newsLoading} error={newsError} onOpenChart={setChartSymbol} />
+          <p className="disclaimer">
+            Haber başlıkları kaynaklarına aittir ve kaynağa yönlendirir. Yatırım tavsiyesi değildir.
+          </p>
+          {chartSymbol && (
+            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+          )}
+        </>
+      )}
+
+      {view === 'screener' && (
+        <>
       <div className="status-bar">
         <span>
           {data
@@ -404,7 +541,11 @@ function App() {
         Bu uygulama yalnızca teknik göstergelere dayalı veri sunar; yatırım tavsiyesi değildir.
       </p>
 
-      {chartSymbol && <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />}
+      {chartSymbol && (
+        <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+      )}
+        </>
+      )}
     </>
   )
 }
