@@ -87,7 +87,8 @@ def test_merge_news_dedupes_and_caps():
 def test_merge_news_drops_quote_page_titles():
     items = [
         {"symbol": "A", "title": "EREGLI Hisse Senedi Canlı Grafik - Portal", "source": None, "link": "l1", "published_at": "2026-07-14T10:00:00Z"},
-        {"symbol": "A", "title": "Ereğli'den yeni yatırım hamlesi", "source": None, "link": "l2", "published_at": "2026-07-14T09:00:00Z"},
+        {"symbol": "A", "title": "GESAN Hisse Yorumları (Güncel Yorumlar) - Portal", "source": None, "link": "l2", "published_at": "2026-07-14T10:30:00Z"},
+        {"symbol": "A", "title": "Ereğli'den yeni yatırım hamlesi", "source": None, "link": "l3", "published_at": "2026-07-14T09:00:00Z"},
     ]
     merged = merge_news(items)
     assert len(merged) == 1

@@ -21,7 +21,8 @@ REQUEST_DELAY_SECONDS = 0.5  # RSS uçlarını yormamak için semboller arası b
 LOW_QUALITY_PATTERNS = re.compile(
     r"canlı grafik|hisse senedi canlı|hisse senedi fiyat|hisse fiyatı|kaç tl|ne kadar oldu"
     r"|anlık takip|canlı borsa|hisse yorum ve grafik|günlük teknik analiz"
-    r"|hisse senedi\s*[-–]|hisse senedi$|hedef fiyat listesi|şirket kart[ıi]",
+    r"|hisse senedi\s*[-–]|hisse senedi$|hedef fiyat listesi|şirket kart[ıi]"
+    r"|hisse yorumları|güncel yorumlar|hisse yorumu ve|forum ve yorumlar",
     re.IGNORECASE,
 )
 
