@@ -1,6 +1,9 @@
 name: Tarama ve GitHub Pages yayını
 
 on:
+  # Kod push edilince de yayınla (Claude Code'un elle tetiklediği gibi)
+  push:
+    branches: [master]
   schedule:
     # Hafta içi, BIST kapanışı sonrası (~18:45 TR = 15:45 UTC)
     - cron: "45 15 * * 1-5"
