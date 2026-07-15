@@ -12,6 +12,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        // data/*.json tarama çıktısı — SW'ye gömülmesin (her deploy'da değişir)
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        navigateFallbackDenylist: [/^\/borsa-tarama\/data\//],
+      },
       manifest: {
         name: 'Borsa Tarama',
         short_name: 'Borsa Tarama',

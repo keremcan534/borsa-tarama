@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { fetchFunds, fetchNews, fetchScreener, STATIC_MODE } from './api'
 import { getLang, setLang as persistLang, t } from './i18n'
@@ -47,12 +47,50 @@ const DEFAULT_FILTERS = {
   emas: { 9: true, 21: true, 50: true, 200: true },
 }
 
+function formatNum(value, digits = 2) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return Number(value).toLocaleString('tr-TR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
 function formatMarketCap(value) {
   if (value == null) return '—'
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
   return value.toLocaleString('tr-TR')
+}
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="error-box" style={{ margin: 24 }}>
+          Sayfa yüklenirken hata oluştu: {this.state.error.message}
+          <br />
+          <button
+            className="btn primary"
+            style={{ marginTop: 12 }}
+            onClick={() => window.location.reload()}
+          >
+            Yeniden yükle
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 function tvSymbol(symbol) {
@@ -369,56 +407,76 @@ function App() {
   const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
   const [fundSearch, setFundSearch] = useState('')
 
-  function load(live, ignoreRef) {
+  function load(live = false) {
     setLoading(true)
     setError(null)
-    fetchScreener(market, { live, timeframe })
+    return fetchScreener(market, { live, timeframe })
       .then((result) => {
-        if (!ignoreRef || !ignoreRef.current) setData(result)
+        setData(result)
       })
       .catch((err) => {
-        if (!ignoreRef || !ignoreRef.current) setError(err.message)
+        setError(err.message)
       })
       .finally(() => {
-        if (!ignoreRef || !ignoreRef.current) setLoading(false)
+        setLoading(false)
       })
   }
 
-  function loadFunds(ignoreRef) {
+  function loadFunds() {
     setFundsLoading(true)
     setFundsError(null)
-    fetchFunds()
+    return fetchFunds()
       .then((result) => {
-        if (!ignoreRef || !ignoreRef.current) setFunds(result)
+        setFunds(result)
       })
       .catch((err) => {
-        if (!ignoreRef || !ignoreRef.current) setFundsError(err.message)
+        setFundsError(err.message)
       })
       .finally(() => {
-        if (!ignoreRef || !ignoreRef.current) setFundsLoading(false)
+        setFundsLoading(false)
       })
   }
 
   useEffect(() => {
-    const ignoreRef = { current: false }
+    let cancelled = false
     setData(null)
-    load(false, ignoreRef)
+    setLoading(true)
+    setError(null)
+    fetchScreener(market, { live: false, timeframe })
+      .then((result) => {
+        if (!cancelled) setData(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
     return () => {
-      ignoreRef.current = true
+      cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market, timeframe])
 
   useEffect(() => {
     if (view !== 'funds') return
     if (funds) return
-    const ignoreRef = { current: false }
-    loadFunds(ignoreRef)
+    let cancelled = false
+    setFundsLoading(true)
+    setFundsError(null)
+    fetchFunds()
+      .then((result) => {
+        if (!cancelled) setFunds(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setFundsError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setFundsLoading(false)
+      })
     return () => {
-      ignoreRef.current = true
+      cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view])
+  }, [view, funds])
 
   // Haberler: market değişince sıfırla, sekme açılınca veya grafik modalı için lazily yükle
   useEffect(() => {
@@ -439,7 +497,9 @@ function App() {
       .catch((err) => {
         if (!ignore) setNewsError(err.message)
       })
-      .finally(() => setNewsLoading(false))
+      .finally(() => {
+        if (!ignore) setNewsLoading(false)
+      })
     return () => {
       ignore = true
     }
@@ -1023,16 +1083,18 @@ function App() {
                     {newSymbols.has(r.symbol) && <span className="badge new-badge">YENİ</span>}
                   </td>
                   <td>
-                    <span className={`badge score-${scoreTone(r.score)}`}>{r.score}</span>
+                    <span className={`badge score-${scoreTone(r.score)}`}>{r.score ?? '—'}</span>
                   </td>
-                  <td>{r.close.toLocaleString('tr-TR')}</td>
+                  <td>{formatNum(r.close, 2)}</td>
                   <td>{formatMarketCap(r.market_cap)}</td>
                   <td>
-                    <span className={`badge rsi-${rsiTone(r.rsi)}`}>{r.rsi.toFixed(1)}</span>
+                    <span className={`badge rsi-${rsiTone(r.rsi ?? 0)}`}>
+                      {r.rsi == null ? '—' : formatNum(r.rsi, 1)}
+                    </span>
                   </td>
-                  <td>{r.macd_line.toFixed(2)}</td>
-                  <td>{r.stoch_k.toFixed(1)}</td>
-                  <td>{r.stoch_rsi_k.toFixed(1)}</td>
+                  <td>{formatNum(r.macd_line, 2)}</td>
+                  <td>{formatNum(r.stoch_k, 1)}</td>
+                  <td>{formatNum(r.stoch_rsi_k, 1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1051,4 +1113,10 @@ function App() {
   )
 }
 
-export default App
+export default function Root() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  )
+}
