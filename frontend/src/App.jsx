@@ -43,6 +43,55 @@ function rsiTone(rsi) {
   return 'cool'
 }
 
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
+
+// RSI sağlığı 0..1: 55-65 bandında zirve; aşırı alım/satımda düşer
+function rsiHealth(rsi) {
+  if (rsi >= 55 && rsi <= 65) return 1
+  if (rsi > 65) return clamp(1 - (rsi - 65) / 20, 0.2, 1) // 65→1, 85→0.2
+  return clamp(0.3 + ((rsi - 30) / 25) * 0.7, 0.3, 1) // 30→0.3, 55→1
+}
+
+// Tüm göstergeleri harmanlayan 0-100 teknik güç puanı.
+// Trend hizası (40) + MACD momentumu (25) + RSI sağlığı (20) + Stokastik alanı (15)
+function technicalScore(s, emaPeriods) {
+  const emasAbove = emaPeriods.filter((p) => s.close > s[`ema_${p}`]).length
+  const trend = emaPeriods.length ? (emasAbove / emaPeriods.length) * 40 : 0
+  const ratio = s.close ? s.macd_line / s.close : 0
+  const macd = s.macd_line > 0 ? clamp(ratio / 0.015, 0, 1) * 25 : 0
+  const rsi = rsiHealth(s.rsi) * 20
+  const stoch = clamp((100 - s.stoch_k) / 100, 0, 1) * 15
+  return Math.round(trend + macd + rsi + stoch)
+}
+
+function scoreTone(score) {
+  if (score >= 75) return 'strong'
+  if (score >= 55) return 'good'
+  return 'weak'
+}
+
+// Ticker'dan üretilen tutarlı renkli monogram rozeti (harici logo servisi gerektirmez)
+function TickerLogo({ symbol }) {
+  const t = symbol.replace('.IS', '')
+  const hue = [...t].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
+  return (
+    <span className="ticker-logo" style={{ background: `hsl(${hue} 52% 42%)` }} aria-hidden="true">
+      {t.slice(0, 2)}
+    </span>
+  )
+}
+
+const COLUMNS = [
+  { key: 'symbol', label: 'Sembol', align: 'left' },
+  { key: 'score', label: 'Puan' },
+  { key: 'close', label: 'Kapanış' },
+  { key: 'market_cap', label: 'Piyasa Değeri' },
+  { key: 'rsi', label: 'RSI' },
+  { key: 'macd_line', label: 'MACD' },
+  { key: 'stoch_k', label: 'Stoch %K' },
+  { key: 'stoch_rsi_k', label: 'Stoch RSI %K' },
+]
+
 function formatRelativeTime(iso) {
   if (!iso) return ''
   const diffMs = Date.now() - new Date(iso).getTime()
@@ -267,6 +316,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })
+  const [sort, setSort] = useState({ key: 'score', dir: 'desc' })
+  const [search, setSearch] = useState('')
   const [chartSymbol, setChartSymbol] = useState(null)
   const [news, setNews] = useState(null)
   const [newsLoading, setNewsLoading] = useState(false)
@@ -346,8 +397,29 @@ function App() {
       ? data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
+    const q = search.trim().toUpperCase()
+    if (q) list = list.filter((s) => s.symbol.toUpperCase().includes(q))
+    // Her satıra teknik puanı ekle (sıralama ve gösterim için)
+    list = list.map((s) => ({ ...s, score: technicalScore(s, availableEmas) }))
+    const { key, dir } = sort
+    list.sort((a, b) => {
+      if (key === 'symbol') {
+        return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
+      }
+      const av = a[key] ?? -Infinity
+      const bv = b[key] ?? -Infinity
+      return dir === 'asc' ? av - bv : bv - av
+    })
     return list
-  }, [data, filters, availableEmas, onlyWatchlist, watchlist])
+  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort])
+
+  function toggleSort(key) {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'symbol' ? 'asc' : 'desc' },
+    )
+  }
 
   // Yeni sinyal bilgisi results üzerinde gelir; stocks listesinde göstermek için haritalanır
   const newSymbols = useMemo(
@@ -520,19 +592,40 @@ function App() {
             (BIST ve ABD kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en
             sağlıklısıdır.
           </p>
+          <p>
+            <strong>Puan (0-100):</strong> tüm göstergeleri harmanlayan teknik güç puanı — trend
+            hizası (fiyatın EMA'lara göre konumu, 40 puan), MACD momentumu (25), RSI sağlığı (20)
+            ve stokastik alanı (15). Yüksek puan daha güçlü teknik görünüm demektir; kesinlik
+            değil, göreli bir karşılaştırma aracıdır. Sütun başlıklarına tıklayarak her değere
+            göre sıralayabilir, arama kutusuyla hisse bulabilirsin.
+          </p>
           <p>Hisse koduna tıklayarak grafiği sayfadan ayrılmadan açabilirsin.</p>
         </div>
       </details>
+
+      {!error && data && (
+        <div className="search-row">
+          <input
+            className="search-input"
+            type="search"
+            placeholder="🔍 Hisse ara (örn. THYAO)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
 
       {error && <div className="error-box">{error}</div>}
 
       {!error && data && rows.length === 0 && (
         <div className="empty-box">
-          {isCustom
-            ? 'Bu filtre ayarlarıyla hiçbir hisse kriterleri geçmiyor. Eşikleri gevşetmeyi veya "Varsayılana dön"ü dene.'
-            : STATIC_MODE
-              ? 'Son taramada filtreyi geçen hisse çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.'
-              : 'Şu an filtreyi geçen hisse yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.'}
+          {search.trim()
+            ? `"${search.trim().toUpperCase()}" için sonuç yok.`
+            : isCustom
+              ? 'Bu filtre ayarlarıyla hiçbir hisse kriterleri geçmiyor. Eşikleri gevşetmeyi veya "Varsayılana dön"ü dene.'
+              : STATIC_MODE
+                ? 'Son taramada filtreyi geçen hisse çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.'
+                : 'Şu an filtreyi geçen hisse yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.'}
         </div>
       )}
 
@@ -541,14 +634,20 @@ function App() {
           <table>
             <thead>
               <tr>
-                <th></th>
-                <th>Sembol</th>
-                <th>Kapanış</th>
-                <th>Piyasa Değeri</th>
-                <th>RSI</th>
-                <th>MACD</th>
-                <th>Stoch %K</th>
-                <th>Stoch RSI %K</th>
+                <th className="star-cell"></th>
+                {COLUMNS.map((c) => (
+                  <th
+                    key={c.key}
+                    className={`sortable ${c.align === 'left' ? 'left' : ''} ${sort.key === c.key ? 'sorted' : ''}`}
+                    onClick={() => toggleSort(c.key)}
+                    title="Sıralamak için tıkla"
+                  >
+                    {c.label}
+                    <span className="sort-arrow">
+                      {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -565,9 +664,13 @@ function App() {
                   </td>
                   <td className="symbol-cell">
                     <button className="symbol-btn" onClick={() => setChartSymbol(r.symbol)}>
+                      <TickerLogo symbol={r.symbol} />
                       {r.symbol}
                     </button>
                     {newSymbols.has(r.symbol) && <span className="badge new-badge">YENİ</span>}
+                  </td>
+                  <td>
+                    <span className={`badge score-${scoreTone(r.score)}`}>{r.score}</span>
                   </td>
                   <td>{r.close.toLocaleString('tr-TR')}</td>
                   <td>{formatMarketCap(r.market_cap)}</td>
