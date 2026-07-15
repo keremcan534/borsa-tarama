@@ -10,13 +10,33 @@ const MARKETS = [
   { key: 'bist100', label: 'BIST 100' },
   { key: 'sp500', label: 'S&P 500' },
   { key: 'etf', label: 'ETF' },
+  { key: 'commodity', label: 'Emtia' },
 ]
 
 const TIMEFRAMES = [
   { key: 'daily', label: 'Günlük', horizon: 'günler–haftalar' },
   { key: 'weekly', label: 'Haftalık', horizon: 'haftalar–aylar' },
   { key: 'monthly', label: 'Aylık', horizon: 'aylar ve ötesi' },
+  { key: 'quarterly', label: '3 Aylık', horizon: 'çeyrekler ve ötesi' },
 ]
+
+// Emtia/kripto: dost isim + TradingView grafik sembolü eşlemesi
+const COMMODITY_INFO = {
+  'GC=F': { name: 'Altın', tv: 'TVC:GOLD' },
+  'SI=F': { name: 'Gümüş', tv: 'TVC:SILVER' },
+  'PL=F': { name: 'Platin', tv: 'TVC:PLATINUM' },
+  'PA=F': { name: 'Paladyum', tv: 'TVC:PALLADIUM' },
+  'HG=F': { name: 'Bakır', tv: 'TVC:COPPER' },
+  'CL=F': { name: 'Petrol (WTI)', tv: 'TVC:USOIL' },
+  'BZ=F': { name: 'Petrol (Brent)', tv: 'TVC:UKOIL' },
+  'NG=F': { name: 'Doğalgaz', tv: 'TVC:NATURALGAS' },
+  'BTC-USD': { name: 'Bitcoin', tv: 'BINANCE:BTCUSDT' },
+  'ETH-USD': { name: 'Ethereum', tv: 'BINANCE:ETHUSDT' },
+}
+
+function displaySymbol(symbol) {
+  return COMMODITY_INFO[symbol]?.name || symbol.replace('.IS', '')
+}
 
 const DEFAULT_FILTERS = {
   rsi: 70,
@@ -35,6 +55,7 @@ function formatMarketCap(value) {
 }
 
 function tvSymbol(symbol) {
+  if (COMMODITY_INFO[symbol]) return COMMODITY_INFO[symbol].tv
   return symbol.endsWith('.IS') ? `BIST:${symbol.replace('.IS', '')}` : symbol
 }
 
@@ -71,13 +92,13 @@ function scoreTone(score) {
   return 'weak'
 }
 
-// Ticker'dan üretilen tutarlı renkli monogram rozeti (harici logo servisi gerektirmez)
+// Ticker/isimden üretilen tutarlı renkli monogram rozeti (harici logo servisi gerektirmez)
 function TickerLogo({ symbol }) {
-  const t = symbol.replace('.IS', '')
+  const t = displaySymbol(symbol)
   const hue = [...t].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
   return (
     <span className="ticker-logo" style={{ background: `hsl(${hue} 52% 42%)` }} aria-hidden="true">
-      {t.slice(0, 2)}
+      {t.slice(0, 2).toUpperCase()}
     </span>
   )
 }
@@ -152,7 +173,7 @@ function NewsFeed({ news, loading, error, onOpenChart }) {
           <article className="news-item">
             <div className="news-meta">
               <button className="chip" onClick={() => onOpenChart(item.symbol)}>
-                {item.symbol.replace('.IS', '')}
+                {displaySymbol(item.symbol)}
               </button>
               {item.source && <span className="news-source">{item.source}</span>}
               <span className="news-time">{formatRelativeTime(item.published_at)}</span>
@@ -195,7 +216,7 @@ function ChartModal({ symbol, news, onClose }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <strong>{symbol}</strong>
+          <strong>{displaySymbol(symbol)}</strong>
           <div className="modal-actions">
             <a
               className="btn small"
@@ -399,7 +420,11 @@ function App() {
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
     const q = search.trim().toUpperCase()
-    if (q) list = list.filter((s) => s.symbol.toUpperCase().includes(q))
+    if (q)
+      list = list.filter(
+        (s) =>
+          s.symbol.toUpperCase().includes(q) || displaySymbol(s.symbol).toUpperCase().includes(q),
+      )
     // Her satıra teknik puanı ekle (sıralama ve gösterim için)
     list = list.map((s) => ({ ...s, score: technicalScore(s, availableEmas) }))
     const { key, dir } = sort
@@ -563,9 +588,10 @@ function App() {
         <summary>Bu liste nasıl oluşuyor? Ne kadar süre geçerli?</summary>
         <div className="info-content">
           <p>
-            <strong>Nasıl oluşuyor?</strong> Endeksteki hisselerin <em>tamamı</em> (BIST 100'de 100,
-            S&P 500'de ~503 hisse) her iş günü piyasa kapanışından sonra otomatik taranır. Aşağıdaki
-            kriterlerin <em>hepsini birden</em> sağlayanlar listeye girer, kalanlar elenir:
+            <strong>Nasıl oluşuyor?</strong> Seçtiğin kategorideki tüm enstrümanlar (BIST 100'de
+            100 hisse, S&P 500'de ~503 hisse, ETF'ler, emtia/kripto) her iş günü piyasa kapanışından
+            sonra otomatik taranır. Aşağıdaki kriterlerin <em>hepsini birden</em> sağlayanlar listeye
+            girer, kalanlar elenir:
           </p>
           <ul>
             <li>Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
@@ -601,6 +627,44 @@ function App() {
             göre sıralayabilir, arama kutusuyla hisse bulabilirsin.
           </p>
           <p>Hisse koduna tıklayarak grafiği sayfadan ayrılmadan açabilirsin.</p>
+        </div>
+      </details>
+
+      <details className="info-panel">
+        <summary>📖 Göstergeler ne anlama geliyor?</summary>
+        <div className="info-content">
+          <p>
+            <strong>EMA (Üstel Hareketli Ortalama):</strong> Fiyatın belirli bir süredeki
+            ortalaması; son günlere daha çok ağırlık verir. Kısa periyot (9, 21) yakın trendi,
+            uzun periyot (50, 200) ana trendi gösterir. Fiyatın EMA'ların üstünde olması "yukarı
+            trend" işaretidir.
+          </p>
+          <p>
+            <strong>RSI (Göreceli Güç Endeksi, 0-100):</strong> Fiyatın son 14 periyotta ne kadar
+            hızlı yükselip düştüğünü ölçer. 70 üstü genelde "aşırı alım" (fazla ısınmış, düzeltme
+            gelebilir), 30 altı "aşırı satım" olarak yorumlanır. Biz 70 altını arıyoruz — yükselen
+            ama henüz aşırı ısınmamış.
+          </p>
+          <p>
+            <strong>MACD:</strong> İki hareketli ortalamanın farkı; momentumun yönünü ve gücünü
+            gösterir. MACD'nin sıfırın üstünde olması kısa vadeli momentumun pozitif (yukarı)
+            olduğunu söyler.
+          </p>
+          <p>
+            <strong>Stokastik %K ve Stokastik RSI:</strong> Fiyatın (veya RSI'ın) son dönemdeki
+            en yüksek–en düşük aralığında nerede durduğunu 0-100 arası ölçer. 80 üstü aşırı alım
+            bölgesidir. İkisini de 80 altında tutarak "yükselişte ama tepe yapmamış" enstrümanları
+            seçiyoruz.
+          </p>
+          <p>
+            <strong>Puan (0-100):</strong> Yukarıdaki göstergelerin hepsini tek sayıya indiren
+            özet; ne kadar yüksekse teknik görünüm o kadar güçlü. Karşılaştırma kolaylığı içindir,
+            kesin bir tahmin değildir.
+          </p>
+          <p className="muted">
+            Bu göstergeler geçmiş fiyat hareketine dayanır; geleceği garanti etmez. Teknik analiz
+            olasılık üzerine kuruludur, kesinlik üzerine değil.
+          </p>
         </div>
       </details>
 
@@ -666,7 +730,7 @@ function App() {
                   <td className="symbol-cell">
                     <button className="symbol-btn" onClick={() => setChartSymbol(r.symbol)}>
                       <TickerLogo symbol={r.symbol} />
-                      {r.symbol}
+                      {displaySymbol(r.symbol)}
                     </button>
                     {newSymbols.has(r.symbol) && <span className="badge new-badge">YENİ</span>}
                   </td>

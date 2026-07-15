@@ -267,6 +267,11 @@
   padding-left: 20px;
 }
 
+.info-content .muted {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
 /* ---------- tablo ---------- */
 
 .error-box {

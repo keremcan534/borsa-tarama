@@ -27,6 +27,12 @@ def drop_in_progress_bar(df: pd.DataFrame, interval: str, now: pd.Timestamp | No
         return df.iloc[:-1]
     if interval == "1mo" and (now.year == last.year and now.month == last.month):
         return df.iloc[:-1]
+    if interval == "3mo":
+        # Aynı takvim çeyreği içindeysek son (çeyreklik) mum henüz kapanmamıştır
+        last_q = (last.month - 1) // 3
+        now_q = (now.month - 1) // 3
+        if now.year == last.year and now_q == last_q:
+            return df.iloc[:-1]
     return df
 
 

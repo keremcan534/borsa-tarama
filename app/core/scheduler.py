@@ -15,7 +15,12 @@ scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
 _cache: dict[str, list[dict]] = {}
 
 SYMBOLS_DIR = Path(__file__).resolve().parents[1] / "data" / "symbols"
-MARKET_FILES = {"bist100": "bist100.json", "sp500": "sp500.json", "etf": "etf.json"}
+MARKET_FILES = {
+    "bist100": "bist100.json",
+    "sp500": "sp500.json",
+    "etf": "etf.json",
+    "commodity": "commodity.json",
+}
 
 
 def _run_scan(market: str) -> None:

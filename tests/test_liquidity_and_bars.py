@@ -67,3 +67,15 @@ def test_monthly_completed_bar_kept():
     df = _ohlcv(n=12, freq="MS", start="2025-01-01")
     now = pd.Timestamp("2026-01-03")  # yeni ay başladı, aralık mumu kapandı
     assert len(drop_in_progress_bar(df, "1mo", now=now)) == 12
+
+
+def test_quarterly_in_progress_bar_dropped():
+    df = _ohlcv(n=8, freq="QS", start="2024-01-01")  # son çeyrek 2025-10-01
+    now = pd.Timestamp("2025-11-15")  # aynı çeyrek (Q4) içinde
+    assert len(drop_in_progress_bar(df, "3mo", now=now)) == 7
+
+
+def test_quarterly_completed_bar_kept():
+    df = _ohlcv(n=8, freq="QS", start="2024-01-01")  # son çeyrek 2025-10-01
+    now = pd.Timestamp("2026-01-10")  # yeni çeyrek (Q1 2026) başladı
+    assert len(drop_in_progress_bar(df, "3mo", now=now)) == 8
