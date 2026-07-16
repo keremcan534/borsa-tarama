@@ -55,7 +55,15 @@ export async function fetchFunds() {
 // çalıştırılacak bir endpoint'i yok (600+ sembol x yıllarca veri, dakikalar sürer).
 export async function fetchBacktest() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/backtest.json`);
+
+  // Dosya yoksa bu bir hata değil, veri yokluğudur (haftalık backtest workflow'u
+  // henüz çalışmamıştır): kullanıcıya kırmızı hata kutusu değil "henüz sonuç yok"
+  // gösterilir. GitHub Pages 404 döner; Vite dev/preview ise SPA fallback yüzünden
+  // index.html'i 200 ile döndürdüğünden content-type kontrolü de gerekli.
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Backtest verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+
   return res.json();
 }
 
