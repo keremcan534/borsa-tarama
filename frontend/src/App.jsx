@@ -8,18 +8,21 @@ import { getLang, setLang as persistLang, t } from './i18n'
 const ADS_ENABLED = false
 
 const MARKETS = [
-  { key: 'bist100', label: 'BIST 100' },
-  { key: 'sp500', label: 'S&P 500' },
-  { key: 'etf', label: 'ETF' },
-  { key: 'commodity', label: 'Emtia' },
+  { key: 'bist100', label: 'BIST 100', labelEn: 'BIST 100' },
+  { key: 'sp500', label: 'S&P 500', labelEn: 'S&P 500' },
+  { key: 'etf', label: 'ETF', labelEn: 'ETF' },
+  { key: 'commodity', label: 'Emtia', labelEn: 'Commodities' },
 ]
 
 const TIMEFRAMES = [
-  { key: 'daily', label: 'Günlük', horizon: 'günler–haftalar' },
-  { key: 'weekly', label: 'Haftalık', horizon: 'haftalar–aylar' },
-  { key: 'monthly', label: 'Aylık', horizon: 'aylar ve ötesi' },
-  { key: 'quarterly', label: '3 Aylık', horizon: 'çeyrekler ve ötesi' },
+  { key: 'daily', label: 'Günlük', labelEn: 'Daily', horizon: 'günler–haftalar', horizonEn: 'days–weeks' },
+  { key: 'weekly', label: 'Haftalık', labelEn: 'Weekly', horizon: 'haftalar–aylar', horizonEn: 'weeks–months' },
+  { key: 'monthly', label: 'Aylık', labelEn: 'Monthly', horizon: 'aylar ve ötesi', horizonEn: 'months+' },
+  { key: 'quarterly', label: '3 Aylık', labelEn: 'Quarterly', horizon: 'çeyrekler ve ötesi', horizonEn: 'quarters+' },
 ]
+
+const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
+const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
 
 // Emtia/kripto: dost isim + TradingView grafik sembolü eşlemesi
 const COMMODITY_INFO = {
@@ -623,7 +626,7 @@ function App() {
           <div>
             <h1>{t(lang, 'brand')}</h1>
             <p className="tagline">
-              {t(lang, 'tagline')} · {activeTimeframe.horizon}
+              {t(lang, 'tagline')} · {lang === 'en' ? activeTimeframe.horizonEn : activeTimeframe.horizon}
             </p>
           </div>
           <div className="tabs lang-switch" role="group" aria-label="Language">
@@ -682,7 +685,7 @@ function App() {
                   className={`tab ${market === m.key ? 'active' : ''}`}
                   onClick={() => setMarket(m.key)}
                 >
-                  {m.label}
+                  {mLabel(m, lang)}
                 </button>
               ))}
             </div>
@@ -695,7 +698,7 @@ function App() {
                   className={`tab ${timeframe === tf.key ? 'active' : ''}`}
                   onClick={() => setTimeframe(tf.key)}
                 >
-                  {tf.label}
+                  {tfLabel(tf, lang)}
                 </button>
               ))}
             </div>
@@ -708,7 +711,7 @@ function App() {
                   className={`tab ${market === m.key ? 'active' : ''}`}
                   onClick={() => setMarket(m.key)}
                 >
-                  {m.label}
+                  {mLabel(m, lang)}
                 </button>
               ))}
             </div>
@@ -889,13 +892,17 @@ function App() {
       <div className="status-bar">
         <span>
           {data
-            ? `${data.scanned ?? '?'} hisse tarandı, ${rows.length} tanesi kriterleri geçti${
+            ? t(
+                lang,
+                'scanStatus',
+                data.scanned ?? '?',
+                rows.length,
                 data.generated_at
-                  ? ` · Son tarama: ${new Date(data.generated_at).toLocaleString('tr-TR')}`
-                  : ''
-              }`
+                  ? new Date(data.generated_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
+                  : '',
+              )
             : loading
-              ? 'Yükleniyor...'
+              ? t(lang, 'loading')
               : ''}
         </span>
         <div className="actions">
@@ -1036,12 +1043,12 @@ function App() {
       {!error && data && rows.length === 0 && (
         <div className="empty-box">
           {search.trim()
-            ? `"${search.trim().toUpperCase()}" için sonuç yok.`
+            ? t(lang, 'emptySearch', search.trim().toUpperCase())
             : isCustom
-              ? 'Bu filtre ayarlarıyla hiçbir hisse kriterleri geçmiyor. Eşikleri gevşetmeyi veya "Varsayılana dön"ü dene.'
+              ? t(lang, 'emptyCustom')
               : STATIC_MODE
-                ? 'Son taramada filtreyi geçen hisse çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.'
-                : 'Şu an filtreyi geçen hisse yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.'}
+                ? t(lang, 'emptyStatic')
+                : t(lang, 'emptyLive')}
         </div>
       )}
 

@@ -32,6 +32,14 @@ const STRINGS = {
     fundsNoMatch: (q) => `"${q}" için fon bulunamadı.`,
     newsStatus: (n, when) =>
       `${n} başlık · Sinyal veren hisselerin haberleri · Güncelleme: ${when}`,
+    scanStatus: (scanned, passed, when) =>
+      `${scanned} enstrüman tarandı, ${passed} tanesi kriterleri geçti${when ? ` · Son tarama: ${when}` : ''}`,
+    emptyCustom:
+      'Bu filtre ayarlarıyla hiçbir enstrüman kriterleri geçmiyor. Eşikleri gevşetmeyi veya "Varsayılana dön"ü dene.',
+    emptyStatic:
+      'Son taramada filtreyi geçen enstrüman çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.',
+    emptyLive: 'Şu an filtreyi geçen enstrüman yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.',
+    emptySearch: (q) => `"${q}" için sonuç yok.`,
     colSymbol: 'Sembol',
     colScore: 'Puan',
     colClose: 'Kapanış',
@@ -71,6 +79,14 @@ const STRINGS = {
     fundsEmpty: 'No fund data yet. It will appear after the scan workflow runs.',
     fundsNoMatch: (q) => `No funds matching "${q}".`,
     newsStatus: (n, when) => `${n} headlines · News for signaled tickers · Updated: ${when}`,
+    scanStatus: (scanned, passed, when) =>
+      `${scanned} scanned, ${passed} passed the criteria${when ? ` · Last scan: ${when}` : ''}`,
+    emptyCustom:
+      'No instrument passes with these filter settings. Try loosening the thresholds or "Reset to default".',
+    emptyStatic:
+      'No instrument passed the filter in the last scan. Results update daily after market close.',
+    emptyLive: 'No instrument passes the filter right now. Try "Live scan" again or check back later.',
+    emptySearch: (q) => `No results for "${q}".`,
     colSymbol: 'Symbol',
     colScore: 'Score',
     colClose: 'Close',
