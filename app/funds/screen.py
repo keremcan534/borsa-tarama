@@ -17,6 +17,25 @@ MAX_FUNDS = 120
 # Geçmiş penceresi (takvim günü) — 1y getiri + vol için
 LOOKBACK_DAYS = 400
 
+# Gerçek dışı getiri tavanları (veri hatası / bölünme tespiti).
+# TR piyasasında yüksek enflasyonla %200-400 yıllık getiri olabilir; bunun
+# çok üstü (10x/yıl) neredeyse kesin bir veri artefaktıdır.
+RETURN_SANITY_CAPS = {
+    "return_1m": 2.0,   # %200/ay
+    "return_3m": 4.0,   # %400/3ay
+    "return_6m": 7.0,   # %700/6ay
+    "return_1y": 10.0,  # %1000/yıl
+}
+
+
+def _implausible_returns(metrics: dict) -> bool:
+    """Herhangi bir getiri penceresi mantıklı tavanı aşıyorsa veri şüphelidir."""
+    for key, cap in RETURN_SANITY_CAPS.items():
+        val = metrics.get(key)
+        if val is not None and val > cap:
+            return True
+    return False
+
 
 def _fetch_history(start: date, end: date) -> pd.DataFrame:
     """pytefas ile YAT fonlarının tarihsel bilgisini çeker."""
@@ -106,6 +125,11 @@ def run_fund_screener(
             continue
         if metrics["return_1y"] is None and metrics["return_3m"] is None:
             continue
+        # Veri kalitesi: birim-pay bölünmesi/denominasyon değişimi veya bozuk
+        # fiyat gününden kaynaklanan gerçek dışı getirileri ele (örn. 0.16→14.6).
+        if _implausible_returns(metrics):
+            print(f"[FON] {code} atlandı (gerçek dışı getiri: 1y={metrics['return_1y']})")
+            continue
 
         results.append(
             {
@@ -113,7 +137,7 @@ def run_fund_screener(
                 "name": name_map.get(code) or code,
                 "portfolio_size": size_map.get(code),
                 "investor_count": investor_map.get(code),
-                "tefas_url": f"https://www.tefas.gov.tr/tr/fon/{code}",
+                "tefas_url": f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={code}",
                 **metrics,
             }
         )

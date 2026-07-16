@@ -106,3 +106,42 @@ def test_run_fund_screener_with_fake_df():
     assert "CCC" not in codes
     assert results[0]["score"] >= results[-1]["score"]
     assert "tefas_url" in results[0]
+    # TEFAS URL doğru formatta (FonAnaliz.aspx?FonKod=...) olmalı
+    assert results[0]["tefas_url"] == f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={results[0]['symbol']}"
+
+
+def test_implausible_return_fund_excluded():
+    """Birim-pay bölünmesi gibi gerçek dışı getirili fon (0.16→14.6) listeden atılır."""
+    import numpy as np
+    import pandas as pd
+
+    from app.funds.screen import run_fund_screener
+
+    end = datetime(2026, 7, 16)
+    rng = np.random.default_rng(1)
+    rows = []
+    # SPLIT: 0.16'dan 14.6'ya kademeli tırmanan gerçek dışı fon
+    for code, name, start_price, end_price in [
+        ("SPL", "Bölünme Fonu", 0.16, 14.6),
+        ("OKY", "Normal Fon", 10.0, 13.0),  # ~%30/yıl, mantıklı
+    ]:
+        n = 300
+        for i in range(n):
+            d = end - timedelta(days=n - i)
+            price = start_price * ((end_price / start_price) ** (i / (n - 1)))
+            rows.append(
+                {
+                    "date": d.date(),
+                    "kind": "YAT",
+                    "fund_code": code,
+                    "fund_name": name,
+                    "price": price * (1 + float(rng.normal(0, 0.001))),
+                    "portfolio_size": 500_000_000,
+                    "investor_count": 1000,
+                }
+            )
+    df = pd.DataFrame(rows)
+    results = run_fund_screener(df=df, min_portfolio_size=100_000_000, max_funds=50)
+    codes = {r["symbol"] for r in results}
+    assert "SPL" not in codes  # gerçek dışı getiri → elenir
+    assert "OKY" in codes
