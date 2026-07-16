@@ -115,6 +115,8 @@ def fund_score(
 def compute_fund_metrics(prices: pd.Series) -> dict:
     """Tek bir fonun fiyat serisinden metrik sözlüğü üretir."""
     prices = prices.dropna().sort_index()
+    # Sıfır/negatif fiyatlar (eksik gün) log-getiri hesabını bozar — ele
+    prices = prices[prices > 0]
     # Aynı gün birden fazla satır gelirse sonuncuyu al
     prices = prices[~prices.index.duplicated(keep="last")]
 

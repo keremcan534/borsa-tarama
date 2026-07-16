@@ -142,6 +142,17 @@ function TickerLogo({ symbol }) {
   )
 }
 
+const COLUMNS = [
+  { key: 'symbol', label: 'Sembol', align: 'left' },
+  { key: 'score', label: 'Puan' },
+  { key: 'close', label: 'Kapanış' },
+  { key: 'market_cap', label: 'Piyasa Değeri' },
+  { key: 'rsi', label: 'RSI' },
+  { key: 'macd_line', label: 'MACD' },
+  { key: 'stoch_k', label: 'Stoch %K' },
+  { key: 'stoch_rsi_k', label: 'Stoch RSI %K' },
+]
+
 const FUND_COLUMNS = [
   { key: 'symbol', label: 'Fon', align: 'left' },
   { key: 'score', label: 'Puan' },
