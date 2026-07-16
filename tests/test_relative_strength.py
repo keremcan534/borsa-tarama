@@ -78,3 +78,31 @@ def test_analyze_symbol_relative_strength_is_none_without_benchmark():
 
     stock = analyze_symbol("XYZ", FakeFetcher(_uptrend_ohlcv(400)))
     assert stock["relative_strength"] is None
+
+
+# --- günlük değişim ---------------------------------------------------------
+
+
+def test_last_bar_change_is_the_move_versus_previous_close():
+    from app.screener.engine import last_bar_change
+
+    df = pd.DataFrame({"close": [100.0, 103.0]})
+    assert last_bar_change(df) == 0.03
+
+
+def test_last_bar_change_handles_declines_and_short_series():
+    from app.screener.engine import last_bar_change
+
+    assert last_bar_change(pd.DataFrame({"close": [100.0, 90.0]})) == -0.1
+    assert last_bar_change(pd.DataFrame({"close": [100.0]})) is None
+    assert last_bar_change(pd.DataFrame({"close": [0.0, 100.0]})) is None
+
+
+def test_analyze_symbol_reports_todays_change():
+    from tests.test_engine import FakeFetcher, _uptrend_ohlcv
+    from app.screener.engine import analyze_symbol
+
+    df = _uptrend_ohlcv(400)
+    expected = round(df["close"].iloc[-1] / df["close"].iloc[-2] - 1, 4)
+    stock = analyze_symbol("XYZ", FakeFetcher(df))
+    assert stock["change"] == expected

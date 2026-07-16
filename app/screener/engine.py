@@ -38,6 +38,21 @@ def drop_in_progress_bar(df: pd.DataFrame, interval: str, now: pd.Timestamp | No
     return df
 
 
+def last_bar_change(df: pd.DataFrame) -> float | None:
+    """Son mumun bir öncekine göre yüzde değişimi (oran, örn. 0.031 = %3,1).
+
+    Günlük zaman diliminde "bugünün getirisi", haftalıkta haftanınki demektir —
+    her zaman SON KAPANMIŞ muma göredir (`drop_in_progress_bar` sonrası).
+    """
+    if len(df) < 2:
+        return None
+    previous = float(df["close"].iloc[-2])
+    last = float(df["close"].iloc[-1])
+    if previous <= 0:
+        return None
+    return round(last / previous - 1, 4)
+
+
 def compute_indicators(df: pd.DataFrame, ema_periods: list[int] = DEFAULT_EMA_PERIODS) -> pd.DataFrame:
     """Bir hissenin OHLCV DataFrame'ine tüm göstergeleri kolon olarak ekler."""
     close, high, low = df["close"], df["high"], df["low"]
@@ -94,6 +109,9 @@ def analyze_symbol(
     result = {
         "symbol": symbol,
         "close": round(float(last_row["close"]), 2),
+        # Son kapanmış mumun bir öncekine göre değişimi. Günlük taramada bu
+        # "bugünün getirisi"dir — bir finans sayfasında ilk beklenen rakam.
+        "change": last_bar_change(df),
         "market_cap": fetcher.fetch_market_cap(symbol),
         # Statik haritadan okunur, ek istek yok (ETF/emtiada sektör kavramı yok -> None)
         "sector": sector_of(symbol),

@@ -57,6 +57,7 @@ const STRINGS = {
     todayNoNew:
       'Bugün yeni sinyal yok — aşağıdakiler önceki taramadan beri kriterleri sağlamaya devam ediyor.',
     todayFundsNote: 'Yatırımcı sayısına göre en çok tercih edilen fonlar.',
+    todayFundTodayLabel: 'bugün',
     todayFundReturnLabel: 'son 1 yıl',
     todayFundHolders: (n) => `${(n || 0).toLocaleString('tr-TR')} yatırımcı`,
     todayMarkets: 'Marketlere göre sinyaller',
@@ -114,9 +115,9 @@ const STRINGS = {
     howLead5: 'Puan (0-100):',
     howBody5:
       "Tüm göstergeleri harmanlayan teknik güç puanı — trend hizası (fiyatın EMA'lara göre konumu, 40 puan), MACD momentumu (25), RSI sağlığı (20) ve stokastik alanı (15). Yüksek puan daha güçlü teknik görünüm demektir; kesinlik değil, göreli bir karşılaştırma aracıdır. Sütun başlıklarına tıklayarak sıralayabilir, arama kutusuyla hisse bulabilirsin.",
-    howLead6: 'Göreli Güç:',
+    howLead6: 'Bugün ve Endeks Farkı (3a):',
     howBody6:
-      'Hissenin son dönem getirisinden endeksin aynı dönemdeki getirisi çıkarılır. Artı değer hissenin endeksi geçtiğini, eksi değer yükselse bile piyasanın gerisinde kaldığını gösterir — yükselen bir piyasada her şey yükseldiği için bu ayrım önemlidir.',
+      '"Bugün" kolonu son kapanışın bir öncekine göre değişimidir. "Endeks Farkı (3a)" ise hissenin son 3 ayda endeksten ne kadar iyi gittiğini söyler: hisse %30, BIST 100 %20 kazandırdıysa fark +%10\'dur. Yükselen bir piyasada zaten her şey yükseldiğinden, asıl soru hissenin piyasayı geçip geçmediğidir. Eksi değer hissenin düştüğü anlamına gelmez — yükselmiş ama endeksten az yükselmiş olabilir.',
     howBody7: 'Hisse koduna tıklayarak grafiği sayfadan ayrılmadan açabilirsin.',
     glossTitle: '📖 Göstergeler ne anlama geliyor?',
     glossEma: 'EMA (Üstel Hareketli Ortalama):',
@@ -134,9 +135,12 @@ const STRINGS = {
     glossScore: 'Puan (0-100):',
     glossScoreBody:
       'Yukarıdaki göstergelerin hepsini tek sayıya indiren özet; ne kadar yüksekse teknik görünüm o kadar güçlü. Karşılaştırma kolaylığı içindir, kesin bir tahmin değildir.',
-    glossRs: 'Göreli Güç:',
+    glossChange: 'Bugün:',
+    glossChangeBody:
+      'Son kapanışın bir önceki kapanışa göre yüzde değişimi — yani günün getirisi. Haftalık/aylık görünümde o mumun değişimini gösterir.',
+    glossRs: 'Endeks Farkı (3a):',
     glossRsBody:
-      'Hisse endeksten ne kadar iyi/kötü? Getiriden endeks getirisi çıkarılır. Momentum filtresini geçen bir hisse bile endeksin gerisinde olabilir; bu kolon onu görünür kılar.',
+      'Hisse son 3 ayda endeksten ne kadar iyi gitti? Örnek: hisse %30, BIST 100 %20 kazandırdıysa fark +%10 olur. Neden önemli: yükselen bir piyasada zaten her şey yükselir, asıl soru hissenin piyasayı geçip geçmediğidir. Momentum filtresini geçen bir hisse bile endeksin gerisinde kalabilir — bu kolon onu görünür kılar. Eksi değer hissenin düştüğü anlamına GELMEZ; yükselmiş ama endeksten az yükselmiş olabilir.',
     glossFooter:
       'Bu göstergeler geçmiş fiyat hareketine dayanır; geleceği garanti etmez. Teknik analiz olasılık üzerine kuruludur, kesinlik üzerine değil.',
     filterTitle: 'Filtre Ayarları',
@@ -150,9 +154,14 @@ const STRINGS = {
     sortHint: 'Sıralamak için tıkla',
     watchAdd: 'Favorilere ekle',
     watchRemove: 'Favorilerden çıkar',
-    colRs: 'Göreli Güç',
+    colChange: 'Bugün',
+    colInvestors: 'Yatırımcı',
+    colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
+    // Kolon adı dönemi taşımalı: çıplak bir "+%30", fiyatın yanında bugünün
+    // getirisi sanılıyordu. Açıklama da somut sayıyla — soyut tanım anlaşılmıyordu.
+    colRs: 'Endeks Farkı (3a)',
     colRsTitle:
-      'Hissenin son dönemdeki getirisi eksi endeksin aynı dönemdeki getirisi. Artı: hisse endeksi geçiyor. Eksi: yükseliyor ama piyasanın gerisinde.',
+      'Son 3 ayda hisse, endeksten ne kadar iyi? Örnek: hisse %30 kazandırdı, BIST 100 aynı dönemde %20 kazandırdıysa fark +%10 olur. Artı = hisse piyasayı geçmiş, eksi = yükselse bile piyasanın gerisinde kalmış.',
     langToggle: 'EN',
     tabBacktest: 'Strateji',
     btLoading: 'Backtest sonuçları yükleniyor...',
@@ -258,6 +267,7 @@ const STRINGS = {
     todayNoNew:
       'No new signals today — the names below have kept meeting the criteria since the previous scan.',
     todayFundsNote: 'The most widely held funds, by number of investors.',
+    todayFundTodayLabel: 'today',
     todayFundReturnLabel: 'last 1 year',
     todayFundHolders: (n) => `${(n || 0).toLocaleString('en-US')} investors`,
     todayMarkets: 'Signals by market',
@@ -302,9 +312,9 @@ const STRINGS = {
     howLead5: 'Score (0-100):',
     howBody5:
       'A technical strength score blending every indicator — trend alignment (price versus the EMAs, 40 points), MACD momentum (25), RSI health (20) and stochastic room (15). A higher score means a stronger technical picture; it is a relative comparison tool, not a certainty. Click column headers to sort, or use the search box to find a ticker.',
-    howLead6: 'Relative strength:',
+    howLead6: 'Today and vs Index (3m):',
     howBody6:
-      "The index return over the same window is subtracted from the stock's return. A positive value means the stock is beating the index; a negative one means it is rising but lagging the market — an important distinction, since in a rising market everything goes up.",
+      'The "Today" column is the last close versus the previous one. "vs Index (3m)" tells you how much better the stock did than the index over the last 3 months: if the stock gained 30% and the BIST 100 gained 20%, the difference is +10%. Since everything rises in a rising market, the real question is whether the stock beat the market. A negative value does not mean the stock fell — it may have risen, just less than the index.',
     howBody7: 'Click a ticker to open its chart without leaving the page.',
     glossTitle: '📖 What do the indicators mean?',
     glossEma: 'EMA (Exponential Moving Average):',
@@ -322,9 +332,12 @@ const STRINGS = {
     glossScore: 'Score (0-100):',
     glossScoreBody:
       'A summary reducing all the indicators above to a single number; the higher it is, the stronger the technical picture. It exists for easy comparison, not as a precise forecast.',
-    glossRs: 'Relative strength:',
+    glossChange: 'Today:',
+    glossChangeBody:
+      "The last close's percentage change versus the previous close — the day's return. On weekly/monthly views it shows that candle's change.",
+    glossRs: 'vs Index (3m):',
     glossRsBody:
-      "How much better or worse than the index? The index return is subtracted from the stock's. Even a stock passing the momentum filter can lag the index; this column makes that visible.",
+      'How much better than the index over the last 3 months? Example: the stock gained 30% while the BIST 100 gained 20% → +10%. Why it matters: in a rising market everything rises; the real question is whether the stock beat the market. Even a stock passing the momentum filter can lag the index — this column makes that visible. A negative value does NOT mean the stock fell; it may have risen, just less than the index.',
     glossFooter:
       'These indicators are based on past price action and guarantee nothing about the future. Technical analysis is built on probability, not certainty.',
     filterTitle: 'Filter settings',
@@ -338,9 +351,12 @@ const STRINGS = {
     sortHint: 'Click to sort',
     watchAdd: 'Add to watchlist',
     watchRemove: 'Remove from watchlist',
-    colRs: 'Rel. strength',
+    colChange: 'Today',
+    colInvestors: 'Investors',
+    colChangeTitle: 'Change of the last close versus the previous close.',
+    colRs: 'vs Index (3m)',
     colRsTitle:
-      "The stock's recent return minus the index return over the same window. Positive: it is beating the index. Negative: rising, but lagging the market.",
+      'Over the last 3 months, how much better than the index? Example: the stock gained 30% while the BIST 100 gained 20% → +10%. Positive = it beat the market; negative = it lagged, even if it rose.',
     langToggle: 'TR',
     tabBacktest: 'Strategy',
     btLoading: 'Loading backtest results...',

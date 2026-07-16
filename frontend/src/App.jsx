@@ -172,6 +172,7 @@ const COLUMNS = [
   { key: 'symbol', label: 'Sembol', i18nKey: 'colSymbol', align: 'left' },
   { key: 'score', label: 'Puan', i18nKey: 'colScore' },
   { key: 'close', label: 'Kapanış', i18nKey: 'colClose' },
+  { key: 'change', label: 'Değişim', i18nKey: 'colChange' },
   { key: 'market_cap', label: 'Piyasa Değeri', i18nKey: 'colMcap' },
   { key: 'relative_strength', label: 'Göreli Güç', i18nKey: 'colRs' },
   { key: 'rsi', label: 'RSI' },
@@ -181,8 +182,10 @@ const COLUMNS = [
 ]
 
 const FUND_COLUMNS = [
-  { key: 'symbol', label: 'Fon', align: 'left' },
-  { key: 'score', label: 'Puan' },
+  { key: 'symbol', label: 'Fon', i18nKey: 'colFund', align: 'left' },
+  { key: 'score', label: 'Puan', i18nKey: 'colScore' },
+  { key: 'return_1d', label: 'Bugün %', i18nKey: 'colChange' },
+  { key: 'investor_count', label: 'Yatırımcı', i18nKey: 'colInvestors' },
   { key: 'return_1m', label: '1A %' },
   { key: 'return_3m', label: '3A %' },
   { key: 'return_6m', label: '6A %' },
@@ -191,7 +194,7 @@ const FUND_COLUMNS = [
   { key: 'volatility', label: 'Vol %' },
   { key: 'sharpe', label: 'Sharpe' },
   { key: 'max_drawdown', label: 'Max DD %' },
-  { key: 'portfolio_size', label: 'Büyüklük' },
+  { key: 'portfolio_size', label: 'Büyüklük', i18nKey: 'colSize' },
 ]
 
 function formatPct(value, digits = 1) {
@@ -629,9 +632,9 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
                     {mLabel(s.market, lang)} · {t(lang, 'colScore')} {s.score}
                   </span>
                 </span>
-                <span className={`pct ${pctTone(s.relative_strength)}`}>
-                  {formatPct(s.relative_strength, 1)}
-                </span>
+                {/* Bugünün değişimi: "Bugün" sayfasında beklenen rakam bu.
+                    Göreli güç 3 aylık bir ölçü, burada yanıltıcı oluyordu. */}
+                <span className={`pct ${pctTone(s.change)}`}>{formatPct(s.change, 2)}</span>
               </button>
             ))}
           </div>
@@ -678,13 +681,17 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
                 <span className="today-card-label">
                   {f.symbol} · <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
                 </span>
-                {/* Dönem etiketi şart: "Bugün" başlıklı sayfada etiketsiz bir +%226,
-                    bugünün getirisi gibi okunuyordu. */}
+                {/* Büyük rakam bugünün getirisi ("Bugün" sayfasında beklenen bu),
+                    1 yıllık altında ve HER İKİSİ de dönem etiketli: etiketsiz bir
+                    +%226 bugünün getirisi sanılıyordu. */}
                 <strong className="today-card-value">
-                  <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
-                  <span className="today-card-unit">{t(lang, 'todayFundReturnLabel')}</span>
+                  <span className={`pct ${pctTone(f.return_1d)}`}>{formatPct(f.return_1d, 2)}</span>
+                  <span className="today-card-unit">{t(lang, 'todayFundTodayLabel')}</span>
                 </strong>
-                <span className="today-card-sub">{t(lang, 'todayFundHolders', f.investor_count)}</span>
+                <span className="today-card-sub">
+                  <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>{' '}
+                  {t(lang, 'todayFundReturnLabel')} · {t(lang, 'todayFundHolders', f.investor_count)}
+                </span>
                 <span className="today-card-sub">{f.name}</span>
               </a>
             ))}
@@ -1496,13 +1503,7 @@ function App() {
                         className={`sortable ${c.align === 'left' ? 'left' : ''} ${fundSort.key === c.key ? 'sorted' : ''}`}
                         onClick={() => toggleFundSort(c.key)}
                       >
-                        {c.key === 'symbol'
-                          ? t(lang, 'colFund')
-                          : c.key === 'score'
-                            ? t(lang, 'colScore')
-                            : c.key === 'portfolio_size'
-                              ? t(lang, 'colSize')
-                              : c.label}
+                        {c.i18nKey ? t(lang, c.i18nKey) : c.label}
                         <span className="sort-arrow">
                           {fundSort.key === c.key ? (fundSort.dir === 'asc' ? '▲' : '▼') : '⇅'}
                         </span>
@@ -1531,6 +1532,10 @@ function App() {
                       <td>
                         <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
                       </td>
+                      <td>
+                        <span className={`pct ${pctTone(f.return_1d)}`}>{formatPct(f.return_1d, 2)}</span>
+                      </td>
+                      <td>{f.investor_count == null ? '—' : f.investor_count.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')}</td>
                       <td>
                         <span className={`pct ${pctTone(f.return_1m)}`}>{formatPct(f.return_1m)}</span>
                       </td>
@@ -1681,6 +1686,7 @@ function App() {
         <summary>{t(lang, 'glossTitle')}</summary>
         <div className="info-content">
           {[
+            ['glossChange', 'glossChangeBody'],
             ['glossEma', 'glossEmaBody'],
             ['glossRsi', 'glossRsiBody'],
             ['glossMacd', 'glossMacdBody'],
@@ -1768,6 +1774,9 @@ function App() {
                     <span className={`badge score-${scoreTone(r.score)}`}>{r.score ?? '—'}</span>
                   </td>
                   <td>{formatNum(r.close, 2)}</td>
+                  <td className={`pct ${pctTone(r.change)}`} title={t(lang, 'colChangeTitle')}>
+                    {formatPct(r.change, 2)}
+                  </td>
                   <td>{formatMarketCap(r.market_cap)}</td>
                   <td
                     className={`pct ${pctTone(r.relative_strength)}`}

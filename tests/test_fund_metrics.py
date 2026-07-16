@@ -170,3 +170,29 @@ def test_absurd_total_return_excluded_even_without_jump():
     df = pd.DataFrame(_fund_rows("ABS", "Saçma Fon", absurd))
     results = run_fund_screener(df=df, min_portfolio_size=100_000_000, max_funds=50)
     assert "ABS" not in {r["symbol"] for r in results}
+
+
+def test_daily_return_is_last_two_prices():
+    from app.funds.metrics import daily_return
+
+    s = pd.Series([10.0, 10.5], index=pd.date_range("2024-01-01", periods=2))
+    assert round(daily_return(s), 6) == 0.05
+
+
+def test_daily_return_guards_bad_prices_and_short_series():
+    from app.funds.metrics import daily_return
+
+    idx2 = pd.date_range("2024-01-01", periods=2)
+    assert daily_return(pd.Series([10.0], index=idx2[:1])) is None
+    assert daily_return(pd.Series([0.0, 10.0], index=idx2)) is None
+
+
+def test_compute_fund_metrics_includes_daily_return():
+    from app.funds.metrics import compute_fund_metrics
+
+    prices = pd.Series(
+        [10.0, 10.1, 10.2, 10.4],
+        index=pd.date_range("2024-01-01", periods=4),
+    )
+    m = compute_fund_metrics(prices)
+    assert round(m["return_1d"], 6) == round(10.4 / 10.2 - 1, 6)

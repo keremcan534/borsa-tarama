@@ -37,6 +37,21 @@ def cumulative_return(series: pd.Series, days: int) -> float | None:
     return end_price / start_price - 1.0
 
 
+def daily_return(series: pd.Series) -> float | None:
+    """Son iki fiyat arasındaki değişim — "bugünün getirisi".
+
+    TEFAS fiyatları iş günü bazlıdır; hafta sonu/tatil sonrası bu, son iki İŞLEM
+    günü arasındaki değişimdir.
+    """
+    if len(series) < 2:
+        return None
+    previous = float(series.iloc[-2])
+    last = float(series.iloc[-1])
+    if previous <= 0 or last <= 0:
+        return None
+    return last / previous - 1.0
+
+
 def ytd_return(series: pd.Series) -> float | None:
     """Yılbaşından bugüne getiri."""
     if series.empty:
@@ -147,6 +162,7 @@ def compute_fund_metrics(prices: pd.Series) -> dict:
     return {
         "price": float(prices.iloc[-1]) if len(prices) else None,
         "max_daily_move": max_daily_move(prices),
+        "return_1d": daily_return(prices),
         "return_1m": r1m,
         "return_3m": r3m,
         "return_6m": r6m,

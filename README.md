@@ -247,15 +247,28 @@ için bileşiklendiğinde portföy endeksi geçiyor — getiri birkaç büyük k
 **Güvenilir olan yön, büyüklük değil**: aralık üç kattan fazla. Survivorship bias burada
 da geçerli.
 
-### Göreli Güç (Relative Strength)
-`app/screener/relative_strength.py`: hissenin son `rs_bars` mumdaki getirisinden endeksin
-aynı dönemdeki getirisi çıkarılır (`TIMEFRAMES[tf]["rs_bars"]`; günlük 60 mum ≈ 3 ay).
-Tarama tablosunda **Göreli Güç** kolonu olarak görünür.
+### Günlük Değişim ve Endeks Farkı
+**"Bugün" (`change`)** — `app/screener/engine.py::last_bar_change`: son kapanmış mumun bir
+öncekine göre değişimi. Günlük taramada bugünün getirisi, haftalıkta haftanınki. Fonlarda
+karşılığı `return_1d` (`app/funds/metrics.py::daily_return`). Bir finans sayfasında ilk
+beklenen rakam budur; "Bugün" sayfasındaki sinyal kartları ve fon kartları bunu gösterir.
 
-Neden gerekli: momentum filtresi "yükselen hisse" bulur, ama yükselen bir piyasada zaten
-her şey yükselir. Örnek (2026-07-16 taraması): TRMET filtreyi geçiyor ama endeksin **%11,4
-gerisinde** — bu kolon olmadan görünmezdi. Endeks tanımları `app/data/benchmarks.py`'de;
-backtest ve tarama aynı endeksi kullanır ki iki yer farklı şeyi ölçmesin.
+**"Endeks Farkı (3a)" (`relative_strength`)** — `app/screener/relative_strength.py`:
+hissenin son `rs_bars` mumdaki getirisinden endeksin aynı dönemdeki getirisi çıkarılır
+(`TIMEFRAMES[tf]["rs_bars"]`; günlük 60 mum ≈ 3 ay). Neden gerekli: momentum filtresi
+"yükselen hisse" bulur, ama yükselen bir piyasada zaten her şey yükselir. Örnek: TRMET
+filtreyi geçiyor ama endeksin **%11 gerisinde** — bu kolon olmadan görünmezdi.
+
+> **Dönem etiketi kuralı.** Kullanıcı testinde iki kez aynı hataya düşüldü: çıplak bir
+> yüzde, bulunduğu bağlamın dönemi sanılıyor. Fon kartındaki `+%226` (1 yıllık) "Bugün"
+> sayfasında bugünün getirisi sanıldı; `Göreli Güç` kolonundaki `+%30` (3 aylık) fiyatın
+> yanında günlük değişim sanıldı. **Her yüzde, dönemini yanında taşımalı** — kolon adı
+> `Endeks Farkı (3a)`, fon kartı `bugün` / `son 1 yıl` etiketli. Açıklamalar da soyut tanım
+> yerine somut sayıyla yazılır ("hisse %30, endeks %20 → fark +%10"): ilk hali kimseye
+> bir şey anlatmıyordu.
+
+Endeks tanımları `app/data/benchmarks.py`'de; backtest ve tarama aynı endeksi kullanır ki
+iki yer farklı şeyi ölçmesin.
 
 ### Sektör Dağılımı
 Tarama tablosunun üstünde sinyallerin sektör dağılımı chip'lerle gösterilir (filtreye
