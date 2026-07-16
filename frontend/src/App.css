@@ -719,3 +719,88 @@ th.sorted {
     transform: rotate(360deg);
   }
 }
+
+/* --- Strateji (backtest) sekmesi --- */
+.bt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bt-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.bt-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bt-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.bt-sample {
+  font-size: 12px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.bt-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+/* Endeks satırı stratejinin karşılaştırma zemini: görsel olarak da ayrılsın */
+.bt-metric.bt-benchmark {
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+  opacity: 0.85;
+}
+
+.bt-metric.bt-headline {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+  font-size: 14px;
+}
+
+.bt-metric.bt-headline strong {
+  color: var(--text-h);
+}
+
+.bt-period {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.bt-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.bt-caveats .info-content ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.bt-caveats .info-content li {
+  margin-bottom: 6px;
+}

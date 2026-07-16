@@ -1,0 +1,45 @@
+name: Strateji backtest'i
+
+# Taramadan ayrı ve seyrek çalışır: strateji performansı günden güne kayda değer
+# değişmez, ama sembol başına 5-10 yıllık veri çekmek pahalıdır (yfinance rate-limit).
+# Ayrı workflow olması ayrıca backtest hatasının günlük yayını bozmamasını sağlar.
+# Çıktı data/backtest.json repoya commit'lenir; tarama/yayın workflow'u onu siteye kopyalar.
+on:
+  schedule:
+    # Her pazar 06:00 UTC (piyasalar kapalı, runner'lar boş)
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    # 600+ sembol x 2 zaman dilimi x 5-10 yıllık veri: varsayılan 6 saat gereksiz
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Python bağımlılıklarını kur
+        run: pip install -r requirements.txt
+
+      - name: Backtest'i çalıştır
+        run: python scripts/backtest_to_json.py data --timeframes daily,weekly
+
+      - name: Sonucu repoya commit'le
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/backtest.json
+          if ! git diff --staged --quiet; then
+            git commit -m "Strateji backtest sonuçları (otomatik)"
+            git push origin HEAD:master
+          else
+            echo "backtest sonucu değişmedi, commit atlandı"
+          fi

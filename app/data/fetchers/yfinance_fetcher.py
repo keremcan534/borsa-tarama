@@ -1,6 +1,8 @@
 import pandas as pd
 import yfinance as yf
 
+from app.data.repair import repair_split_artifacts
+
 from .base import BaseFetcher
 
 
@@ -26,7 +28,14 @@ class YFinanceFetcher(BaseFetcher):
 
         df = df.rename(columns=str.lower)
         df = df.dropna(subset=["close"])
-        return df[["open", "high", "low", "close", "volume"]]
+
+        # Bölünme bilgisi aynı istekle geldiğinden onarım ek network maliyeti getirmez.
+        splits = df["stock splits"] if "stock splits" in df.columns else None
+        df, repairs = repair_split_artifacts(df[["open", "high", "low", "close", "volume"]], splits)
+        for r in repairs:
+            print(f"[ONARIM] {symbol}: {r['date']} tarihinde uygulanmamış {r['split']}:1 bölünme düzeltildi")
+
+        return df
 
     def __init__(self) -> None:
         # Aynı tarama koşusunda sembol başına tek market-cap isteği atılsın diye

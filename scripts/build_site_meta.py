@@ -1,4 +1,5 @@
-"""Rapor arşivini frontend'e kopyalar; arşiv dizini, sitemap ve robots üretir.
+"""Rapor arşivini ve backtest sonucunu frontend'e kopyalar; arşiv dizini, sitemap
+ve robots üretir.
 
 Frontend build'inden ÖNCE çalıştırılır:
 
@@ -30,6 +31,17 @@ def main() -> None:
     (public_dir / "sitemap.xml").write_text(build_sitemap(dates), encoding="utf-8")
     (public_dir / "robots.txt").write_text(build_robots(), encoding="utf-8")
     print(f"[SITE-META] {len(dates)} rapor kopyalandı; arşiv + sitemap + robots üretildi")
+
+    # Backtest ayrı ve seyrek bir workflow'da üretilip repoya commit'lendiğinden
+    # (data/backtest.json), her yayında oradan alınıp siteye taşınır.
+    backtest_src = Path("data/backtest.json")
+    if backtest_src.exists():
+        data_dir = public_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backtest_src, data_dir / "backtest.json")
+        print(f"[SITE-META] backtest.json siteye kopyalandı")
+    else:
+        print("[SITE-META] data/backtest.json yok; Strateji sekmesi bu yayında boş görünecek")
 
 
 if __name__ == "__main__":

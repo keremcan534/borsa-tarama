@@ -23,6 +23,14 @@ export async function fetchFunds() {
   return res.json();
 }
 
+// Backtest ayrı ve haftalık bir workflow'da üretilip build'e kopyalanır; canlı
+// çalıştırılacak bir endpoint'i yok (600+ sembol x yıllarca veri, dakikalar sürer).
+export async function fetchBacktest() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/backtest.json`);
+  if (!res.ok) throw new Error(`Backtest verisi yüklenemedi (${res.status})`);
+  return res.json();
+}
+
 export async function fetchScreener(market, { live = false, timeframe = "daily" } = {}) {
   const suffix = timeframe === "daily" ? "" : `_${timeframe}`;
   const url = STATIC_MODE

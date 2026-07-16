@@ -127,6 +127,54 @@ Elle denemek için (secret'ları ortam değişkeni olarak verip):
 her çalıştırmada `funds.json` üretir; arayüzde **Fonlar** sekmesi gösterir.
 API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
 
+## Strateji Backtest'i
+`app/backtest/` stratejinin geçmiş verideki performansını ölçer; arayüzde **Strateji**
+sekmesi gösterir. Backtest, canlı taramanın **aynı** `compute_indicators` + `passes_filters`
+kodunu kullanır — böylece ölçülen şey ile sitede gösterilen sinyal tanım olarak aynıdır.
+
+- **Sinyal**: filtrenin kapalıdan açığa geçtiği mum (arka arkaya açık kalan mumlar aynı
+  sinyalin devamıdır, tekrar sayılmaz).
+- **Giriş**: sinyal mumunun ERTESİ mumunun açılışı. Filtre kapanışa baktığından aynı
+  mumdan almak look-ahead olurdu.
+- **Ölçüm**: `HORIZONS`'taki her ufuk için getiri + **aynı penceredeki endeks getirisi**
+  (`BENCHMARKS`: BIST→XU100.IS, S&P/ETF→^GSPC; emtiada endeks yok).
+
+```bash
+python scripts/backtest_to_json.py data --markets bist100 --timeframes daily
+```
+
+Taramadan ayrı, **haftalık** bir workflow'da çalışır (`.github/workflows/backtest.yml`):
+sembol başına 5-10 yıllık veri pahalıdır ve strateji performansı günden güne değişmez.
+Çıktı `data/backtest.json` repoya commit'lenir; `build_site_meta.py` her yayında onu
+`frontend/public/data/`'ya kopyalar.
+
+### İlk sonuçlar (BIST 100, günlük, 2022-05 – 2026-07) — dürüst okuma
+| Ufuk | İsabet | Strateji ort. | Endeks ort. | Endeksi yenen |
+|------|--------|---------------|-------------|---------------|
+| +5 mum  | %54 | +%1,30  | +%0,69  | %49 |
+| +20 mum | %59 | +%5,77  | +%3,55  | %50 |
+| +60 mum | %62 | +%18,84 | +%11,72 | %50 |
+
+**"İsabet %62" tek başına yanıltıcıdır** — yükselen bir piyasada rastgele alım da
+benzer oran verir. Sinyallerin yalnızca **%50'si endeksi yeniyor** (yazı-tura) ve medyan
+getiri (+%9,24) endeks ortalamasının **altında**: ortalamayı yukarı çeken şey birkaç büyük
+kazanan. Yani bu strateji "endeksi döven bir sistem" değil, endeksi takip eden ve getirisi
+sağ kuyruğa bağlı bir filtredir. Üstelik survivorship bias bu farkı bile iyimser gösterir.
+Arayüzde endeks getirisi bilerek her rakamın yanında durur.
+
+## Veri Kalitesi: Bölünme (Split) Onarımı
+`app/data/repair.py`, Yahoo'nun uygulamadığı bölünmeleri düzeltir. Gerçek örnek:
+CCOLA.IS'in 11:1 bölünmesi Yahoo'da **2024-08-13** kayıtlı ama fiyat serisi **2024-08-01**'de
+düşüyor → seride tek günde **-%91** duruyordu (BIST'te günlük limit ±%10, yani imkânsız).
+Bu artefakt taramayı da bozar: yapay sıçrama fiyatı tüm EMA'ların altına/üstüne atıp sahte
+sinyal üretebilir.
+
+Onarım **yalnızca** üçü birden sağlanınca yapılır: (1) tek mumda büyük sıçrama,
+(2) oranı kayıtlı bir bölünmeyle eşleşiyor, (3) o bölünmenin tarihi sıçramaya yakın.
+Bu şart bilerek dardır — sadece eşiğe bakan bir onarım, ABD hisselerindeki gerçek sert
+düşüşleri ve örneğin BIST'in **6 Şubat 2023 depremi sonrası kapanıp açılışındaki %21,7'lik
+gerçek hareketi** silerdi. Bölünme bilgisi fetch ile aynı istekte geldiğinden ek maliyeti yok.
+
 ## Büyüme / Ürünleşme Fikirleri (öncelik sırası netleşecek)
 - Google Play yayını (aşağıdaki yol haritası; Play hesabı mevcut)
 - Telegram/X botları (yukarıda — sadece token bekliyor)

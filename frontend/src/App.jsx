@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchFunds, fetchNews, fetchScreener, STATIC_MODE } from './api'
+import { fetchBacktest, fetchFunds, fetchNews, fetchScreener, STATIC_MODE } from './api'
 import { getLang, setLang as persistLang, t } from './i18n'
 
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
@@ -20,6 +20,10 @@ const TIMEFRAMES = [
   { key: 'monthly', label: 'Aylık', labelEn: 'Monthly', horizon: 'aylar ve ötesi', horizonEn: 'months+' },
   { key: 'quarterly', label: '3 Aylık', labelEn: 'Quarterly', horizon: 'çeyrekler ve ötesi', horizonEn: 'quarters+' },
 ]
+
+// Backtest yalnızca günlük/haftalık için üretilir (backtest.yml): aylık/çeyreklik
+// mumlarda 5-10 yıllık veriden anlamlı sayıda geçmiş sinyal çıkmıyor.
+const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.key === 'weekly')
 
 const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
 const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
@@ -398,6 +402,157 @@ function loadWatchlist() {
   }
 }
 
+/** Oran gösterimi (isabet vb.): formatPct'in aksine işaret öneki istemez. */
+const formatRate = (v, digits = 0) => (v == null ? '—' : `${(v * 100).toFixed(digits)}%`)
+
+/** Tek bir ufkun (örn. "sinyalden 20 mum sonra") strateji/endeks karşılaştırması. */
+function BacktestHorizon({ lang, bars, stats }) {
+  const hasBenchmark = stats.beat_benchmark_rate != null
+
+  return (
+    <div className="bt-card">
+      <div className="bt-card-head">
+        <h3>{t(lang, 'btHorizonTitle', bars)}</h3>
+        <span className="bt-sample">{t(lang, 'btSampleSize', stats.count)}</span>
+      </div>
+
+      <div className="bt-metric">
+        <span>{t(lang, 'btAvgReturn')}</span>
+        <strong className={`pct ${pctTone(stats.avg_return)}`}>{formatPct(stats.avg_return, 2)}</strong>
+      </div>
+      <div className="bt-metric">
+        <span>{t(lang, 'btMedianReturn')}</span>
+        <strong className={`pct ${pctTone(stats.median_return)}`}>{formatPct(stats.median_return, 2)}</strong>
+      </div>
+
+      {hasBenchmark && (
+        <>
+          {/* Endeks satırı stratejinin hemen altında: karşılaştırma kendiliğinden görünsün */}
+          <div className="bt-metric bt-benchmark">
+            <span>{t(lang, 'btBenchmark')}</span>
+            <strong>{formatPct(stats.avg_benchmark_return, 2)}</strong>
+          </div>
+          <div className="bt-metric">
+            <span>{t(lang, 'btExcess')}</span>
+            <strong className={`pct ${pctTone(stats.avg_excess_return)}`}>
+              {formatPct(stats.avg_excess_return, 2)}
+            </strong>
+          </div>
+          <div className="bt-metric bt-headline">
+            <span>{t(lang, 'btBeatRate')}</span>
+            <strong>{formatRate(stats.beat_benchmark_rate)}</strong>
+          </div>
+        </>
+      )}
+
+      <div className="bt-metric">
+        <span>{t(lang, 'btWinRate')}</span>
+        <strong>{formatRate(stats.win_rate)}</strong>
+      </div>
+    </div>
+  )
+}
+
+function BacktestView({ lang, data, market, timeframe, loading, error }) {
+  const summary = data?.markets?.[market]?.[timeframe]
+  const when = data?.generated_at
+    ? new Date(data.generated_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
+    : ''
+  const caveats = t(lang, 'btCaveats')
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>
+          {summary
+            ? t(lang, 'btStatus', summary.signals, summary.symbols, when)
+            : loading
+              ? t(lang, 'btLoading')
+              : ''}
+        </span>
+        {summary?.first_signal && (
+          <span className="bt-period">{t(lang, 'btPeriod', summary.first_signal, summary.last_signal)}</span>
+        )}
+      </div>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'btHowTitle')}</summary>
+        <div className="info-content">
+          <p>{t(lang, 'btHowBody1')}</p>
+          <p>{t(lang, 'btHowBody2')}</p>
+        </div>
+      </details>
+
+      {error && <div className="error-box">{error}</div>}
+
+      {!error && !loading && !summary && <div className="empty-box">{t(lang, 'btEmpty')}</div>}
+
+      {summary && (
+        <>
+          <div className="bt-grid">
+            {(summary.horizons_bars || []).map((bars) => {
+              const stats = summary.horizons?.[String(bars)]
+              return stats ? (
+                <BacktestHorizon key={bars} lang={lang} bars={bars} stats={stats} />
+              ) : null
+            })}
+          </div>
+
+          {summary.avg_max_drawdown != null && (
+            <div className="bt-note">
+              {t(lang, 'btAvgDrawdown')}:{' '}
+              <strong className="pct neg">{formatPct(summary.avg_max_drawdown, 1)}</strong>
+            </div>
+          )}
+
+          <details className="info-panel bt-caveats" open>
+            <summary>{t(lang, 'btCaveatsTitle')}</summary>
+            <div className="info-content">
+              <ul>
+                {caveats.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          </details>
+
+          {summary.top_symbols?.length > 0 && (
+            <>
+              <div className="bt-note">
+                <strong>{t(lang, 'btTopTitle')}</strong> — {t(lang, 'btTopNote')}
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t(lang, 'colSymbol')}</th>
+                      <th>{t(lang, 'btColSignals')}</th>
+                      <th>{t(lang, 'btColAvg')}</th>
+                      <th>{t(lang, 'btColWin')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.top_symbols.map((r) => (
+                      <tr key={r.symbol}>
+                        <td>{displaySymbol(r.symbol)}</td>
+                        <td>{r.signals}</td>
+                        <td className={`pct ${pctTone(r.avg_return)}`}>{formatPct(r.avg_return, 1)}</td>
+                        <td>{formatRate(r.win_rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
 function App() {
   const [lang, setLangState] = useState(getLang)
   const [view, setView] = useState('screener')
@@ -420,6 +575,9 @@ function App() {
   const [fundsError, setFundsError] = useState(null)
   const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
   const [fundSearch, setFundSearch] = useState('')
+  const [backtest, setBacktest] = useState(null)
+  const [backtestLoading, setBacktestLoading] = useState(false)
+  const [backtestError, setBacktestError] = useState(null)
 
   function load(live = false) {
     setLoading(true)
@@ -491,6 +649,29 @@ function App() {
       cancelled = true
     }
   }, [view, funds])
+
+  // Backtest tek bir dosyada tüm market/timeframe'leri taşır: bir kez yüklenir,
+  // market/zaman dilimi değişince yeniden istek atılmaz.
+  useEffect(() => {
+    if (view !== 'backtest') return
+    if (backtest) return
+    let cancelled = false
+    setBacktestLoading(true)
+    setBacktestError(null)
+    fetchBacktest()
+      .then((result) => {
+        if (!cancelled) setBacktest(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setBacktestError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setBacktestLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, backtest])
 
   // Haberler: market değişince sıfırla, sekme açılınca veya grafik modalı için lazily yükle
   useEffect(() => {
@@ -671,13 +852,23 @@ function App() {
               {t(lang, 'tabFunds')}
             </button>
             <button
+              className={`tab ${view === 'backtest' ? 'active' : ''}`}
+              onClick={() => {
+                setView('backtest')
+                // Aylık/çeyreklikte backtest yok; sekmeyi boş açmak yerine günlüğe düş
+                if (!BACKTEST_TIMEFRAMES.some((tf) => tf.key === timeframe)) setTimeframe('daily')
+              }}
+            >
+              {t(lang, 'tabBacktest')}
+            </button>
+            <button
               className={`tab ${view === 'news' ? 'active' : ''}`}
               onClick={() => setView('news')}
             >
               {t(lang, 'tabNews')}
             </button>
           </div>
-          {view === 'screener' && (
+          {(view === 'screener' || view === 'backtest') && (
             <div className="tabs">
               {MARKETS.map((m) => (
                 <button
@@ -690,9 +881,9 @@ function App() {
               ))}
             </div>
           )}
-          {view === 'screener' && (
+          {(view === 'screener' || view === 'backtest') && (
             <div className="tabs">
-              {TIMEFRAMES.map((tf) => (
+              {(view === 'backtest' ? BACKTEST_TIMEFRAMES : TIMEFRAMES).map((tf) => (
                 <button
                   key={tf.key}
                   className={`tab ${timeframe === tf.key ? 'active' : ''}`}
@@ -718,6 +909,17 @@ function App() {
           )}
         </div>
       </header>
+
+      {view === 'backtest' && (
+        <BacktestView
+          lang={lang}
+          data={backtest}
+          market={market}
+          timeframe={timeframe}
+          loading={backtestLoading}
+          error={backtestError}
+        />
+      )}
 
       {view === 'funds' && (
         <>
