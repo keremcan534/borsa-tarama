@@ -12,12 +12,10 @@ export async function fetchNews(market) {
 }
 
 // Haberler market sekmesine göre değil, tek akışta BIST/Global olarak gösterilir;
-// bu yüzden tüm marketlerin dosyaları birlikte yüklenip birleştirilir.
-const NEWS_MARKETS = ["bist100", "sp500", "etf", "commodity"];
-
-export async function fetchAllNews() {
+// bu yüzden etkin marketlerin dosyaları birlikte yüklenip birleştirilir.
+export async function fetchAllNews(markets) {
   // allSettled: bir marketin dosyası eksik/bozuksa akışın tamamı çökmesin
-  const results = await Promise.allSettled(NEWS_MARKETS.map((m) => fetchNews(m)));
+  const results = await Promise.allSettled(markets.map((m) => fetchNews(m)));
 
   if (results.every((r) => r.status === "rejected")) {
     throw new Error("Haber verisi yüklenemedi");
@@ -58,6 +56,15 @@ export async function fetchFunds() {
 export async function fetchBacktest() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/backtest.json`);
   if (!res.ok) throw new Error(`Backtest verisi yüklenemedi (${res.status})`);
+  return res.json();
+}
+
+// Hangi marketlerin tarandığı backend'de (settings.enabled_markets) belirlenir ve
+// her taramada markets.json'a yazılır. Arayüz sekmelerini buradan üretir; aksi halde
+// kapalı bir marketin sekmesi görünüp veri dosyası bulunamazdı.
+export async function fetchEnabledMarkets() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/markets.json`);
+  if (!res.ok) throw new Error(`Market listesi yüklenemedi (${res.status})`);
   return res.json();
 }
 

@@ -30,7 +30,13 @@ class FakeFetcher(BaseFetcher):
 
 def test_summary_reports_last_close_and_change():
     summary = benchmark_summary(_df([100.0, 110.0]), "bist100")
-    assert summary == {"symbol": "XU100.IS", "close": 110.0, "change": 0.1}
+    assert summary == {"symbol": "XU100.IS", "name": "BIST 100", "close": 110.0, "change": 0.1}
+
+
+def test_summary_names_the_index_not_the_market():
+    # sp500 kapalıyken S&P nabzı ETF marketinin endeksinden gelir; kart yine
+    # "S&P 500" demeli, "ETF" değil.
+    assert benchmark_summary(_df([100.0, 110.0]), "etf")["name"] == "S&P 500"
 
 
 def test_summary_is_none_for_market_without_index():

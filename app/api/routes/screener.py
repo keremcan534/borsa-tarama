@@ -1,11 +1,9 @@
-import json
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException
 
 from app.core.config import settings
 from app.core.scheduler import get_cached_results
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.markets import MARKET_FILES, load_symbols
 from app.models.schemas import ScreenerResponse
 from app.screener.engine import run_screener
 from app.screener.timeframes import TIMEFRAMES
@@ -13,21 +11,12 @@ from app.screener.timeframes import TIMEFRAMES
 router = APIRouter(prefix="/api/screener", tags=["screener"])
 fetcher = YFinanceFetcher()
 
-SYMBOLS_DIR = Path(__file__).resolve().parents[2] / "data" / "symbols"
-MARKET_FILES = {
-    "bist100": "bist100.json",
-    "sp500": "sp500.json",
-    "etf": "etf.json",
-    "commodity": "commodity.json",
-}
-
 
 def _load_symbols(market: str) -> list[str]:
-    filename = MARKET_FILES.get(market)
-    if not filename:
-        raise HTTPException(status_code=400, detail="Geçersiz market. 'bist100', 'sp500' veya 'etf' kullanın.")
-    with open(SYMBOLS_DIR / filename, encoding="utf-8") as f:
-        return json.load(f)
+    if market not in MARKET_FILES:
+        valid = ", ".join(f"'{m}'" for m in MARKET_FILES)
+        raise HTTPException(status_code=400, detail=f"Geçersiz market. Şunlardan biri olmalı: {valid}.")
+    return load_symbols(market)
 
 
 @router.get("/{market}", response_model=ScreenerResponse)

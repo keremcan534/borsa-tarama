@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.backtest.engine import BENCHMARKS, HORIZONS, load_benchmark, run_backtest
 from app.backtest.metrics import summarize, top_symbols
 from app.backtest.portfolio import simulate_many
-from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.markets import MARKET_FILES, enabled_markets, load_symbols
 
 # Backtest'in sonuçlarıyla birlikte yayınlanan uyarılar. Rakamların yanında
 # görünmezlerse sonuçlar olduğundan güvenilir sanılır.
@@ -40,8 +40,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("out_dir", nargs="?", default="data", help="backtest.json'un yazılacağı klasör")
     parser.add_argument(
         "--markets",
-        default=",".join(MARKET_FILES),
-        help="Virgülle ayrılmış market listesi (varsayılan: hepsi)",
+        default=",".join(enabled_markets()),
+        help="Virgülle ayrılmış market listesi (varsayılan: etkin marketler)",
     )
     parser.add_argument(
         "--timeframes",
@@ -53,9 +53,7 @@ def parse_args() -> argparse.Namespace:
 
 def backtest_market(market: str, timeframe: str, fetcher: YFinanceFetcher) -> dict:
     """Tek market/timeframe için backtest çalıştırıp özet dict döner."""
-    with open(SYMBOLS_DIR / MARKET_FILES[market], encoding="utf-8") as f:
-        symbols = json.load(f)
-
+    symbols = load_symbols(market)
     horizons = HORIZONS[timeframe]
     benchmark = load_benchmark(market, fetcher, timeframe)
     trades = run_backtest(market, symbols, fetcher, timeframe, benchmark)

@@ -17,9 +17,9 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.benchmarks import benchmark_summary, fetch_benchmark
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.markets import enabled_markets, load_symbols
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
@@ -57,11 +57,16 @@ def main() -> None:
 
     fetcher = YFinanceFetcher()
     all_market_payloads: dict[str, dict[str, dict]] = {}
+    markets = enabled_markets()
 
-    for market, filename in MARKET_FILES.items():
-        with open(SYMBOLS_DIR / filename, encoding="utf-8") as f:
-            symbols = json.load(f)
+    # Arayüz market listesini bu manifestten okur: kapalı bir marketin sekmesi
+    # gösterilip veri dosyası bulunamaması (backend/frontend drift'i) böyle önlenir.
+    manifest_path = out_dir / "markets.json"
+    manifest_path.write_text(json.dumps(markets), encoding="utf-8")
+    print(f"[MARKET] etkin marketler: {', '.join(markets)} -> {manifest_path}")
 
+    for market in markets:
+        symbols = load_symbols(market)
         min_turnover = settings.min_daily_turnover.get(market)
         signal_symbols: list[str] = []  # haberler için: günlük öncelikli sinyal birleşimi
         market_payloads: dict[str, dict] = {}

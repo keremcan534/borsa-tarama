@@ -15,6 +15,14 @@ BENCHMARKS: dict[str, str | None] = {
     "commodity": None,  # emtia sepeti için anlamlı tek bir endeks yok
 }
 
+# Endeksin kendi adı: "Bugün" sayfasındaki nabız kartı marketin değil ENDEKSİN
+# adını göstermeli — ^GSPC, sp500 kapalıyken ETF marketi üzerinden geliyor ve
+# o kartın "ETF" yazması yanlış olurdu.
+BENCHMARK_NAMES: dict[str, str] = {
+    "XU100.IS": "BIST 100",
+    "^GSPC": "S&P 500",
+}
+
 
 def benchmark_summary(df: pd.DataFrame | None, market: str) -> dict | None:
     """Endeksin son kapanışı + son mumdaki değişimi ("Bugün" sayfasındaki nabız kartı).
@@ -32,6 +40,7 @@ def benchmark_summary(df: pd.DataFrame | None, market: str) -> dict | None:
 
     return {
         "symbol": symbol,
+        "name": BENCHMARK_NAMES.get(symbol, symbol),
         "close": round(last, 2),
         "change": round(last / previous - 1, 4),
     }

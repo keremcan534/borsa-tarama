@@ -4,6 +4,7 @@ import {
   fetchAllNews,
   fetchBacktest,
   fetchDailyOverview,
+  fetchEnabledMarkets,
   fetchFunds,
   fetchScreener,
   STATIC_MODE,
@@ -492,33 +493,38 @@ function loadWatchlist() {
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
  */
-function TodayView({ overview, funds, news, lang, loading, error, onOpenChart, onNavigate }) {
-  const markets = useMemo(() => (overview ? MARKETS.filter((m) => overview[m.key]) : []), [overview])
+function TodayView({ overview, funds, news, lang, loading, error, allMarkets, onOpenChart, onNavigate }) {
+  const markets = useMemo(
+    () => (overview ? allMarkets.filter((m) => overview[m.key]) : []),
+    [overview, allMarkets],
+  )
 
   // Yeni sinyaller tüm marketlerden toplanır; is_new'i tarama diff.py ile işaretler
   const newSignals = useMemo(() => {
     if (!overview) return []
     const out = []
-    for (const m of MARKETS) {
+    for (const m of allMarkets) {
       for (const s of overview[m.key]?.results || []) {
         if (s.is_new) out.push({ ...s, market: m })
       }
     }
     return out.sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0)).slice(0, 12)
-  }, [overview])
+  }, [overview, allMarkets])
 
   const indexes = useMemo(() => {
     if (!overview) return []
     const seen = new Set()
     const out = []
-    for (const m of MARKETS) {
+    for (const m of allMarkets) {
       const b = overview[m.key]?.benchmark
-      if (!b || seen.has(b.symbol)) continue // sp500 ve etf aynı endeksi paylaşır
+      // Endeksin adı marketin adından gelmez: S&P nabzı, sp500 kapalıyken ETF
+      // marketi üzerinden geliyor ve kart yine "S&P 500" demeli.
+      if (!b || seen.has(b.symbol)) continue
       seen.add(b.symbol)
-      out.push({ ...b, label: mLabel(m, lang) })
+      out.push({ ...b, label: b.name || mLabel(m, lang) })
     }
     return out
-  }, [overview, lang])
+  }, [overview, allMarkets, lang])
 
   const topNews = useMemo(() => {
     const items = news?.items || []
@@ -948,6 +954,42 @@ function App() {
   const [overview, setOverview] = useState(null)
   const [overviewLoading, setOverviewLoading] = useState(false)
   const [overviewError, setOverviewError] = useState(null)
+  const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
+  // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
+  // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
+  const [marketsResolved, setMarketsResolved] = useState(false)
+
+  // Etkin marketler backend'den gelir (markets.json); manifest okunamazsa tanımlı
+  // tüm marketlere düşülür — eski yayınlarda bu dosya yok.
+  const activeMarkets = useMemo(
+    () => (enabledMarketKeys ? MARKETS.filter((m) => enabledMarketKeys.includes(m.key)) : MARKETS),
+    [enabledMarketKeys],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    fetchEnabledMarkets()
+      .then((keys) => {
+        if (!cancelled && Array.isArray(keys) && keys.length) setEnabledMarketKeys(keys)
+      })
+      .catch(() => {
+        /* manifest yoksa tüm marketler gösterilir */
+      })
+      .finally(() => {
+        // Başarı da hata da listeyi kesinleştirir: hata durumunda fallback geçerlidir
+        if (!cancelled) setMarketsResolved(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Seçili market kapatıldıysa ilk etkin markete düş
+  useEffect(() => {
+    if (activeMarkets.length && !activeMarkets.some((m) => m.key === market)) {
+      setMarket(activeMarkets[0].key)
+    }
+  }, [activeMarkets, market])
 
   function load(live = false) {
     setLoading(true)
@@ -1047,11 +1089,12 @@ function App() {
   // zaten lazily yükleniyor, burada yalnızca market taramaları toplanır.
   useEffect(() => {
     if (view !== 'today') return
+    if (!marketsResolved) return // market listesi kesinleşmeden istek atma
     if (overview) return
     let cancelled = false
     setOverviewLoading(true)
     setOverviewError(null)
-    fetchDailyOverview(MARKETS.map((m) => m.key))
+    fetchDailyOverview(activeMarkets.map((m) => m.key))
       .then((result) => {
         if (!cancelled) setOverview(result)
       })
@@ -1064,17 +1107,18 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, overview])
+  }, [view, overview, activeMarkets, marketsResolved])
 
   // Haberler tüm marketler için tek seferde yüklenir (akış BIST/Global olarak bölünür,
   // market sekmesine bağlı değil); sekme açılınca veya grafik modalı için lazily.
   useEffect(() => {
     if (view !== 'news' && view !== 'today' && !chartSymbol) return
+    if (!marketsResolved) return // market listesi kesinleşmeden istek atma
     if (news) return
     let ignore = false
     setNewsLoading(true)
     setNewsError(null)
-    fetchAllNews()
+    fetchAllNews(activeMarkets.map((m) => m.key))
       .then((result) => {
         if (!ignore) setNews(result)
       })
@@ -1087,7 +1131,7 @@ function App() {
     return () => {
       ignore = true
     }
-  }, [view, chartSymbol, news])
+  }, [view, chartSymbol, news, activeMarkets, marketsResolved])
 
   const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
   const chartNews = useMemo(() => {
@@ -1263,9 +1307,9 @@ function App() {
               {t(lang, 'tabNews')}
             </button>
           </div>
-          {(view === 'screener' || view === 'backtest') && (
+          {(view === 'screener' || view === 'backtest') && marketsResolved && (
             <div className="tabs">
-              {MARKETS.map((m) => (
+              {activeMarkets.map((m) => (
                 <button
                   key={m.key}
                   className={`tab ${market === m.key ? 'active' : ''}`}
@@ -1300,6 +1344,7 @@ function App() {
             funds={funds}
             news={news}
             lang={lang}
+            allMarkets={activeMarkets}
             loading={overviewLoading}
             error={overviewError}
             onOpenChart={setChartSymbol}

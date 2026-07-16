@@ -1,10 +1,11 @@
-import json
-from pathlib import Path
-
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config import settings
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+
+# Geriye dönük uyumluluk: bu isimler eskiden burada tanımlıydı, artık tek kaynak
+# app/data/markets.py. Buradan da dışa aktarılıyorlar ki mevcut importlar kırılmasın.
+from app.data.markets import MARKET_FILES, SYMBOLS_DIR, enabled_markets, load_symbols  # noqa: F401
 from app.screener.engine import run_screener
 from app.screener.timeframes import TIMEFRAMES
 
@@ -14,19 +15,10 @@ scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
 # Kalıcı olması gerekirse Redis/SQLite'a taşınabilir.
 _cache: dict[str, list[dict]] = {}
 
-SYMBOLS_DIR = Path(__file__).resolve().parents[1] / "data" / "symbols"
-MARKET_FILES = {
-    "bist100": "bist100.json",
-    "sp500": "sp500.json",
-    "etf": "etf.json",
-    "commodity": "commodity.json",
-}
-
 
 def _run_scan(market: str) -> None:
     fetcher = YFinanceFetcher()
-    with open(SYMBOLS_DIR / MARKET_FILES[market], encoding="utf-8") as f:
-        symbols = json.load(f)
+    symbols = load_symbols(market)
     min_turnover = settings.min_daily_turnover.get(market)
     for timeframe in TIMEFRAMES:
         _cache[f"{market}:{timeframe}"] = run_screener(symbols, fetcher, timeframe, min_turnover)
@@ -37,9 +29,21 @@ def _run_scan(market: str) -> None:
 
 
 def start_scheduler() -> None:
-    # BIST kapanışı ~18:10 TR saati, ABD (S&P 500) kapanışı ~23:00-00:00 TR saati
-    scheduler.add_job(lambda: _run_scan("bist100"), "cron", hour=18, minute=30, id="bist100_scan")
-    scheduler.add_job(lambda: _run_scan("sp500"), "cron", hour=23, minute=30, id="sp500_scan")
+    # BIST kapanışı ~18:10 TR saati, ABD piyasaları ~23:00-00:00 TR saati.
+    # Kapalı marketler (settings.enabled_markets) zamanlanmaz.
+    schedule = {
+        "bist100": {"hour": 18, "minute": 30},
+        "sp500": {"hour": 23, "minute": 30},
+        "etf": {"hour": 23, "minute": 40},
+        "commodity": {"hour": 23, "minute": 50},
+    }
+    for market in enabled_markets():
+        when = schedule.get(market)
+        if not when:
+            continue
+        scheduler.add_job(
+            lambda m=market: _run_scan(m), "cron", id=f"{market}_scan", **when
+        )
     scheduler.start()
 
 

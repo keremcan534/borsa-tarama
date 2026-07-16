@@ -121,6 +121,45 @@ variables → Actions → New repository secret'tan (veya `gh secret set AD` ile
 Elle denemek için (secret'ları ortam değişkeni olarak verip):
 `python scripts/notify_telegram.py frontend/public/data`
 
+## Etkin Marketler (S&P 500 şu an KAPALI)
+Hangi marketlerin taranacağı `app/core/config.py` → `enabled_markets` ile belirlenir.
+Market tanımları tek kaynakta: **`app/data/markets.py`** (`MARKET_FILES`, `SYMBOLS_DIR`,
+`load_symbols`, `enabled_markets`). Eskiden `MARKET_FILES` hem `scheduler.py` hem
+`api/routes/screener.py` içinde ayrı ayrı duruyordu ve elle senkron tutuluyordu — artık
+ikisi de buradan okuyor.
+
+**S&P 500 neden kapalı:** ölçüldü — deploy'un tamamı ~23 dk sürüyordu ve bunun **22,6
+dakikası tarama adımıydı** (frontend build yalnızca 0,1 dk). Sembol dağılımı:
+
+| Market | Sembol | İstek (×4 zaman dilimi) | Durum |
+|---|---|---|---|
+| bist100 | 100 | 400 | etkin |
+| **sp500** | **503** | **2012 (%76)** | **kapalı** |
+| etf | 46 | 184 | etkin |
+| commodity | 10 | 40 | etkin |
+
+Yani S&P tek başına tüm işin **%76'sı**. Kapatınca 2636 → 624 istek; tarama ~5 dk'ya
+iner. ETF + emtia toplam %8 olduğundan onları kapatmak anlamlı bir kazanç getirmez ve
+Global haber akışını onlar besler.
+
+**Geri açmak tek satır:** `enabled_markets` listesine `"sp500"` eklemek. Kod ve sembol
+listesi silinmedi. Daha ucuza geri getirmenin yolu için aşağıdaki "Bilinen darboğaz"a bak.
+
+**S&P nabzı kaybolmadı:** `^GSPC` "Bugün" sayfasında görünmeye devam ediyor — ETF
+marketinin karşılaştırma endeksi zaten o ve tek istekle geliyor. Kart marketin değil
+endeksin adını gösterir (`BENCHMARK_NAMES`), yoksa "ETF 7.542" gibi yanlış bir etiket çıkardı.
+
+**Arayüz senkronu:** tarama her koşuda `data/markets.json` manifestini yazar, arayüz
+market sekmelerini bundan üretir. Böylece kapalı bir marketin sekmesi gösterilip veri
+dosyası bulunamaması (backend/frontend drift'i) mümkün değil. Manifest çözülene kadar
+veri isteği atılmaz — yoksa kapalı marketlerin dosyaları istenip 404 alınırdı.
+
+### Bilinen darboğaz: her sembol 4 kez çekiliyor
+Tarama her sembolü zaman dilimi başına ayrı çekiyor (1y günlük, 10y haftalık, max aylık,
+max çeyreklik) — yani sembol başına **4 istek**. Oysa `max` günlük veri **bir kez** çekilip
+pandas ile haftalık/aylık/çeyrekliğe resample edilebilir: istek sayısı 4'e bölünür.
+Bu yapılırsa S&P 500 çok daha ucuza geri açılabilir. Henüz yapılmadı.
+
 ## "Bugün" Sayfası
 Uygulamanın açılış sekmesi (`view === 'today'`). Kullanıcıyı doğrudan ham tabloya
 düşürmek yerine günün özetini verir; her blok detay sekmesine kapı açar:
