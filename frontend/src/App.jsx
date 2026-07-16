@@ -33,6 +33,15 @@ const TIMEFRAMES = [
 // mumlarda 5-10 yıllık veriden anlamlı sayıda geçmiş sinyal çıkmıyor.
 const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.key === 'weekly')
 
+// Sol menü sırası. İkonlar emoji: harici ikon kütüphanesi bağımlılığı getirmiyor.
+const NAV_ITEMS = [
+  { key: 'today', i18nKey: 'tabToday', icon: '📅' },
+  { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
+  { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
+  { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
+  { key: 'news', i18nKey: 'tabNews', icon: '📰' },
+]
+
 const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
 const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
 
@@ -499,16 +508,33 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
     [overview, allMarkets],
   )
 
-  // Yeni sinyaller tüm marketlerden toplanır; is_new'i tarama diff.py ile işaretler
-  const newSignals = useMemo(() => {
+  // Tüm marketlerin sinyalleri, teknik puana göre. Önceden yalnızca "yeni" sinyaller
+  // gösteriliyordu; yeni sinyal olmayan günlerde (sık) sayfada hiç hisse kalmıyordu.
+  // Artık sinyaller hep listelenir, yeni olanlar rozetle ayrışır.
+  const signals = useMemo(() => {
     if (!overview) return []
     const out = []
     for (const m of allMarkets) {
-      for (const s of overview[m.key]?.results || []) {
-        if (s.is_new) out.push({ ...s, market: m })
+      const payload = overview[m.key]
+      const emaPeriods = payload?.ema_periods || [9, 21, 50, 200]
+      for (const s of payload?.results || []) {
+        out.push({ ...s, market: m, score: technicalScore(s, emaPeriods) })
       }
     }
-    return out.sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0)).slice(0, 12)
+    // Yeniler önce, sonra puan: yeni sinyal günün asıl haberi
+    out.sort((a, b) => Number(b.is_new || false) - Number(a.is_new || false) || b.score - a.score)
+    return out.slice(0, 12)
+  }, [overview, allMarkets])
+
+  // Sayım, rozetlerle AYNI alandan (is_new) türetilir. Payload'daki new_count'u
+  // kullanmak, ikisinin ayrışıp "1 yeni sinyal" yazarken hiç rozet göstermemesine
+  // yol açabiliyordu.
+  const newSignalCount = useMemo(() => {
+    if (!overview) return 0
+    return allMarkets.reduce(
+      (n, m) => n + (overview[m.key]?.results || []).filter((s) => s.is_new).length,
+      0,
+    )
   }, [overview, allMarkets])
 
   const indexes = useMemo(() => {
@@ -525,6 +551,17 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
     }
     return out
   }, [overview, allMarkets, lang])
+
+  // Popülerliğe (yatırımcı sayısı) göre — puana göre sıralamak, 1-18 yatırımcılı
+  // niş fonları "öne çıkan" diye tepeye taşıyordu. Puan yine kartta duruyor.
+  const popularFunds = useMemo(
+    () =>
+      [...(funds?.results || [])]
+        .filter((f) => f.investor_count)
+        .sort((a, b) => b.investor_count - a.investor_count)
+        .slice(0, 3),
+    [funds],
+  )
 
   const topNews = useMemo(() => {
     const items = news?.items || []
@@ -568,24 +605,29 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
 
       <section className="today-section">
         <h2 className="today-title">
-          {t(lang, 'todayNewSignals')}
+          {t(lang, 'todaySignals')}
           <button className="link-btn" onClick={() => onNavigate('screener')}>
             {t(lang, 'todaySeeAll')}
           </button>
         </h2>
-        {newSignals.length === 0 ? (
-          <div className="empty-box">{t(lang, 'todayNewSignalsEmpty')}</div>
+        <p className="today-note">
+          {newSignalCount > 0 ? t(lang, 'todayNewCount', newSignalCount) : t(lang, 'todayNoNew')}
+        </p>
+        {signals.length === 0 ? (
+          <div className="empty-box">{t(lang, 'todaySignalsEmpty')}</div>
         ) : (
           <div className="today-signals">
-            {newSignals.map((s) => (
+            {signals.map((s) => (
               <button key={s.symbol} className="today-signal" onClick={() => onOpenChart(s.symbol)}>
                 <TickerLogo symbol={s.symbol} />
                 <span className="today-signal-main">
                   <span className="today-signal-symbol">
                     {displaySymbol(s.symbol)}
-                    <span className="badge new-badge">{t(lang, 'todayNewBadge')}</span>
+                    {s.is_new && <span className="badge new-badge">{t(lang, 'todayNewBadge')}</span>}
                   </span>
-                  <span className="today-signal-sub">{mLabel(s.market, lang)}</span>
+                  <span className="today-signal-sub">
+                    {mLabel(s.market, lang)} · {t(lang, 'colScore')} {s.score}
+                  </span>
                 </span>
                 <span className={`pct ${pctTone(s.relative_strength)}`}>
                   {formatPct(s.relative_strength, 1)}
@@ -615,7 +657,7 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
         </div>
       </section>
 
-      {funds?.results?.length > 0 && (
+      {popularFunds.length > 0 && (
         <section className="today-section">
           <h2 className="today-title">
             {t(lang, 'todayFunds')}
@@ -623,17 +665,28 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
               {t(lang, 'todaySeeAll')}
             </button>
           </h2>
+          <p className="today-note">{t(lang, 'todayFundsNote')}</p>
           <div className="today-cards">
-            {funds.results.slice(0, 3).map((f) => (
-              <div key={f.symbol} className="today-card">
+            {popularFunds.map((f) => (
+              <a
+                key={f.symbol}
+                className="today-card fund-card"
+                href={f.tefas_url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
                 <span className="today-card-label">
                   {f.symbol} · <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
                 </span>
+                {/* Dönem etiketi şart: "Bugün" başlıklı sayfada etiketsiz bir +%226,
+                    bugünün getirisi gibi okunuyordu. */}
                 <strong className="today-card-value">
                   <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
+                  <span className="today-card-unit">{t(lang, 'todayFundReturnLabel')}</span>
                 </strong>
+                <span className="today-card-sub">{t(lang, 'todayFundHolders', f.investor_count)}</span>
                 <span className="today-card-sub">{f.name}</span>
-              </div>
+              </a>
             ))}
           </div>
         </section>
@@ -954,6 +1007,7 @@ function App() {
   const [overview, setOverview] = useState(null)
   const [overviewLoading, setOverviewLoading] = useState(false)
   const [overviewError, setOverviewError] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
   // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
   // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
@@ -1232,110 +1286,105 @@ function App() {
     })
   }
 
+  function selectView(next) {
+    setView(next)
+    setMenuOpen(false)
+    // Aylık/çeyreklikte backtest yok; sekmeyi boş açmak yerine günlüğe düş
+    if (next === 'backtest' && !BACKTEST_TIMEFRAMES.some((tf) => tf.key === timeframe)) {
+      setTimeframe('daily')
+    }
+  }
+
   return (
-    <>
-      <header className="header">
+    <div className="layout">
+      {/* Mobilde menü açıkken arkaya tıklamak kapatır */}
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+
+      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="brand">
           <Logo />
-          <div>
-            <h1>{t(lang, 'brand')}</h1>
-            <p className="tagline">
-              {t(lang, 'tagline')} · {lang === 'en' ? activeTimeframe.horizonEn : activeTimeframe.horizon}
-            </p>
-          </div>
-          <div className="tabs lang-switch" role="group" aria-label="Language">
+          <h1>{t(lang, 'brand')}</h1>
+        </div>
+
+        <nav className="nav" aria-label={t(lang, 'navLabel')}>
+          {NAV_ITEMS.map((item) => (
             <button
+              key={item.key}
+              className={`nav-item ${view === item.key ? 'active' : ''}`}
+              aria-current={view === item.key ? 'page' : undefined}
+              onClick={() => selectView(item.key)}
+            >
+              <span className="nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              {t(lang, item.i18nKey)}
+            </button>
+          ))}
+        </nav>
+
+        <div className="tabs lang-switch" role="group" aria-label="Language">
+          {['tr', 'en'].map((code) => (
+            <button
+              key={code}
               type="button"
-              className={`tab ${lang === 'tr' ? 'active' : ''}`}
+              className={`tab ${lang === code ? 'active' : ''}`}
               onClick={() => {
-                if (lang !== 'tr') {
-                  persistLang('tr')
-                  setLangState('tr')
+                if (lang !== code) {
+                  persistLang(code)
+                  setLangState(code)
                 }
               }}
             >
-              TR
+              {code.toUpperCase()}
             </button>
-            <button
-              type="button"
-              className={`tab ${lang === 'en' ? 'active' : ''}`}
-              onClick={() => {
-                if (lang !== 'en') {
-                  persistLang('en')
-                  setLangState('en')
-                }
-              }}
-            >
-              EN
-            </button>
-          </div>
+          ))}
         </div>
-        <div className="tab-groups">
-          <div className="tabs">
-            <button
-              className={`tab ${view === 'today' ? 'active' : ''}`}
-              onClick={() => setView('today')}
-            >
-              {t(lang, 'tabToday')}
-            </button>
-            <button
-              className={`tab ${view === 'screener' ? 'active' : ''}`}
-              onClick={() => setView('screener')}
-            >
-              {t(lang, 'tabScreener')}
-            </button>
-            <button
-              className={`tab ${view === 'funds' ? 'active' : ''}`}
-              onClick={() => setView('funds')}
-            >
-              {t(lang, 'tabFunds')}
-            </button>
-            <button
-              className={`tab ${view === 'backtest' ? 'active' : ''}`}
-              onClick={() => {
-                setView('backtest')
-                // Aylık/çeyreklikte backtest yok; sekmeyi boş açmak yerine günlüğe düş
-                if (!BACKTEST_TIMEFRAMES.some((tf) => tf.key === timeframe)) setTimeframe('daily')
-              }}
-            >
-              {t(lang, 'tabBacktest')}
-            </button>
-            <button
-              className={`tab ${view === 'news' ? 'active' : ''}`}
-              onClick={() => setView('news')}
-            >
-              {t(lang, 'tabNews')}
-            </button>
+      </aside>
+
+      <main className="content">
+        <header className="content-head">
+          <button
+            className="menu-btn"
+            aria-label={t(lang, 'menuOpen')}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            ☰
+          </button>
+          <p className="tagline">
+            {t(lang, 'tagline')} · {lang === 'en' ? activeTimeframe.horizonEn : activeTimeframe.horizon}
+          </p>
+          {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
+              görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
+          <div className="tab-groups">
+            {(view === 'screener' || view === 'backtest') && marketsResolved && (
+              <div className="tabs">
+                {activeMarkets.map((m) => (
+                  <button
+                    key={m.key}
+                    className={`tab ${market === m.key ? 'active' : ''}`}
+                    onClick={() => setMarket(m.key)}
+                  >
+                    {mLabel(m, lang)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(view === 'screener' || view === 'backtest') && (
+              <div className="tabs">
+                {(view === 'backtest' ? BACKTEST_TIMEFRAMES : TIMEFRAMES).map((tf) => (
+                  <button
+                    key={tf.key}
+                    className={`tab ${timeframe === tf.key ? 'active' : ''}`}
+                    onClick={() => setTimeframe(tf.key)}
+                  >
+                    {tfLabel(tf, lang)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {(view === 'screener' || view === 'backtest') && marketsResolved && (
-            <div className="tabs">
-              {activeMarkets.map((m) => (
-                <button
-                  key={m.key}
-                  className={`tab ${market === m.key ? 'active' : ''}`}
-                  onClick={() => setMarket(m.key)}
-                >
-                  {mLabel(m, lang)}
-                </button>
-              ))}
-            </div>
-          )}
-          {(view === 'screener' || view === 'backtest') && (
-            <div className="tabs">
-              {(view === 'backtest' ? BACKTEST_TIMEFRAMES : TIMEFRAMES).map((tf) => (
-                <button
-                  key={tf.key}
-                  className={`tab ${timeframe === tf.key ? 'active' : ''}`}
-                  onClick={() => setTimeframe(tf.key)}
-                >
-                  {tfLabel(tf, lang)}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* Haberlerde market sekmesi yok: akış BIST/Global bölümleri olarak geliyor */}
-        </div>
-      </header>
+        </header>
 
       {view === 'today' && (
         <>
@@ -1350,7 +1399,7 @@ function App() {
             onOpenChart={setChartSymbol}
             onNavigate={(nextView, nextMarket) => {
               if (nextMarket) setMarket(nextMarket)
-              setView(nextView)
+              selectView(nextView)
             }}
           />
           {chartSymbol && (
@@ -1748,7 +1797,8 @@ function App() {
       )}
         </>
       )}
-    </>
+      </main>
+    </div>
   )
 }
 

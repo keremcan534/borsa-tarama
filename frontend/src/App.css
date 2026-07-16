@@ -1092,3 +1092,179 @@ button.today-card:hover {
   font-size: 11px;
   opacity: 0.6;
 }
+
+.today-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.today-card-unit {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.65;
+}
+
+a.today-card {
+  text-decoration: none;
+  color: inherit;
+}
+
+a.today-card:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- sol menü düzeni ---------- */
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.content {
+  flex: 1;
+  /* min-width:0 şart: olmazsa geniş tablolar flex item'ı şişirip
+     sayfayı yatay kaydırtır */
+  min-width: 0;
+}
+
+.sidebar {
+  flex: 0 0 190px;
+  width: 190px;
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sidebar .brand {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar .brand h1 {
+  font-size: 17px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--surface);
+}
+
+.nav-item.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nav-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.sidebar .lang-switch {
+  margin-top: auto;
+}
+
+.content-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+
+.content-head .tab-groups {
+  margin-left: auto;
+}
+
+.menu-btn {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+/* Mobil: menü çekmece olarak açılır */
+@media (max-width: 860px) {
+  .layout {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 232px;
+    flex: none;
+    z-index: 60;
+    padding: 20px 16px;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.open {
+    transform: none;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .menu-btn {
+    display: inline-flex;
+  }
+
+  .content-head .tab-groups {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Hareket azaltma tercihi: menü animasyonsuz açılır (görünürlük geçişe bağlı kalmasın) */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
