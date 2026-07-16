@@ -1,6 +1,13 @@
 import { Component, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchBacktest, fetchFunds, fetchNews, fetchScreener, STATIC_MODE } from './api'
+import {
+  fetchAllNews,
+  fetchBacktest,
+  fetchDailyOverview,
+  fetchFunds,
+  fetchScreener,
+  STATIC_MODE,
+} from './api'
 import { getLang, setLang as persistLang, t } from './i18n'
 
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
@@ -191,16 +198,16 @@ function pctTone(value) {
   return 'flat'
 }
 
-function formatRelativeTime(iso) {
+function formatRelativeTime(iso, lang = 'tr') {
   if (!iso) return ''
   const diffMs = Date.now() - new Date(iso).getTime()
   const mins = Math.round(diffMs / 60000)
-  if (mins < 60) return `${Math.max(mins, 1)} dk önce`
+  if (mins < 60) return t(lang, 'agoMinutes', Math.max(mins, 1))
   const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours} sa önce`
+  if (hours < 24) return t(lang, 'agoHours', hours)
   const days = Math.round(hours / 24)
-  if (days < 7) return `${days} gün önce`
-  return new Date(iso).toLocaleDateString('tr-TR')
+  if (days < 7) return t(lang, 'agoDays', days)
+  return new Date(iso).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')
 }
 
 function AdSlot({ id }) {
@@ -237,15 +244,16 @@ function Logo() {
   )
 }
 
-function NewsFeed({ news, loading, error, onOpenChart }) {
-  if (loading) return <div className="empty-box">Haberler yükleniyor...</div>
-  if (error) return <div className="error-box">{error}</div>
-  if (!news || news.items.length === 0)
-    return <div className="empty-box">Şu an gösterilecek haber yok. Haberler her taramayla birlikte yenilenir.</div>
+// BIST sembolleri yfinance'te '.IS' ekiyle gelir; geri kalan her şey (S&P, ETF,
+// emtia/kripto) global tarafa düşer.
+const isBistSymbol = (symbol) => symbol.endsWith('.IS')
 
+const NEWS_PER_GROUP = 50
+
+function NewsList({ items, lang, onOpenChart }) {
   return (
     <div className="news-list">
-      {news.items.map((item, i) => (
+      {items.map((item, i) => (
         <div key={item.link + i}>
           <article className="news-item">
             <div className="news-meta">
@@ -253,7 +261,7 @@ function NewsFeed({ news, loading, error, onOpenChart }) {
                 {displaySymbol(item.symbol)}
               </button>
               {item.source && <span className="news-source">{item.source}</span>}
-              <span className="news-time">{formatRelativeTime(item.published_at)}</span>
+              <span className="news-time">{formatRelativeTime(item.published_at, lang)}</span>
             </div>
             <a className="news-title" href={item.link} target="_blank" rel="noreferrer noopener">
               {item.title}
@@ -261,6 +269,44 @@ function NewsFeed({ news, loading, error, onOpenChart }) {
           </article>
           {(i + 1) % 6 === 0 && <AdSlot id={`news-${i}`} />}
         </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Haberler market sekmesiyle değil, tek akışta BIST/Global bölümleriyle gösterilir:
+ * marketlerin üçü (S&P, ETF, emtia) ABD olduğundan market sekmesi kullanıcıyı
+ * kolayca ABD akışında bırakıyordu.
+ */
+function NewsFeed({ news, loading, error, lang, onOpenChart }) {
+  const groups = useMemo(() => {
+    const items = news?.items || []
+    return {
+      bist: items.filter((i) => isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
+      global: items.filter((i) => !isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
+    }
+  }, [news])
+
+  if (loading) return <div className="empty-box">{t(lang, 'newsLoading')}</div>
+  if (error) return <div className="error-box">{error}</div>
+  if (!news || news.items.length === 0) return <div className="empty-box">{t(lang, 'newsEmpty')}</div>
+
+  const sections = [
+    { key: 'bist', title: t(lang, 'newsBist'), items: groups.bist },
+    { key: 'global', title: t(lang, 'newsGlobal'), items: groups.global },
+  ].filter((s) => s.items.length > 0)
+
+  return (
+    <div className="news-groups">
+      {sections.map((section) => (
+        <section key={section.key} className="news-group">
+          <h2 className="news-group-title">
+            {section.title}
+            <span className="news-group-count">{section.items.length}</span>
+          </h2>
+          <NewsList items={section.items} lang={lang} onOpenChart={onOpenChart} />
+        </section>
       ))}
     </div>
   )
@@ -440,6 +486,168 @@ function loadWatchlist() {
   } catch {
     return new Set()
   }
+}
+
+/**
+ * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
+ * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
+ */
+function TodayView({ overview, funds, news, lang, loading, error, onOpenChart, onNavigate }) {
+  const markets = useMemo(() => (overview ? MARKETS.filter((m) => overview[m.key]) : []), [overview])
+
+  // Yeni sinyaller tüm marketlerden toplanır; is_new'i tarama diff.py ile işaretler
+  const newSignals = useMemo(() => {
+    if (!overview) return []
+    const out = []
+    for (const m of MARKETS) {
+      for (const s of overview[m.key]?.results || []) {
+        if (s.is_new) out.push({ ...s, market: m })
+      }
+    }
+    return out.sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0)).slice(0, 12)
+  }, [overview])
+
+  const indexes = useMemo(() => {
+    if (!overview) return []
+    const seen = new Set()
+    const out = []
+    for (const m of MARKETS) {
+      const b = overview[m.key]?.benchmark
+      if (!b || seen.has(b.symbol)) continue // sp500 ve etf aynı endeksi paylaşır
+      seen.add(b.symbol)
+      out.push({ ...b, label: mLabel(m, lang) })
+    }
+    return out
+  }, [overview, lang])
+
+  const topNews = useMemo(() => {
+    const items = news?.items || []
+    return [
+      ...items.filter((i) => isBistSymbol(i.symbol)).slice(0, 4),
+      ...items.filter((i) => !isBistSymbol(i.symbol)).slice(0, 3),
+    ]
+  }, [news])
+
+  if (loading) return <div className="empty-box">{t(lang, 'todayLoading')}</div>
+  if (error) return <div className="error-box">{error}</div>
+  if (!overview) return null
+
+  const generatedAt = overview[markets[0]?.key]?.generated_at
+
+  return (
+    <div className="today">
+      <div className="status-bar">
+        <span>{t(lang, 'todayIntro')}</span>
+        {generatedAt && (
+          <span className="bt-period">
+            {t(lang, 'todayLastScan', new Date(generatedAt).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'))}
+          </span>
+        )}
+      </div>
+
+      {indexes.length > 0 && (
+        <section className="today-section">
+          <h2 className="today-title">{t(lang, 'todayIndexes')}</h2>
+          <div className="today-cards">
+            {indexes.map((idx) => (
+              <div key={idx.symbol} className="today-card index-card">
+                <span className="today-card-label">{idx.label}</span>
+                <strong className="today-card-value">{formatNum(idx.close, 2)}</strong>
+                <span className={`pct ${pctTone(idx.change)}`}>{formatPct(idx.change, 2)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="today-section">
+        <h2 className="today-title">
+          {t(lang, 'todayNewSignals')}
+          <button className="link-btn" onClick={() => onNavigate('screener')}>
+            {t(lang, 'todaySeeAll')}
+          </button>
+        </h2>
+        {newSignals.length === 0 ? (
+          <div className="empty-box">{t(lang, 'todayNewSignalsEmpty')}</div>
+        ) : (
+          <div className="today-signals">
+            {newSignals.map((s) => (
+              <button key={s.symbol} className="today-signal" onClick={() => onOpenChart(s.symbol)}>
+                <TickerLogo symbol={s.symbol} />
+                <span className="today-signal-main">
+                  <span className="today-signal-symbol">
+                    {displaySymbol(s.symbol)}
+                    <span className="badge new-badge">{t(lang, 'todayNewBadge')}</span>
+                  </span>
+                  <span className="today-signal-sub">{mLabel(s.market, lang)}</span>
+                </span>
+                <span className={`pct ${pctTone(s.relative_strength)}`}>
+                  {formatPct(s.relative_strength, 1)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="today-section">
+        <h2 className="today-title">{t(lang, 'todayMarkets')}</h2>
+        <div className="today-cards">
+          {markets.map((m) => (
+            <button
+              key={m.key}
+              className="today-card market-card"
+              onClick={() => onNavigate('screener', m.key)}
+            >
+              <span className="today-card-label">{mLabel(m, lang)}</span>
+              <strong className="today-card-value">{overview[m.key].count}</strong>
+              <span className="today-card-sub">
+                {t(lang, 'todayMarketLine', overview[m.key].count, overview[m.key].scanned)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {funds?.results?.length > 0 && (
+        <section className="today-section">
+          <h2 className="today-title">
+            {t(lang, 'todayFunds')}
+            <button className="link-btn" onClick={() => onNavigate('funds')}>
+              {t(lang, 'todaySeeAll')}
+            </button>
+          </h2>
+          <div className="today-cards">
+            {funds.results.slice(0, 3).map((f) => (
+              <div key={f.symbol} className="today-card">
+                <span className="today-card-label">
+                  {f.symbol} · <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
+                </span>
+                <strong className="today-card-value">
+                  <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
+                </strong>
+                <span className="today-card-sub">{f.name}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {topNews.length > 0 && (
+        <section className="today-section">
+          <h2 className="today-title">
+            {t(lang, 'todayNews')}
+            <button className="link-btn" onClick={() => onNavigate('news')}>
+              {t(lang, 'todaySeeAll')}
+            </button>
+          </h2>
+          <NewsList items={topNews} lang={lang} onOpenChart={onOpenChart} />
+        </section>
+      )}
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </div>
+  )
 }
 
 /** Oran gösterimi (isabet vb.): formatPct'in aksine işaret öneki istemez. */
@@ -713,7 +921,8 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
 
 function App() {
   const [lang, setLangState] = useState(getLang)
-  const [view, setView] = useState('screener')
+  // Açılışta ham tablo yerine günün özeti karşılasın
+  const [view, setView] = useState('today')
   const [market, setMarket] = useState('bist100')
   const [timeframe, setTimeframe] = useState('daily')
   const [watchlist, setWatchlist] = useState(loadWatchlist)
@@ -736,6 +945,9 @@ function App() {
   const [backtest, setBacktest] = useState(null)
   const [backtestLoading, setBacktestLoading] = useState(false)
   const [backtestError, setBacktestError] = useState(null)
+  const [overview, setOverview] = useState(null)
+  const [overviewLoading, setOverviewLoading] = useState(false)
+  const [overviewError, setOverviewError] = useState(null)
 
   function load(live = false) {
     setLoading(true)
@@ -788,7 +1000,7 @@ function App() {
   }, [market, timeframe])
 
   useEffect(() => {
-    if (view !== 'funds') return
+    if (view !== 'funds' && view !== 'today') return // "Bugün" öne çıkan fonları gösteriyor
     if (funds) return
     let cancelled = false
     setFundsLoading(true)
@@ -831,19 +1043,38 @@ function App() {
     }
   }, [view, backtest])
 
-  // Haberler: market değişince sıfırla, sekme açılınca veya grafik modalı için lazily yükle
+  // "Bugün" tüm marketlerin günlük özetini ister; fonlar/haberler kendi effect'lerinde
+  // zaten lazily yükleniyor, burada yalnızca market taramaları toplanır.
   useEffect(() => {
-    setNews(null)
-    setNewsError(null)
-  }, [market])
+    if (view !== 'today') return
+    if (overview) return
+    let cancelled = false
+    setOverviewLoading(true)
+    setOverviewError(null)
+    fetchDailyOverview(MARKETS.map((m) => m.key))
+      .then((result) => {
+        if (!cancelled) setOverview(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setOverviewError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setOverviewLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, overview])
 
+  // Haberler tüm marketler için tek seferde yüklenir (akış BIST/Global olarak bölünür,
+  // market sekmesine bağlı değil); sekme açılınca veya grafik modalı için lazily.
   useEffect(() => {
-    if (view !== 'news' && !chartSymbol) return
-    if (news) return // bu market için zaten yüklü (market değişince sıfırlanır)
+    if (view !== 'news' && view !== 'today' && !chartSymbol) return
+    if (news) return
     let ignore = false
     setNewsLoading(true)
     setNewsError(null)
-    fetchNews(market)
+    fetchAllNews()
       .then((result) => {
         if (!ignore) setNews(result)
       })
@@ -856,7 +1087,7 @@ function App() {
     return () => {
       ignore = true
     }
-  }, [view, chartSymbol, market, news])
+  }, [view, chartSymbol, news])
 
   const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
   const chartNews = useMemo(() => {
@@ -998,6 +1229,12 @@ function App() {
         <div className="tab-groups">
           <div className="tabs">
             <button
+              className={`tab ${view === 'today' ? 'active' : ''}`}
+              onClick={() => setView('today')}
+            >
+              {t(lang, 'tabToday')}
+            </button>
+            <button
               className={`tab ${view === 'screener' ? 'active' : ''}`}
               onClick={() => setView('screener')}
             >
@@ -1052,21 +1289,30 @@ function App() {
               ))}
             </div>
           )}
-          {view === 'news' && (
-            <div className="tabs">
-              {MARKETS.map((m) => (
-                <button
-                  key={m.key}
-                  className={`tab ${market === m.key ? 'active' : ''}`}
-                  onClick={() => setMarket(m.key)}
-                >
-                  {mLabel(m, lang)}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Haberlerde market sekmesi yok: akış BIST/Global bölümleri olarak geliyor */}
         </div>
       </header>
+
+      {view === 'today' && (
+        <>
+          <TodayView
+            overview={overview}
+            funds={funds}
+            news={news}
+            lang={lang}
+            loading={overviewLoading}
+            error={overviewError}
+            onOpenChart={setChartSymbol}
+            onNavigate={(nextView, nextMarket) => {
+              if (nextMarket) setMarket(nextMarket)
+              setView(nextView)
+            }}
+          />
+          {chartSymbol && (
+            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+          )}
+        </>
+      )}
 
       {view === 'backtest' && (
         <BacktestView
@@ -1239,7 +1485,13 @@ function App() {
                 : ''}
             </span>
           </div>
-          <NewsFeed news={news} loading={newsLoading} error={newsError} onOpenChart={setChartSymbol} />
+          <NewsFeed
+            news={news}
+            loading={newsLoading}
+            error={newsError}
+            lang={lang}
+            onOpenChart={setChartSymbol}
+          />
           <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
           {chartSymbol && (
             <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />

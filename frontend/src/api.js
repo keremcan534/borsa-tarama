@@ -11,6 +11,36 @@ export async function fetchNews(market) {
   return res.json();
 }
 
+// Haberler market sekmesine göre değil, tek akışta BIST/Global olarak gösterilir;
+// bu yüzden tüm marketlerin dosyaları birlikte yüklenip birleştirilir.
+const NEWS_MARKETS = ["bist100", "sp500", "etf", "commodity"];
+
+export async function fetchAllNews() {
+  // allSettled: bir marketin dosyası eksik/bozuksa akışın tamamı çökmesin
+  const results = await Promise.allSettled(NEWS_MARKETS.map((m) => fetchNews(m)));
+
+  if (results.every((r) => r.status === "rejected")) {
+    throw new Error("Haber verisi yüklenemedi");
+  }
+
+  const seen = new Set();
+  const items = [];
+  let generatedAt = null;
+
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    if (!generatedAt) generatedAt = result.value.generated_at;
+    for (const item of result.value.items || []) {
+      if (seen.has(item.link)) continue; // aynı haber birden fazla markette çıkabilir
+      seen.add(item.link);
+      items.push(item);
+    }
+  }
+
+  items.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
+  return { items, generated_at: generatedAt };
+}
+
 export async function fetchFunds() {
   const url = STATIC_MODE
     ? `${import.meta.env.BASE_URL}data/funds.json`
@@ -29,6 +59,21 @@ export async function fetchBacktest() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/backtest.json`);
   if (!res.ok) throw new Error(`Backtest verisi yüklenemedi (${res.status})`);
   return res.json();
+}
+
+// "Bugün" sayfası tek bir marketin değil, tüm marketlerin günlük özetini gösterir.
+export async function fetchDailyOverview(markets) {
+  const results = await Promise.allSettled(
+    markets.map((m) => fetchScreener(m, { timeframe: "daily" })),
+  );
+
+  const byMarket = {};
+  markets.forEach((market, i) => {
+    if (results[i].status === "fulfilled") byMarket[market] = results[i].value;
+  });
+
+  if (!Object.keys(byMarket).length) throw new Error("Günlük özet yüklenemedi");
+  return byMarket;
 }
 
 export async function fetchScreener(market, { live = false, timeframe = "daily" } = {}) {

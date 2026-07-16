@@ -16,6 +16,27 @@ BENCHMARKS: dict[str, str | None] = {
 }
 
 
+def benchmark_summary(df: pd.DataFrame | None, market: str) -> dict | None:
+    """Endeksin son kapanışı + son mumdaki değişimi ("Bugün" sayfasındaki nabız kartı).
+
+    Endeksi tarama zaten çektiğinden bunun ek maliyeti yok.
+    """
+    symbol = BENCHMARKS.get(market)
+    if df is None or symbol is None or len(df) < 2:
+        return None
+
+    last = float(df["close"].iloc[-1])
+    previous = float(df["close"].iloc[-2])
+    if previous <= 0:
+        return None
+
+    return {
+        "symbol": symbol,
+        "close": round(last, 2),
+        "change": round(last / previous - 1, 4),
+    }
+
+
 def fetch_benchmark(
     market: str,
     fetcher: BaseFetcher,

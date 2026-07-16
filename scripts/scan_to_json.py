@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
-from app.data.benchmarks import fetch_benchmark
+from app.data.benchmarks import benchmark_summary, fetch_benchmark
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
@@ -96,6 +96,8 @@ def main() -> None:
                 "stocks": stocks,
                 "ema_periods": ema_periods,
                 "thresholds": DEFAULT_THRESHOLDS,
+                # "Bugün" sayfasının endeks nabzı kartı için
+                "benchmark": benchmark_summary(benchmark_df, market),
             }
             market_payloads[timeframe] = payload
 

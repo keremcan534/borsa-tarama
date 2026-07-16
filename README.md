@@ -121,6 +121,30 @@ variables → Actions → New repository secret'tan (veya `gh secret set AD` ile
 Elle denemek için (secret'ları ortam değişkeni olarak verip):
 `python scripts/notify_telegram.py frontend/public/data`
 
+## "Bugün" Sayfası
+Uygulamanın açılış sekmesi (`view === 'today'`). Kullanıcıyı doğrudan ham tabloya
+düşürmek yerine günün özetini verir; her blok detay sekmesine kapı açar:
+
+- **Piyasa nabzı** — endekslerin son kapanışı + günlük değişimi. Veri `payload.benchmark`
+  (`app/data/benchmarks.py::benchmark_summary`); endeksi tarama zaten çektiğinden ek
+  maliyeti yok. S&P ve ETF aynı endeksi paylaştığından kartlar sembole göre tekilleştirilir,
+  emtiada endeks olmadığından kart çıkmaz.
+- **Bugünün yeni sinyalleri** — tüm marketlerden `is_new` işaretliler (`app/screener/diff.py`).
+- **Marketlere göre sinyaller**, **öne çıkan fonlar**, **öne çıkan haberler** (4 BIST + 3 global).
+
+`fetchDailyOverview` dört marketin günlük JSON'unu `Promise.allSettled` ile çeker: bir
+market eksikse sayfa yine açılır.
+
+## Haberler: BIST / Global
+Haberler market sekmesiyle değil, **tek akışta iki bölüm** olarak gösterilir. Sebep:
+dört marketin üçü (S&P, ETF, emtia) ABD olduğundan market sekmesi kullanıcıyı kolayca
+ABD akışında bırakıyordu. `fetchAllNews` tüm `news_*.json` dosyalarını birleştirir
+(link'e göre tekilleştirip tarihe göre sıralar), arayüz sembolün `.IS` ekine bakarak
+**BIST Haberleri** / **Global Haberler** diye böler (bölüm başına 50).
+
+Grafik modalı da artık tüm haberler arasından sembole göre filtreler; market state'ine
+bağımlılık kalktı.
+
 ## TEFAS Fonları
 `app/funds/` altında TEFAS YAT fonları için getiri/risk taraması var (RSI/MACD yok;
 1a/3a/6a/1y/YTD getiri, volatilite, Sharpe, max düşüş, 0-100 puan). `scan_to_json.py`

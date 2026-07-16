@@ -945,3 +945,150 @@ th.sorted {
   opacity: 0.75;
   font-weight: 700;
 }
+
+/* --- Haber akışı: BIST / Global bölümleri --- */
+.news-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.news-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.news-group-count {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+/* --- "Bugün" özet sayfası --- */
+.today-section {
+  margin-bottom: 22px;
+}
+
+.today-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.link-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.today-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.today-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 12px 14px;
+  text-align: left;
+}
+
+button.today-card {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.today-card:hover {
+  border-color: var(--accent);
+}
+
+.today-card-label {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.today-card-value {
+  font-size: 22px;
+  color: var(--text-h);
+  line-height: 1.2;
+}
+
+.today-card-sub {
+  font-size: 11px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.today-signal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 8px 12px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.today-signal:hover {
+  border-color: var(--accent);
+}
+
+.today-signal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.today-signal-symbol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.today-signal-sub {
+  font-size: 11px;
+  opacity: 0.6;
+}
