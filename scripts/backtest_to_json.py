@@ -18,8 +18,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.backtest.engine import BENCHMARKS, HORIZONS, run_backtest
+from app.backtest.engine import BENCHMARKS, HORIZONS, load_benchmark, run_backtest
 from app.backtest.metrics import summarize, top_symbols
+from app.backtest.portfolio import simulate_many
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 
@@ -56,7 +57,8 @@ def backtest_market(market: str, timeframe: str, fetcher: YFinanceFetcher) -> di
         symbols = json.load(f)
 
     horizons = HORIZONS[timeframe]
-    trades = run_backtest(market, symbols, fetcher, timeframe)
+    benchmark = load_benchmark(market, fetcher, timeframe)
+    trades = run_backtest(market, symbols, fetcher, timeframe, benchmark)
 
     summary = summarize(trades, horizons)
     summary["scanned"] = len(symbols)
@@ -64,6 +66,10 @@ def backtest_market(market: str, timeframe: str, fetcher: YFinanceFetcher) -> di
     summary["horizons_bars"] = horizons
     # Uzun ufuk en anlamlı örneklem; sembol sıralamasını onun üzerinden yap
     summary["top_symbols"] = top_symbols(trades, str(horizons[-1]))
+    # Portföy simülasyonu orta ufuk üzerinden: kısa ufuk işlem sayısını şişirir,
+    # en uzun ufuk sermayeyi çok uzun süre tek pozisyonda kilitler.
+    # Tek koşu değil dağılım: sonuç hangi sinyalin seçildiğine çok duyarlı.
+    summary["portfolio"] = simulate_many(trades, horizon=horizons[1], benchmark=benchmark)
     return summary
 
 
@@ -101,6 +107,20 @@ def main() -> None:
                     f"           +{horizon} mum: n={stats['count']}, "
                     f"isabet %{stats['win_rate'] * 100:.0f}, "
                     f"ort. getiri %{stats['avg_return'] * 100:+.2f}{beat_str}"
+                )
+            p = summary.get("portfolio")
+            if p:
+                d = p["distribution"]
+                bench = (
+                    f" | endeks al-tut: {p['benchmark_final_value']:.0f}"
+                    f" ({d['beat_benchmark_trials']}/{d['trials']} kosu endeksi yendi)"
+                    if p.get("benchmark_final_value") is not None
+                    else ""
+                )
+                print(
+                    f"           portfoy: {p['initial_capital']:.0f} -> medyan {d['median_final_value']:.0f}"
+                    f" (aralik {d['min_final_value']:.0f}-{d['max_final_value']:.0f},"
+                    f" {p['trades_taken']} islem, {p['signals_skipped']} sinyal atlandi){bench}"
                 )
 
     payload = {

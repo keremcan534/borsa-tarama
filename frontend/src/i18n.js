@@ -81,6 +81,17 @@ const STRINGS = {
     btColSignals: 'Sinyal',
     btColAvg: 'Ort. getiri',
     btColWin: 'Artıda kapanma',
+    btPfTitle: (capital, cur) => `${capital} ${cur} ile bu sinyalleri takip etseydin?`,
+    btPfStrategy: 'Strateji portföyü (medyan)',
+    btPfBenchmark: 'Endeksi al ve tut',
+    btPfRange: (lo, hi) => `Şansa bağlı aralık: ${lo} – ${hi}`,
+    btPfBeat: (won, total) => `${total} koşunun ${won}'i endeksi yendi`,
+    btPfRules: (positions, bars, taken, skipped) =>
+      `Kurallar: en fazla ${positions} eşit ağırlıklı pozisyon, her biri ${bars} mum tutuluyor. ${taken} işlem açıldı, ${skipped} sinyal kapasite dolu olduğu için atlandı.`,
+    btPfDrawdown: 'Portföyün tepeden en büyük düşüşü',
+    btPfWhyRange:
+      'Neden tek bir rakam değil de aralık? Kapasite dolduğunda sinyallerin çoğu atlanır, yani sonuç hangi sinyali seçtiğine bağlıdır. Aynı strateji 25 kez farklı rastgele seçimlerle koşturuldu; tek bir rakam bu şansı gizlerdi. Güvenilir olan yön: koşuların tamamına yakını endeksi yeniyor — büyüklük ise şansa bağlı.',
+    btPfNote: 'Komisyon, slipaj ve vergi yok. Geçmiş veriyle yapılmış varsayımsal bir simülasyondur; yatırım tavsiyesi değildir.',
   },
   en: {
     brand: 'Borsa Tarama',
@@ -160,6 +171,17 @@ const STRINGS = {
     btColSignals: 'Signals',
     btColAvg: 'Avg return',
     btColWin: 'Closed positive',
+    btPfTitle: (capital, cur) => `What if you had followed these signals with ${capital} ${cur}?`,
+    btPfStrategy: 'Strategy portfolio (median)',
+    btPfBenchmark: 'Buy and hold the index',
+    btPfRange: (lo, hi) => `Luck-dependent range: ${lo} – ${hi}`,
+    btPfBeat: (won, total) => `${won} of ${total} runs beat the index`,
+    btPfRules: (positions, bars, taken, skipped) =>
+      `Rules: at most ${positions} equally weighted positions, each held ${bars} bars. ${taken} trades opened, ${skipped} signals skipped because capacity was full.`,
+    btPfDrawdown: 'Portfolio max drawdown from peak',
+    btPfWhyRange:
+      'Why a range instead of one number? When capacity is full most signals are skipped, so the result depends on which ones you pick. The same strategy was run 25 times with different random picks; a single number would hide that luck. What is reliable is the direction: nearly all runs beat the index — the magnitude is luck.',
+    btPfNote: 'No commissions, slippage or taxes. A hypothetical simulation on historical data; not investment advice.',
   },
 }
 

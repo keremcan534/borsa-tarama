@@ -405,6 +405,120 @@ function loadWatchlist() {
 /** Oran gösterimi (isabet vb.): formatPct'in aksine işaret öneki istemez. */
 const formatRate = (v, digits = 0) => (v == null ? '—' : `${(v * 100).toFixed(digits)}%`)
 
+const MONEY_UNIT = { bist100: 'TL', sp500: '$', etf: '$', commodity: '$' }
+// Binlik ayracı dile bağlı: "15.158" TR'de on beş bin, EN'de ondalık okunur.
+const formatMoney = (v, lang) =>
+  v == null ? '—' : Math.round(v).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
+
+/**
+ * İki getiri eğrisini (portföy vs endeks) karşılaştıran SVG grafik.
+ * Noktalar zamana göre yerleştirilir — eğri noktaları eşit aralıklı olmadığından
+ * indekse göre çizmek zaman eksenini çarpıtırdı.
+ */
+function EquityChart({ curve, benchmarkCurve, lang }) {
+  const W = 720
+  const H = 240
+  const PAD = { top: 10, right: 8, bottom: 20, left: 46 }
+
+  const all = [...curve, ...(benchmarkCurve || [])]
+  if (all.length < 2) return null
+
+  const times = all.map((p) => Date.parse(p.date))
+  const minT = Math.min(...times)
+  const maxT = Math.max(...times)
+  const maxV = Math.max(...all.map((p) => p.value))
+  const minV = Math.min(0, ...all.map((p) => p.value))
+  const spanT = maxT - minT || 1
+  const spanV = maxV - minV || 1
+
+  const x = (d) => PAD.left + ((Date.parse(d) - minT) / spanT) * (W - PAD.left - PAD.right)
+  const y = (v) => PAD.top + (1 - (v - minV) / spanV) * (H - PAD.top - PAD.bottom)
+  const path = (pts) => pts.map((p) => `${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
+
+  const ticks = [minV, minV + spanV / 2, maxV]
+  const year = (d) => new Date(d).getFullYear()
+
+  return (
+    <svg className="equity-chart" viewBox={`0 0 ${W} ${H}`} role="img" preserveAspectRatio="none">
+      {ticks.map((v) => (
+        <g key={v}>
+          <line className="eq-grid" x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} />
+          <text className="eq-label" x={PAD.left - 6} y={y(v) + 4} textAnchor="end">
+            {formatMoney(v, lang)}
+          </text>
+        </g>
+      ))}
+      <text className="eq-label" x={PAD.left} y={H - 6}>
+        {year(minT)}
+      </text>
+      <text className="eq-label" x={W - PAD.right} y={H - 6} textAnchor="end">
+        {year(maxT)}
+      </text>
+      {benchmarkCurve?.length > 1 && (
+        <polyline className="eq-line eq-benchmark" points={path(benchmarkCurve)} />
+      )}
+      <polyline className="eq-line eq-strategy" points={path(curve)} />
+    </svg>
+  )
+}
+
+function BacktestPortfolio({ lang, portfolio, market }) {
+  const dist = portfolio.distribution
+  const unit = MONEY_UNIT[market] || ''
+  const beat = dist?.beat_benchmark_trials
+
+  return (
+    <div className="bt-portfolio">
+      <h3>{t(lang, 'btPfTitle', formatMoney(portfolio.initial_capital, lang), unit)}</h3>
+
+      <div className="bt-pf-figures">
+        <div className="bt-pf-figure">
+          <span className="bt-pf-legend eq-strategy-dot" />
+          <span className="bt-pf-label">{t(lang, 'btPfStrategy')}</span>
+          <strong className="bt-pf-value">
+            {formatMoney(dist?.median_final_value ?? portfolio.final_value, lang)} {unit}
+          </strong>
+          {dist && (
+            <span className="bt-pf-sub">
+              {t(lang, 'btPfRange', formatMoney(dist.p10_final_value, lang), formatMoney(dist.p90_final_value, lang))}
+            </span>
+          )}
+        </div>
+
+        {portfolio.benchmark_final_value != null && (
+          <div className="bt-pf-figure">
+            <span className="bt-pf-legend eq-benchmark-dot" />
+            <span className="bt-pf-label">{t(lang, 'btPfBenchmark')}</span>
+            <strong className="bt-pf-value">
+              {formatMoney(portfolio.benchmark_final_value, lang)} {unit}
+            </strong>
+            {beat != null && <span className="bt-pf-sub">{t(lang, 'btPfBeat', beat, dist.trials)}</span>}
+          </div>
+        )}
+      </div>
+
+      <EquityChart curve={portfolio.curve} benchmarkCurve={portfolio.benchmark_curve} lang={lang} />
+
+      <p className="bt-pf-rules">
+        {t(
+          lang,
+          'btPfRules',
+          portfolio.max_positions,
+          portfolio.horizon,
+          portfolio.trades_taken,
+          portfolio.signals_skipped,
+        )}{' '}
+        {t(lang, 'btPfDrawdown')}:{' '}
+        <strong className="pct neg">{formatPct(portfolio.max_drawdown, 1)}</strong>
+      </p>
+
+      {/* Aralığın neden tek rakamdan daha dürüst olduğu: gizlenirse rakam abartılı okunur */}
+      <p className="bt-pf-why">{t(lang, 'btPfWhyRange')}</p>
+      <p className="bt-pf-why">{t(lang, 'btPfNote')}</p>
+    </div>
+  )
+}
+
 /** Tek bir ufkun (örn. "sinyalden 20 mum sonra") strateji/endeks karşılaştırması. */
 function BacktestHorizon({ lang, bars, stats }) {
   const hasBenchmark = stats.beat_benchmark_rate != null
@@ -486,6 +600,10 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
       {error && <div className="error-box">{error}</div>}
 
       {!error && !loading && !summary && <div className="empty-box">{t(lang, 'btEmpty')}</div>}
+
+      {summary?.portfolio && (
+        <BacktestPortfolio lang={lang} portfolio={summary.portfolio} market={market} />
+      )}
 
       {summary && (
         <>

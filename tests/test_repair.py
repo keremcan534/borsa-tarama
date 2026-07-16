@@ -54,6 +54,21 @@ def test_repair_preserves_turnover_so_liquidity_filter_is_unaffected():
     assert np.isclose(repaired["volume"].iloc[0], 11_000_000.0)
 
 
+def test_int64_volume_is_repaired_without_casting_error():
+    # yfinance hacmi int64 döner. Float ölçekle bölmek numpy'da "same_kind" cast
+    # hatası verir; bu hata fetch içinde sembolün sessizce atlanmasına yol açıyordu.
+    closes = [880, 869, 880, 814.9, 74.0, 75.0, 74.5, 76.0]
+    df, split_series = _series(closes, [0, 0, 0, 0, 0, 0, 11.0, 0])
+    df["volume"] = df["volume"].astype("int64")
+    assert df["volume"].dtype == np.int64
+
+    repaired, repairs = repair_split_artifacts(df, split_series)
+
+    assert len(repairs) == 1
+    assert np.isclose(repaired["volume"].iloc[0], 11_000_000.0)
+    assert np.isclose(repaired["close"].iloc[3], 814.9 / 11)
+
+
 def test_real_crash_without_matching_split_is_left_alone():
     # Bilanço sonrası gerçek bir -%45 düşüş: kayıtlı bölünme yok, seri korunmalı.
     closes = [100, 101, 100, 55, 54, 56]

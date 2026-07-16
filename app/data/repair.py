@@ -73,15 +73,14 @@ def repair_split_artifacts(
     if not events:
         return df, []
 
-    df = df.copy()
     # Oranlar ORİJİNAL seriden bir kez hesaplanır: bir onarım yalnızca kendisinden
     # ÖNCEKİ barları ölçeklediğinden sonraki barların birbirine oranını değiştirmez.
     ratios = df["close"] / df["close"].shift(1)
     upper = 1 / (1 - jump_threshold)
-    price_cols = df.columns.get_indexer(PRICE_COLUMNS)
-    volume_col = df.columns.get_indexer(["volume"])
 
-    repairs: list[dict] = []
+    # Önce hangi barların onarılacağı belirlenir, sonra topluca uygulanır: böylece
+    # onarım gerekmeyen serilere (çoğunluk) hiç dokunulmaz.
+    matches: list[tuple[int, float, float]] = []  # (bar, gözlenen oran, ölçek)
     for i in range(1, len(df)):
         ratio = ratios.iloc[i]
         if not np.isfinite(ratio) or ratio <= 0:
@@ -95,15 +94,26 @@ def repair_split_artifacts(
             continue  # oranı/tarihi eşleşen bir bölünme yok: gerçek hareket, dokunma
 
         # ratio < 1: fiyat düştü -> sonrası bölünmüş, öncesini bölünmeye böl
-        scale = 1 / matched if ratio < 1 else matched
+        matches.append((i, factor, 1 / matched if ratio < 1 else matched))
+
+    if not matches:
+        return df, []
+
+    # yfinance hacmi int64 döner; float ölçekle bölmek "same_kind" cast hatası verir.
+    # Onarım yapılacaksa kolonlar önce float'a çevrilir (ciro matematiği zaten float).
+    df = df.astype({column: "float64" for column in PRICE_COLUMNS + ["volume"]})
+    price_cols = df.columns.get_indexer(PRICE_COLUMNS)
+    volume_col = df.columns.get_indexer(["volume"])
+
+    repairs: list[dict] = []
+    for i, factor, scale in matches:
         df.iloc[:i, price_cols] *= scale
         df.iloc[:i, volume_col] /= scale
-
         repairs.append(
             {
                 "date": str(df.index[i].date()),
                 "observed_ratio": round(float(factor), 3),
-                "split": matched,
+                "split": round(1 / scale if scale < 1 else scale, 4),
             }
         )
 

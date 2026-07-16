@@ -73,6 +73,19 @@ class Benchmark:
     def __init__(self, df: pd.DataFrame | None):
         self._df = df if df is not None and not df.empty else None
 
+    def close_at(self, date) -> float | None:
+        """Verilen tarihteki (yoksa ondan önceki son) endeks kapanışı — al-tut eğrisi için."""
+        if self._df is None:
+            return None
+        try:
+            value = self._df["close"].asof(pd.Timestamp(date).tz_localize(self._df.index.tz))
+        except (KeyError, TypeError, ValueError):
+            try:
+                value = self._df["close"].asof(pd.Timestamp(date))
+            except (KeyError, TypeError, ValueError):
+                return None
+        return None if pd.isna(value) else float(value)
+
     def window_return(self, entry_date, exit_date) -> float | None:
         if self._df is None:
             return None
@@ -108,6 +121,7 @@ def evaluate_signal(
     entry_date = df.index[entry_idx]
     returns: dict[str, float] = {}
     benchmark_returns: dict[str, float] = {}
+    exit_dates: dict[str, str] = {}
 
     for h in horizons:
         exit_idx = signal_idx + h
@@ -117,6 +131,8 @@ def evaluate_signal(
         if ret is None:
             continue
         returns[str(h)] = ret
+        # Portföy simülasyonu pozisyonun ne zaman kapandığını bilmek zorunda
+        exit_dates[str(h)] = str(df.index[exit_idx].date())
         if benchmark is not None:
             bench = benchmark.window_return(entry_date, df.index[exit_idx])
             if bench is not None:
@@ -137,6 +153,7 @@ def evaluate_signal(
         "entry_date": str(entry_date.date()),
         "entry_price": round(entry_price, 4),
         "returns": returns,
+        "exit_dates": exit_dates,
         "benchmark_returns": benchmark_returns,
         "max_drawdown": max_dd,
     }
@@ -192,9 +209,15 @@ def run_backtest(
     symbols: list[str],
     fetcher: BaseFetcher,
     timeframe: str = "daily",
+    benchmark: Benchmark | None = None,
 ) -> list[dict]:
-    """Bir marketin tüm sembollerini backtest eder, tüm işlemleri tarih sırasıyla döner."""
-    benchmark = load_benchmark(market, fetcher, timeframe)
+    """Bir marketin tüm sembollerini backtest eder, tüm işlemleri tarih sırasıyla döner.
+
+    `benchmark` verilmezse marketinki yüklenir; çağıran aynı endeksi portföy
+    simülasyonunda da kullanacaksa bir kez yükleyip buraya geçirmelidir.
+    """
+    if benchmark is None:
+        benchmark = load_benchmark(market, fetcher, timeframe)
 
     trades: list[dict] = []
     for symbol in symbols:
