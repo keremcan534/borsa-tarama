@@ -88,6 +88,21 @@ def max_drawdown(series: pd.Series) -> float | None:
     return float(dd.min())
 
 
+def max_daily_move(series: pd.Series) -> float | None:
+    """En büyük tek günlük mutlak fiyat değişimi (oran).
+
+    Fon birim pay fiyatı bir günde %40+ oynamaz; böyle bir sıçrama neredeyse
+    her zaman birim-pay bölünmesi / denominasyon değişimi ya da bozuk fiyat
+    verisidir. Bu, toplam getiriden çok daha güvenilir bir artefakt imzasıdır.
+    """
+    if len(series) < 2:
+        return None
+    changes = series.pct_change().dropna().abs()
+    if changes.empty:
+        return None
+    return float(changes.max())
+
+
 def fund_score(
     return_1y: float | None,
     sharpe: float | None,
@@ -131,6 +146,7 @@ def compute_fund_metrics(prices: pd.Series) -> dict:
 
     return {
         "price": float(prices.iloc[-1]) if len(prices) else None,
+        "max_daily_move": max_daily_move(prices),
         "return_1m": r1m,
         "return_3m": r3m,
         "return_6m": r6m,

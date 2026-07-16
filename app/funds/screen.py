@@ -17,19 +17,29 @@ MAX_FUNDS = 120
 # Geçmiş penceresi (takvim günü) — 1y getiri + vol için
 LOOKBACK_DAYS = 400
 
-# Gerçek dışı getiri tavanları (veri hatası / bölünme tespiti).
-# TR piyasasında yüksek enflasyonla %200-400 yıllık getiri olabilir; bunun
-# çok üstü (10x/yıl) neredeyse kesin bir veri artefaktıdır.
+# --- Veri kalitesi kontrolleri ---
+# Birincil sinyal: tek günlük sıçrama. Bir fonun birim pay fiyatı bir günde
+# %40+ oynamaz; böyle bir hareket birim-pay bölünmesi / denominasyon değişimi
+# veya bozuk fiyat verisidir (gözlem: OSF tek günde %1385, PDG %63).
+MAX_DAILY_MOVE_LIMIT = 0.40
+
+# İkincil emniyet: sıçrama imzası olmasa bile fiziksel olarak anlamsız
+# toplam getiriler (20x/yıl gibi) veri sorununa işaret eder. Eşik bilinçli
+# olarak geniş — TR'de %200-400 yıllık getiri meşru olabilir, hatta serbest
+# fonlarda daha yükseği görülebilir; sadece uç saçmalıkları eliyoruz.
 RETURN_SANITY_CAPS = {
-    "return_1m": 2.0,   # %200/ay
-    "return_3m": 4.0,   # %400/3ay
-    "return_6m": 7.0,   # %700/6ay
-    "return_1y": 10.0,  # %1000/yıl
+    "return_1m": 3.0,   # %300/ay
+    "return_3m": 8.0,   # %800/3ay
+    "return_6m": 15.0,  # %1500/6ay
+    "return_1y": 20.0,  # %2000/yıl
 }
 
 
 def _implausible_returns(metrics: dict) -> bool:
-    """Herhangi bir getiri penceresi mantıklı tavanı aşıyorsa veri şüphelidir."""
+    """Veri artefaktı şüphesi: tek gün sıçraması veya uç toplam getiri."""
+    move = metrics.get("max_daily_move")
+    if move is not None and move > MAX_DAILY_MOVE_LIMIT:
+        return True
     for key, cap in RETURN_SANITY_CAPS.items():
         val = metrics.get(key)
         if val is not None and val > cap:
@@ -128,7 +138,10 @@ def run_fund_screener(
         # Veri kalitesi: birim-pay bölünmesi/denominasyon değişimi veya bozuk
         # fiyat gününden kaynaklanan gerçek dışı getirileri ele (örn. 0.16→14.6).
         if _implausible_returns(metrics):
-            print(f"[FON] {code} atlandı (gerçek dışı getiri: 1y={metrics['return_1y']})")
+            print(
+                f"[FON] {code} atlandı (veri artefaktı şüphesi: "
+                f"tek-gün max={metrics.get('max_daily_move')}, 1y={metrics.get('return_1y')})"
+            )
             continue
 
         results.append(

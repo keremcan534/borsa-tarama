@@ -110,38 +110,63 @@ def test_run_fund_screener_with_fake_df():
     assert results[0]["tefas_url"] == f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={results[0]['symbol']}"
 
 
-def test_implausible_return_fund_excluded():
-    """Birim-pay bölünmesi gibi gerçek dışı getirili fon (0.16→14.6) listeden atılır."""
-    import numpy as np
+def _fund_rows(code, name, prices, end=datetime(2026, 7, 16)):
+    n = len(prices)
+    return [
+        {
+            "date": (end - timedelta(days=n - i)).date(),
+            "kind": "YAT",
+            "fund_code": code,
+            "fund_name": name,
+            "price": p,
+            "portfolio_size": 500_000_000,
+            "investor_count": 1000,
+        }
+        for i, p in enumerate(prices)
+    ]
+
+
+def test_fund_with_single_day_jump_excluded():
+    """Tek günde %40+ sıçrayan fon (denominasyon/bölünme artefaktı) elenir."""
     import pandas as pd
 
     from app.funds.screen import run_fund_screener
 
-    end = datetime(2026, 7, 16)
-    rng = np.random.default_rng(1)
-    rows = []
-    # SPLIT: 0.16'dan 14.6'ya kademeli tırmanan gerçek dışı fon
-    for code, name, start_price, end_price in [
-        ("SPL", "Bölünme Fonu", 0.16, 14.6),
-        ("OKY", "Normal Fon", 10.0, 13.0),  # ~%30/yıl, mantıklı
-    ]:
-        n = 300
-        for i in range(n):
-            d = end - timedelta(days=n - i)
-            price = start_price * ((end_price / start_price) ** (i / (n - 1)))
-            rows.append(
-                {
-                    "date": d.date(),
-                    "kind": "YAT",
-                    "fund_code": code,
-                    "fund_name": name,
-                    "price": price * (1 + float(rng.normal(0, 0.001))),
-                    "portfolio_size": 500_000_000,
-                    "investor_count": 1000,
-                }
-            )
-    df = pd.DataFrame(rows)
+    n = 400
+    # JMP: düzgün seyrederken tek günde 10 katına fırlar (gerçek fon böyle yapmaz)
+    jumpy = [10.0 * (1.001**i) for i in range(n)]
+    jumpy[250:] = [p * 10 for p in jumpy[250:]]
+    smooth = [10.0 * (1.001**i) for i in range(n)]  # ~%49, mantıklı
+
+    df = pd.DataFrame(_fund_rows("JMP", "Sıçrayan Fon", jumpy) + _fund_rows("OKY", "Normal Fon", smooth))
     results = run_fund_screener(df=df, min_portfolio_size=100_000_000, max_funds=50)
     codes = {r["symbol"] for r in results}
-    assert "SPL" not in codes  # gerçek dışı getiri → elenir
+    assert "JMP" not in codes
     assert "OKY" in codes
+
+
+def test_high_return_fund_without_jump_is_kept():
+    """Sıçraması olmayan, düzgün yükselen yüksek getirili fon (RSZ/TLY gibi) ELENMEZ."""
+    import pandas as pd
+
+    from app.funds.screen import run_fund_screener
+
+    n = 400
+    # ~16x ama günlük hareketler küçük (max ~%1) → artefakt değil, gerçek performans
+    high = [0.70 * ((11.84 / 0.70) ** (i / (n - 1))) for i in range(n)]
+    df = pd.DataFrame(_fund_rows("HIG", "Yüksek Getirili Fon", high))
+    results = run_fund_screener(df=df, min_portfolio_size=100_000_000, max_funds=50)
+    assert "HIG" in {r["symbol"] for r in results}
+
+
+def test_absurd_total_return_excluded_even_without_jump():
+    """Sıçrama olmasa da fiziksel olarak anlamsız toplam getiri (88x) elenir."""
+    import pandas as pd
+
+    from app.funds.screen import run_fund_screener
+
+    n = 400
+    absurd = [0.165 * ((14.63 / 0.165) ** (i / (n - 1))) for i in range(n)]  # ~88x
+    df = pd.DataFrame(_fund_rows("ABS", "Saçma Fon", absurd))
+    results = run_fund_screener(df=df, min_portfolio_size=100_000_000, max_funds=50)
+    assert "ABS" not in {r["symbol"] for r in results}
