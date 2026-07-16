@@ -185,7 +185,9 @@ const STRINGS = {
     btPfStrategy: 'Strateji portföyü (medyan)',
     btPfBenchmark: 'Endeksi al ve tut',
     btPfRange: (lo, hi) => `Şansa bağlı aralık: ${lo} – ${hi}`,
-    btPfBeat: (won, total) => `${total} koşunun ${won}'i endeksi yendi`,
+    // "X'i/ı/si/ü" eki sayının OKUNUŞUNA göre değişir (0'ı, 2'si, 3'ü, 25'i);
+    // şablonla doğrusunu üretmek mümkün değil, bu yüzden ek gerektirmeyen kalıp.
+    btPfBeat: (won, total) => `${won}/${total} koşu endeksi yendi`,
     btPfRules: (positions, bars, taken, skipped) =>
       `Kurallar: en fazla ${positions} eşit ağırlıklı pozisyon, her biri ${bars} mum tutuluyor. ${taken} işlem açıldı, ${skipped} sinyal kapasite dolu olduğu için atlandı.`,
     btPfDrawdown: 'Portföyün tepeden en büyük düşüşü',
@@ -362,7 +364,7 @@ const STRINGS = {
     btPfStrategy: 'Strategy portfolio (median)',
     btPfBenchmark: 'Buy and hold the index',
     btPfRange: (lo, hi) => `Luck-dependent range: ${lo} – ${hi}`,
-    btPfBeat: (won, total) => `${won} of ${total} runs beat the index`,
+    btPfBeat: (won, total) => `${won}/${total} runs beat the index`,
     btPfRules: (positions, bars, taken, skipped) =>
       `Rules: at most ${positions} equally weighted positions, each held ${bars} bars. ${taken} trades opened, ${skipped} signals skipped because capacity was full.`,
     btPfDrawdown: 'Portfolio max drawdown from peak',
