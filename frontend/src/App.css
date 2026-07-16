@@ -914,3 +914,34 @@ th.sorted {
   opacity: 0.8;
   line-height: 1.5;
 }
+
+/* --- Sinyallerin sektör dağılımı --- */
+.sector-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.sector-title {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.sector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sector-chip {
+  font-weight: 500;
+  cursor: help;
+}
+
+.sector-chip b {
+  margin-left: 6px;
+  opacity: 0.75;
+  font-weight: 700;
+}

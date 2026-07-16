@@ -46,6 +46,24 @@ const STRINGS = {
     colMcap: 'Piyasa Değeri',
     colFund: 'Fon',
     colSize: 'Büyüklük',
+    sectorTitle: 'Sinyallerin sektör dağılımı',
+    sectorHint:
+      'Sinyaller tek bir sektörde yoğunlaşıyorsa liste göründüğü kadar çeşitli değildir; hepsi aynı anda düşebilir.',
+    sectorUnknown: 'Diğer',
+    // yfinance sektör adlarını İngilizce döner; TR arayüz için karşılıkları
+    sectorLabels: {
+      Industrials: 'Sanayi',
+      Technology: 'Teknoloji',
+      'Financial Services': 'Finans',
+      'Consumer Cyclical': 'Tüketim (Döngüsel)',
+      Healthcare: 'Sağlık',
+      'Consumer Defensive': 'Tüketim (Temel)',
+      Utilities: 'Enerji/Altyapı',
+      'Basic Materials': 'Temel Malzeme',
+      'Real Estate': 'Gayrimenkul',
+      'Communication Services': 'İletişim',
+      Energy: 'Enerji',
+    },
     howTitle: 'Bu liste nasıl oluşuyor? Ne kadar süre geçerli?',
     howLead1: 'Nasıl oluşuyor?',
     howBody1:
@@ -198,6 +216,11 @@ const STRINGS = {
     colMcap: 'Market cap',
     colFund: 'Fund',
     colSize: 'AUM',
+    sectorTitle: 'Sector mix of the signals',
+    sectorHint:
+      'If the signals cluster in one sector, the list is less diversified than it looks — they can all fall together.',
+    sectorUnknown: 'Other',
+    sectorLabels: {}, // yfinance zaten İngilizce döner
     howTitle: 'How is this list built? How long is it valid?',
     howLead1: 'How is it built?',
     howBody1:

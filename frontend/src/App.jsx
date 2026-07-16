@@ -330,6 +330,43 @@ function ChartModal({ symbol, news, onClose }) {
   )
 }
 
+/**
+ * Listedeki sinyallerin sektör dağılımı. Filtre/arama sonucuna göre canlı hesaplanır.
+ * Amacı süs değil: sinyaller tek sektörde toplanmışsa liste göründüğü kadar çeşitli
+ * değildir. ETF/emtiada sektör kavramı olmadığından orada hiç render edilmez.
+ */
+function SectorBreakdown({ rows, lang }) {
+  const counts = useMemo(() => {
+    const map = new Map()
+    for (const r of rows) {
+      if (!r.sector) continue
+      map.set(r.sector, (map.get(r.sector) || 0) + 1)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [rows])
+
+  if (!counts.length) return null
+
+  const labels = t(lang, 'sectorLabels')
+  const total = counts.reduce((sum, [, n]) => sum + n, 0)
+
+  return (
+    <div className="sector-row">
+      <span className="sector-title">{t(lang, 'sectorTitle')}</span>
+      <div className="sector-chips">
+        {counts.map(([sector, n]) => (
+          <span key={sector} className="chip sector-chip" title={t(lang, 'sectorHint')}>
+            {labels[sector] || sector}
+            <b>
+              {n} · {Math.round((n / total) * 100)}%
+            </b>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
   const slider = (label, key, value) => (
     <label className="slider-row">
@@ -1312,6 +1349,8 @@ function App() {
           <p className="muted">{t(lang, 'glossFooter')}</p>
         </div>
       </details>
+
+      {!error && rows.length > 0 && <SectorBreakdown rows={rows} lang={lang} />}
 
       {!error && data && (
         <div className="search-row">

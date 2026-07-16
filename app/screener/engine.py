@@ -1,6 +1,7 @@
 import pandas as pd
 
 from app.data.fetchers.base import BaseFetcher
+from app.data.sectors import sector_of
 from app.indicators.ema import calculate_multi_ema
 from app.indicators.macd import calculate_macd
 from app.indicators.rsi import calculate_rsi
@@ -94,6 +95,8 @@ def analyze_symbol(
         "symbol": symbol,
         "close": round(float(last_row["close"]), 2),
         "market_cap": fetcher.fetch_market_cap(symbol),
+        # Statik haritadan okunur, ek istek yok (ETF/emtiada sektör kavramı yok -> None)
+        "sector": sector_of(symbol),
     }
     for p in ema_periods:
         result[f"ema_{p}"] = round(float(last_row[f"ema_{p}"]), 2)

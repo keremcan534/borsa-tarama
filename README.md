@@ -194,6 +194,19 @@ her şey yükselir. Örnek (2026-07-16 taraması): TRMET filtreyi geçiyor ama e
 gerisinde** — bu kolon olmadan görünmezdi. Endeks tanımları `app/data/benchmarks.py`'de;
 backtest ve tarama aynı endeksi kullanır ki iki yer farklı şeyi ölçmesin.
 
+### Sektör Dağılımı
+Tarama tablosunun üstünde sinyallerin sektör dağılımı chip'lerle gösterilir (filtreye
+göre canlı güncellenir). Amacı süs değil: sinyaller tek sektörde yoğunlaşmışsa liste
+göründüğü kadar çeşitli değildir, hepsi birlikte düşebilir.
+
+Sektör verisi **statik**: `app/data/sectors.json` (`scripts/build_sectors.py` ile üretilir,
+repoya commit'lenir), `app/data/sectors.py` okur. Neden statik: sektör yalnızca yfinance'in
+`.info` çağrısından geliyor (~0,5 sn/sembol → 600 sembolde ~5 dk + rate-limit riski), oysa
+bir şirketin sektörü neredeyse hiç değişmez. Tarama haritayı okur, **hiç ek istek atmaz**.
+Kapsam: BIST 100 100/100, S&P 500 502/503; ETF ve emtiada sektör kavramı olmadığından
+o marketlerde dağılım hiç gösterilmez. Sembol listeleri endeks revizyonuyla değişince
+`build_sectors.py` yeniden çalıştırılmalı.
+
 ## Veri Kalitesi: Bölünme (Split) Onarımı
 `app/data/repair.py`, Yahoo'nun uygulamadığı bölünmeleri düzeltir. Gerçek örnek:
 CCOLA.IS'in 11:1 bölünmesi Yahoo'da **2024-08-13** kayıtlı ama fiyat serisi **2024-08-01**'de
