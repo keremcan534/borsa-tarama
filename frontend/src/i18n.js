@@ -46,6 +46,66 @@ const STRINGS = {
     colMcap: 'Piyasa Değeri',
     colFund: 'Fon',
     colSize: 'Büyüklük',
+    howTitle: 'Bu liste nasıl oluşuyor? Ne kadar süre geçerli?',
+    howLead1: 'Nasıl oluşuyor?',
+    howBody1:
+      "Seçtiğin kategorideki tüm enstrümanlar (BIST 100'de 100 hisse, S&P 500'de ~503 hisse, ETF'ler, emtia/kripto) her iş günü piyasa kapanışından sonra otomatik taranır. Aşağıdaki kriterlerin hepsini birden sağlayanlar listeye girer, kalanlar elenir:",
+    howCriteria: [
+      'Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi',
+      'MACD > 0 → momentum pozitif',
+      'RSI < 70, Stokastik %K < 80, Stokastik RSI < 80 → henüz aşırı alım bölgesinde değil',
+      'Ortalama günlük işlem hacmi (ciro) yeterli → düşük likiditeli hisseler elenir',
+    ],
+    howBody2:
+      'Eşikleri "Filtre Ayarları" panelinden kendine göre değiştirebilirsin — liste anında güncellenir, varsayılanlara tek tıkla dönebilirsin.',
+    howLead3: 'Zaman dilimleri:',
+    howBody3:
+      'Aynı kriterler seçtiğin zaman diliminin mumlarıyla hesaplanır. Günlük sinyaller günler–haftalar, Haftalık sinyaller haftalar–aylar, Aylık sinyaller aylar ve ötesi ölçeğinde anlamlıdır. Uzun zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır. Aylık görünümde EMA200 yerine 9/21/50 kullanılır (çoğu hissede 17 yıllık veri bulunmadığından). Haftalık ve aylık sinyaller yalnızca kapanmış mumlara dayanır: içinde bulunulan haftanın/ayın tamamlanmamış mumu hesaba katılmaz.',
+    howLead4: 'Ne kadar geçerli?',
+    howBody4:
+      'Bunlar kapanış verisine dayalı momentum sinyalleridir; kalıcı bir "al ve unut" analizi değildir. Liste her iş günü iki kez (BIST ve ABD kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en sağlıklısıdır.',
+    howLead5: 'Puan (0-100):',
+    howBody5:
+      "Tüm göstergeleri harmanlayan teknik güç puanı — trend hizası (fiyatın EMA'lara göre konumu, 40 puan), MACD momentumu (25), RSI sağlığı (20) ve stokastik alanı (15). Yüksek puan daha güçlü teknik görünüm demektir; kesinlik değil, göreli bir karşılaştırma aracıdır. Sütun başlıklarına tıklayarak sıralayabilir, arama kutusuyla hisse bulabilirsin.",
+    howLead6: 'Göreli Güç:',
+    howBody6:
+      'Hissenin son dönem getirisinden endeksin aynı dönemdeki getirisi çıkarılır. Artı değer hissenin endeksi geçtiğini, eksi değer yükselse bile piyasanın gerisinde kaldığını gösterir — yükselen bir piyasada her şey yükseldiği için bu ayrım önemlidir.',
+    howBody7: 'Hisse koduna tıklayarak grafiği sayfadan ayrılmadan açabilirsin.',
+    glossTitle: '📖 Göstergeler ne anlama geliyor?',
+    glossEma: 'EMA (Üstel Hareketli Ortalama):',
+    glossEmaBody:
+      "Fiyatın belirli bir süredeki ortalaması; son günlere daha çok ağırlık verir. Kısa periyot (9, 21) yakın trendi, uzun periyot (50, 200) ana trendi gösterir. Fiyatın EMA'ların üstünde olması \"yukarı trend\" işaretidir.",
+    glossRsi: 'RSI (Göreceli Güç Endeksi, 0-100):',
+    glossRsiBody:
+      'Fiyatın son 14 periyotta ne kadar hızlı yükselip düştüğünü ölçer. 70 üstü genelde "aşırı alım" (fazla ısınmış, düzeltme gelebilir), 30 altı "aşırı satım" olarak yorumlanır. Biz 70 altını arıyoruz — yükselen ama henüz aşırı ısınmamış.',
+    glossMacd: 'MACD:',
+    glossMacdBody:
+      "İki hareketli ortalamanın farkı; momentumun yönünü ve gücünü gösterir. MACD'nin sıfırın üstünde olması kısa vadeli momentumun pozitif (yukarı) olduğunu söyler.",
+    glossStoch: 'Stokastik %K ve Stokastik RSI:',
+    glossStochBody:
+      "Fiyatın (veya RSI'ın) son dönemdeki en yüksek–en düşük aralığında nerede durduğunu 0-100 arası ölçer. 80 üstü aşırı alım bölgesidir. İkisini de 80 altında tutarak \"yükselişte ama tepe yapmamış\" enstrümanları seçiyoruz.",
+    glossScore: 'Puan (0-100):',
+    glossScoreBody:
+      'Yukarıdaki göstergelerin hepsini tek sayıya indiren özet; ne kadar yüksekse teknik görünüm o kadar güçlü. Karşılaştırma kolaylığı içindir, kesin bir tahmin değildir.',
+    glossRs: 'Göreli Güç:',
+    glossRsBody:
+      'Hisse endeksten ne kadar iyi/kötü? Getiriden endeks getirisi çıkarılır. Momentum filtresini geçen bir hisse bile endeksin gerisinde olabilir; bu kolon onu görünür kılar.',
+    glossFooter:
+      'Bu göstergeler geçmiş fiyat hareketine dayanır; geleceği garanti etmez. Teknik analiz olasılık üzerine kuruludur, kesinlik üzerine değil.',
+    filterTitle: 'Filtre Ayarları',
+    filterCustom: 'özel',
+    filterOverbought: 'Aşırı alım eşikleri',
+    filterTrend: 'Trend şartları',
+    filterReset: 'Varsayılana dön',
+    filterStochK: 'Stokastik %K',
+    filterStochRsiK: 'Stokastik RSI %K',
+    filterPriceAbove: (p) => `Fiyat > EMA${p}`,
+    sortHint: 'Sıralamak için tıkla',
+    watchAdd: 'Favorilere ekle',
+    watchRemove: 'Favorilerden çıkar',
+    colRs: 'Göreli Güç',
+    colRsTitle:
+      'Hissenin son dönemdeki getirisi eksi endeksin aynı dönemdeki getirisi. Artı: hisse endeksi geçiyor. Eksi: yükseliyor ama piyasanın gerisinde.',
     langToggle: 'EN',
     tabBacktest: 'Strateji',
     btLoading: 'Backtest sonuçları yükleniyor...',
@@ -138,6 +198,66 @@ const STRINGS = {
     colMcap: 'Market cap',
     colFund: 'Fund',
     colSize: 'AUM',
+    howTitle: 'How is this list built? How long is it valid?',
+    howLead1: 'How is it built?',
+    howBody1:
+      'Every instrument in the selected category (100 stocks in BIST 100, ~503 in the S&P 500, ETFs, commodities/crypto) is scanned automatically after each trading day closes. Only instruments meeting all of the criteria below make the list:',
+    howCriteria: [
+      'Price above the 9, 21, 50 and 200 period exponential moving averages (EMA) → strong uptrend',
+      'MACD > 0 → positive momentum',
+      'RSI < 70, Stochastic %K < 80, Stochastic RSI < 80 → not overbought yet',
+      'Sufficient average daily turnover → illiquid stocks are filtered out',
+    ],
+    howBody2:
+      'You can change the thresholds in the "Filter settings" panel — the list updates instantly, and one click restores the defaults.',
+    howLead3: 'Timeframes:',
+    howBody3:
+      'The same criteria are computed on the candles of the selected timeframe. Daily signals matter on a days–weeks scale, Weekly on weeks–months, Monthly on months and beyond. Naturally fewer stocks pass on longer timeframes. The monthly view uses 9/21/50 instead of EMA200 (most stocks lack 17 years of data). Weekly and monthly signals rely only on closed candles: the current unfinished week/month is excluded.',
+    howLead4: 'How long is it valid?',
+    howBody4:
+      'These are momentum signals based on closing data, not a lasting "buy and forget" analysis. The list refreshes automatically twice each business day (after the BIST and US closes) — following the current list is the sensible approach.',
+    howLead5: 'Score (0-100):',
+    howBody5:
+      'A technical strength score blending every indicator — trend alignment (price versus the EMAs, 40 points), MACD momentum (25), RSI health (20) and stochastic room (15). A higher score means a stronger technical picture; it is a relative comparison tool, not a certainty. Click column headers to sort, or use the search box to find a ticker.',
+    howLead6: 'Relative strength:',
+    howBody6:
+      "The index return over the same window is subtracted from the stock's return. A positive value means the stock is beating the index; a negative one means it is rising but lagging the market — an important distinction, since in a rising market everything goes up.",
+    howBody7: 'Click a ticker to open its chart without leaving the page.',
+    glossTitle: '📖 What do the indicators mean?',
+    glossEma: 'EMA (Exponential Moving Average):',
+    glossEmaBody:
+      'The average price over a period, weighting recent days more heavily. Short periods (9, 21) show the near-term trend, long ones (50, 200) the main trend. Price above the EMAs signals an uptrend.',
+    glossRsi: 'RSI (Relative Strength Index, 0-100):',
+    glossRsiBody:
+      'Measures how fast price has risen or fallen over the last 14 periods. Above 70 is usually read as "overbought" (overheated, a pullback may follow), below 30 as "oversold". We look for below 70 — rising but not yet overheated.',
+    glossMacd: 'MACD:',
+    glossMacdBody:
+      'The difference between two moving averages; it shows the direction and strength of momentum. MACD above zero means short-term momentum is positive.',
+    glossStoch: 'Stochastic %K and Stochastic RSI:',
+    glossStochBody:
+      'Measures where price (or RSI) sits within its recent high–low range, on a 0-100 scale. Above 80 is the overbought zone. Keeping both below 80 selects instruments that are rising but have not topped out.',
+    glossScore: 'Score (0-100):',
+    glossScoreBody:
+      'A summary reducing all the indicators above to a single number; the higher it is, the stronger the technical picture. It exists for easy comparison, not as a precise forecast.',
+    glossRs: 'Relative strength:',
+    glossRsBody:
+      "How much better or worse than the index? The index return is subtracted from the stock's. Even a stock passing the momentum filter can lag the index; this column makes that visible.",
+    glossFooter:
+      'These indicators are based on past price action and guarantee nothing about the future. Technical analysis is built on probability, not certainty.',
+    filterTitle: 'Filter settings',
+    filterCustom: 'custom',
+    filterOverbought: 'Overbought thresholds',
+    filterTrend: 'Trend conditions',
+    filterReset: 'Reset to default',
+    filterStochK: 'Stochastic %K',
+    filterStochRsiK: 'Stochastic RSI %K',
+    filterPriceAbove: (p) => `Price > EMA${p}`,
+    sortHint: 'Click to sort',
+    watchAdd: 'Add to watchlist',
+    watchRemove: 'Remove from watchlist',
+    colRs: 'Rel. strength',
+    colRsTitle:
+      "The stock's recent return minus the index return over the same window. Positive: it is beating the index. Negative: rising, but lagging the market.",
     langToggle: 'TR',
     tabBacktest: 'Strategy',
     btLoading: 'Loading backtest results...',

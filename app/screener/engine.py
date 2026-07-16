@@ -6,6 +6,7 @@ from app.indicators.macd import calculate_macd
 from app.indicators.rsi import calculate_rsi
 from app.indicators.stochastic import calculate_stochastic, calculate_stochastic_rsi
 from app.screener.filters import DEFAULT_EMA_PERIODS, passes_filters, passes_liquidity_filter
+from app.screener.relative_strength import relative_strength
 from app.screener.timeframes import TIMEFRAMES
 
 
@@ -66,11 +67,14 @@ def analyze_symbol(
     fetcher: BaseFetcher,
     timeframe: str = "daily",
     min_daily_turnover: float | None = None,
+    benchmark_close: pd.Series | None = None,
 ) -> dict | None:
     """
     Tek bir sembolün gösterge değerlerini hesaplar; AL/SAT filtresi UYGULAMAZ.
     Yeterli geçmişi veya likiditesi olmayan semboller için None döner.
     Dönen dict, arayüzde kullanıcı tanımlı eşiklerle yeniden filtrelenebilir.
+
+    `benchmark_close` verilirse göreli güç (`relative_strength`) de hesaplanır.
     """
     config = TIMEFRAMES[timeframe]
     df = fetcher.fetch_ohlcv(symbol, period=config["period"], interval=config["interval"])
@@ -101,6 +105,9 @@ def analyze_symbol(
             "stoch_rsi_k": round(float(last_row["stoch_rsi_k"]), 2),
         }
     )
+
+    rs = relative_strength(df["close"], benchmark_close, config["rs_bars"])
+    result["relative_strength"] = None if rs is None else round(rs, 4)
     return result
 
 
@@ -126,12 +133,13 @@ def run_analysis(
     fetcher: BaseFetcher,
     timeframe: str = "daily",
     min_daily_turnover: float | None = None,
+    benchmark_close: pd.Series | None = None,
 ) -> list[dict]:
     """Tüm sembollerin gösterge değerlerini (filtresiz) döner, piyasa değerine göre sıralı."""
     stocks = []
     for symbol in symbols:
         try:
-            stock = analyze_symbol(symbol, fetcher, timeframe, min_daily_turnover)
+            stock = analyze_symbol(symbol, fetcher, timeframe, min_daily_turnover, benchmark_close)
             if stock:
                 stocks.append(stock)
         except Exception as e:

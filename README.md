@@ -162,6 +162,38 @@ kazanan. Yani bu strateji "endeksi döven bir sistem" değil, endeksi takip eden
 sağ kuyruğa bağlı bir filtredir. Üstelik survivorship bias bu farkı bile iyimser gösterir.
 Arayüzde endeks getirisi bilerek her rakamın yanında durur.
 
+### Portföy Simülasyonu: "1.000 TL ile takip etseydin?"
+`app/backtest/portfolio.py` sinyalleri takip eden sanal bir portföy kurar: en fazla 10
+eşit ağırlıklı pozisyon, her biri 20 mum tutulur, kapasite doluysa sinyal **atlanır**
+(gerçek bir yatırımcının parası sınırsız değildir). Sonuç Strateji sekmesinde getiri
+eğrisiyle gösterilir.
+
+**Tek rakam değil, aralık.** Sinyallerin ~%90'ı kapasite dolu olduğu için atlanıyor,
+dolayısıyla sonuç hangi sinyalin seçildiğine çok duyarlı: tek koşular **7.285 ile 24.927**
+arasında değişti. Bu yüzden `simulate_many` 25 farklı rastgele seçimle koşar ve medyan +
+aralık raporlanır. BIST 100 günlük (2022-05 → 2026-07):
+
+| | Sonuç |
+|---|---|
+| Strateji portföyü (medyan) | **15.158 TL** (p10–p90: 10.778 – 20.811) |
+| Endeksi al-tut | **5.737 TL** |
+| Endeksi yenen koşu | **25/25** |
+
+Yani sinyal başına endeksi yenme oranı yazı-tura olsa da, ortalama fark pozitif olduğu
+için bileşiklendiğinde portföy endeksi geçiyor — getiri birkaç büyük kazanana bağlı.
+**Güvenilir olan yön, büyüklük değil**: aralık üç kattan fazla. Survivorship bias burada
+da geçerli.
+
+### Göreli Güç (Relative Strength)
+`app/screener/relative_strength.py`: hissenin son `rs_bars` mumdaki getirisinden endeksin
+aynı dönemdeki getirisi çıkarılır (`TIMEFRAMES[tf]["rs_bars"]`; günlük 60 mum ≈ 3 ay).
+Tarama tablosunda **Göreli Güç** kolonu olarak görünür.
+
+Neden gerekli: momentum filtresi "yükselen hisse" bulur, ama yükselen bir piyasada zaten
+her şey yükselir. Örnek (2026-07-16 taraması): TRMET filtreyi geçiyor ama endeksin **%11,4
+gerisinde** — bu kolon olmadan görünmezdi. Endeks tanımları `app/data/benchmarks.py`'de;
+backtest ve tarama aynı endeksi kullanır ki iki yer farklı şeyi ölçmesin.
+
 ## Veri Kalitesi: Bölünme (Split) Onarımı
 `app/data/repair.py`, Yahoo'nun uygulamadığı bölünmeleri düzeltir. Gerçek örnek:
 CCOLA.IS'in 11:1 bölünmesi Yahoo'da **2024-08-13** kayıtlı ama fiyat serisi **2024-08-01**'de
@@ -174,6 +206,11 @@ Onarım **yalnızca** üçü birden sağlanınca yapılır: (1) tek mumda büyü
 Bu şart bilerek dardır — sadece eşiğe bakan bir onarım, ABD hisselerindeki gerçek sert
 düşüşleri ve örneğin BIST'in **6 Şubat 2023 depremi sonrası kapanıp açılışındaki %21,7'lik
 gerçek hareketi** silerdi. Bölünme bilgisi fetch ile aynı istekte geldiğinden ek maliyeti yok.
+
+Not: yfinance hacmi `int64` döndürür; float ölçekle bölmek numpy'da "same_kind" cast
+hatası verir ve bu hata sembolün sessizce atlanmasına yol açıyordu (BIST 100'de 98/100).
+Bu yüzden onarım önce eşleşmeleri toplar, yalnızca gerçekten onarım varsa kolonları
+float'a çevirir. `tests/test_repair.py` bu durumu int64 hacimle kilitler.
 
 ## Büyüme / Ürünleşme Fikirleri (öncelik sırası netleşecek)
 - Google Play yayını (aşağıdaki yol haritası; Play hesabı mevcut)

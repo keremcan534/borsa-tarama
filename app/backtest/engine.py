@@ -25,10 +25,13 @@ Bilinçli kabuller / sınırlar:
 
 import pandas as pd
 
+from app.data.benchmarks import BENCHMARKS, fetch_benchmark
 from app.data.fetchers.base import BaseFetcher
 from app.screener.engine import compute_indicators, drop_in_progress_bar
 from app.screener.filters import passes_filters
 from app.screener.timeframes import TIMEFRAMES
+
+__all__ = ["BENCHMARKS", "HORIZONS", "Benchmark", "backtest_symbol", "load_benchmark", "run_backtest"]
 
 # Backtest, canlı taramadan daha uzun geçmiş ister (canlı tarama yalnızca son mumu
 # kullandığı için "1y" yetiyordu; burada her mumda sinyal aranıyor).
@@ -38,15 +41,9 @@ BACKTEST_PERIODS = {"daily": "5y", "weekly": "10y", "monthly": "max", "quarterly
 # günlükte 5/20/60 mum ~ 1 hafta / 1 ay / 3 ay.
 HORIZONS = {"daily": [5, 20, 60], "weekly": [4, 13, 26], "monthly": [3, 6, 12], "quarterly": [2, 4, 8]}
 
-# Sinyalin endeksi yenip yenmediğini ölçmek için karşılaştırma enstrümanı.
-# Boğa piyasasında rastgele bir alım da yüksek isabet verir; asıl soru
-# "endeksi al-tut'tan iyi mi?" olduğundan bu karşılaştırma şart.
-BENCHMARKS = {
-    "bist100": "XU100.IS",
-    "sp500": "^GSPC",
-    "etf": "^GSPC",
-    "commodity": None,  # emtia sepeti için anlamlı tek bir endeks yok
-}
+# Karşılaştırma endeksleri `app/data/benchmarks.py`'de: taramanın göreli güç kolonu
+# da aynı endeksi kullanır. Boğa piyasasında rastgele bir alım da yüksek isabet verir;
+# asıl soru "endeksi al-tut'tan iyi mi?" olduğundan bu karşılaştırma şart.
 
 
 def signal_mask(df: pd.DataFrame, ema_periods: list[int]) -> pd.Series:
@@ -189,19 +186,13 @@ def backtest_symbol(
 
 def load_benchmark(market: str, fetcher: BaseFetcher, timeframe: str = "daily") -> Benchmark:
     """Marketin karşılaştırma endeksini çeker; yoksa/çekilemezse boş Benchmark döner."""
-    symbol = BENCHMARKS.get(market)
-    if not symbol:
-        return Benchmark(None)
-    try:
-        df = fetcher.fetch_ohlcv(
-            symbol,
-            period=BACKTEST_PERIODS[timeframe],
-            interval=TIMEFRAMES[timeframe]["interval"],
-        )
-        return Benchmark(df)
-    except Exception as e:
-        print(f"[BACKTEST] {market} için endeks ({symbol}) çekilemedi: {e}")
-        return Benchmark(None)
+    df = fetch_benchmark(
+        market,
+        fetcher,
+        period=BACKTEST_PERIODS[timeframe],
+        interval=TIMEFRAMES[timeframe]["interval"],
+    )
+    return Benchmark(df)
 
 
 def run_backtest(

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
 from app.core.scheduler import MARKET_FILES, SYMBOLS_DIR
+from app.data.benchmarks import fetch_benchmark
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
@@ -66,8 +67,13 @@ def main() -> None:
         market_payloads: dict[str, dict] = {}
 
         for timeframe in TIMEFRAMES:
-            ema_periods = TIMEFRAMES[timeframe]["ema_periods"]
-            stocks = run_analysis(symbols, fetcher, timeframe, min_turnover)
+            config = TIMEFRAMES[timeframe]
+            ema_periods = config["ema_periods"]
+            # Göreli güç için endeks: market/timeframe başına tek istek, tüm sembollerde paylaşılır
+            benchmark_df = fetch_benchmark(market, fetcher, config["period"], config["interval"])
+            benchmark_close = benchmark_df["close"] if benchmark_df is not None else None
+
+            stocks = run_analysis(symbols, fetcher, timeframe, min_turnover, benchmark_close)
             results = [s for s in stocks if passes_filters(s, ema_periods)]
 
             previous = fetch_previous_symbols(market, timeframe)

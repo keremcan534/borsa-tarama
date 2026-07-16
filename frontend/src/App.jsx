@@ -149,11 +149,14 @@ function TickerLogo({ symbol }) {
   )
 }
 
+// i18nKey verilen kolonun başlığı sözlükten gelir; verilmeyenler (RSI, MACD gibi
+// evrensel gösterge adları) her iki dilde de aynı kaldığından label yeterli.
 const COLUMNS = [
-  { key: 'symbol', label: 'Sembol', align: 'left' },
-  { key: 'score', label: 'Puan' },
-  { key: 'close', label: 'Kapanış' },
-  { key: 'market_cap', label: 'Piyasa Değeri' },
+  { key: 'symbol', label: 'Sembol', i18nKey: 'colSymbol', align: 'left' },
+  { key: 'score', label: 'Puan', i18nKey: 'colScore' },
+  { key: 'close', label: 'Kapanış', i18nKey: 'colClose' },
+  { key: 'market_cap', label: 'Piyasa Değeri', i18nKey: 'colMcap' },
+  { key: 'relative_strength', label: 'Göreli Güç', i18nKey: 'colRs' },
   { key: 'rsi', label: 'RSI' },
   { key: 'macd_line', label: 'MACD' },
   { key: 'stoch_k', label: 'Stoch %K' },
@@ -327,7 +330,7 @@ function ChartModal({ symbol, news, onClose }) {
   )
 }
 
-function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
+function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
   const slider = (label, key, value) => (
     <label className="slider-row">
       <span className="slider-label">
@@ -347,18 +350,18 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
   return (
     <details className="filter-panel">
       <summary>
-        ⚙️ Filtre Ayarları
-        {isCustom && <span className="badge custom">özel</span>}
+        ⚙️ {t(lang, 'filterTitle')}
+        {isCustom && <span className="badge custom">{t(lang, 'filterCustom')}</span>}
       </summary>
       <div className="filter-grid">
         <div className="filter-group">
-          <div className="filter-title">Aşırı alım eşikleri</div>
+          <div className="filter-title">{t(lang, 'filterOverbought')}</div>
           {slider('RSI', 'rsi', filters.rsi)}
-          {slider('Stokastik %K', 'stochK', filters.stochK)}
-          {slider('Stokastik RSI %K', 'stochRsiK', filters.stochRsiK)}
+          {slider(t(lang, 'filterStochK'), 'stochK', filters.stochK)}
+          {slider(t(lang, 'filterStochRsiK'), 'stochRsiK', filters.stochRsiK)}
         </div>
         <div className="filter-group">
-          <div className="filter-title">Trend şartları</div>
+          <div className="filter-title">{t(lang, 'filterTrend')}</div>
           <div className="check-row">
             {[9, 21, 50, 200].map((p) => (
               <label key={p} className={`check ${availableEmas.includes(p) ? '' : 'disabled'}`}>
@@ -370,7 +373,7 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
                     setFilters({ ...filters, emas: { ...filters.emas, [p]: e.target.checked } })
                   }
                 />
-                Fiyat &gt; EMA{p}
+                {t(lang, 'filterPriceAbove', p)}
               </label>
             ))}
           </div>
@@ -386,7 +389,7 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom }) {
             className="btn small"
             onClick={() => setFilters({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })}
           >
-            Varsayılana dön
+            {t(lang, 'filterReset')}
           </button>
         </div>
       </div>
@@ -1259,90 +1262,54 @@ function App() {
           setFilters={setFilters}
           availableEmas={availableEmas}
           isCustom={isCustom}
+          lang={lang}
         />
       )}
 
       <details className="info-panel">
-        <summary>Bu liste nasıl oluşuyor? Ne kadar süre geçerli?</summary>
+        <summary>{t(lang, 'howTitle')}</summary>
         <div className="info-content">
           <p>
-            <strong>Nasıl oluşuyor?</strong> Seçtiğin kategorideki tüm enstrümanlar (BIST 100'de
-            100 hisse, S&P 500'de ~503 hisse, ETF'ler, emtia/kripto) her iş günü piyasa kapanışından
-            sonra otomatik taranır. Aşağıdaki kriterlerin <em>hepsini birden</em> sağlayanlar listeye
-            girer, kalanlar elenir:
+            <strong>{t(lang, 'howLead1')}</strong> {t(lang, 'howBody1')}
           </p>
           <ul>
-            <li>Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi</li>
-            <li>MACD &gt; 0 → momentum pozitif</li>
-            <li>RSI &lt; 70, Stokastik %K &lt; 80, Stokastik RSI &lt; 80 → henüz aşırı alım bölgesinde değil</li>
-            <li>Ortalama günlük işlem hacmi (ciro) yeterli → düşük likiditeli hisseler elenir</li>
+            {t(lang, 'howCriteria').map((c) => (
+              <li key={c}>{c}</li>
+            ))}
           </ul>
+          <p>{t(lang, 'howBody2')}</p>
           <p>
-            Eşikleri "Filtre Ayarları" panelinden kendine göre değiştirebilirsin — liste anında
-            güncellenir, varsayılanlara tek tıkla dönebilirsin.
+            <strong>{t(lang, 'howLead3')}</strong> {t(lang, 'howBody3')}
           </p>
           <p>
-            <strong>Zaman dilimleri:</strong> aynı kriterler seçtiğin zaman diliminin mumlarıyla
-            hesaplanır. <em>Günlük</em> sinyaller günler–haftalar, <em>Haftalık</em> sinyaller
-            haftalar–aylar, <em>Aylık</em> sinyaller aylar ve ötesi ölçeğinde anlamlıdır. Uzun
-            zaman dilimlerinde kriterleri geçen hisse sayısı doğal olarak azalır. Aylık görünümde
-            EMA200 yerine 9/21/50 kullanılır (çoğu hissede 17 yıllık veri bulunmadığından) ve en az
-            5 yıllık geçmişi olan hisseler taranabilir. Haftalık ve aylık sinyaller yalnızca{' '}
-            <em>kapanmış</em> mumlara dayanır: içinde bulunulan haftanın/ayın tamamlanmamış mumu
-            hesaba katılmaz, böylece sinyaller mum kapanana kadar değişkenlik göstermez.
+            <strong>{t(lang, 'howLead4')}</strong> {t(lang, 'howBody4')}
           </p>
           <p>
-            <strong>Ne kadar geçerli?</strong> Bunlar kapanış verisine dayalı <em>momentum</em>{' '}
-            sinyalleridir; kalıcı bir "al ve unut" analizi değildir. Liste her iş günü iki kez
-            (BIST ve ABD kapanışları sonrası) otomatik yenilenir — güncel listeyi takip etmek en
-            sağlıklısıdır.
+            <strong>{t(lang, 'howLead5')}</strong> {t(lang, 'howBody5')}
           </p>
           <p>
-            <strong>Puan (0-100):</strong> tüm göstergeleri harmanlayan teknik güç puanı — trend
-            hizası (fiyatın EMA'lara göre konumu, 40 puan), MACD momentumu (25), RSI sağlığı (20)
-            ve stokastik alanı (15). Yüksek puan daha güçlü teknik görünüm demektir; kesinlik
-            değil, göreli bir karşılaştırma aracıdır. Sütun başlıklarına tıklayarak her değere
-            göre sıralayabilir, arama kutusuyla hisse bulabilirsin.
+            <strong>{t(lang, 'howLead6')}</strong> {t(lang, 'howBody6')}
           </p>
-          <p>Hisse koduna tıklayarak grafiği sayfadan ayrılmadan açabilirsin.</p>
+          <p>{t(lang, 'howBody7')}</p>
         </div>
       </details>
 
       <details className="info-panel">
-        <summary>📖 Göstergeler ne anlama geliyor?</summary>
+        <summary>{t(lang, 'glossTitle')}</summary>
         <div className="info-content">
-          <p>
-            <strong>EMA (Üstel Hareketli Ortalama):</strong> Fiyatın belirli bir süredeki
-            ortalaması; son günlere daha çok ağırlık verir. Kısa periyot (9, 21) yakın trendi,
-            uzun periyot (50, 200) ana trendi gösterir. Fiyatın EMA'ların üstünde olması "yukarı
-            trend" işaretidir.
-          </p>
-          <p>
-            <strong>RSI (Göreceli Güç Endeksi, 0-100):</strong> Fiyatın son 14 periyotta ne kadar
-            hızlı yükselip düştüğünü ölçer. 70 üstü genelde "aşırı alım" (fazla ısınmış, düzeltme
-            gelebilir), 30 altı "aşırı satım" olarak yorumlanır. Biz 70 altını arıyoruz — yükselen
-            ama henüz aşırı ısınmamış.
-          </p>
-          <p>
-            <strong>MACD:</strong> İki hareketli ortalamanın farkı; momentumun yönünü ve gücünü
-            gösterir. MACD'nin sıfırın üstünde olması kısa vadeli momentumun pozitif (yukarı)
-            olduğunu söyler.
-          </p>
-          <p>
-            <strong>Stokastik %K ve Stokastik RSI:</strong> Fiyatın (veya RSI'ın) son dönemdeki
-            en yüksek–en düşük aralığında nerede durduğunu 0-100 arası ölçer. 80 üstü aşırı alım
-            bölgesidir. İkisini de 80 altında tutarak "yükselişte ama tepe yapmamış" enstrümanları
-            seçiyoruz.
-          </p>
-          <p>
-            <strong>Puan (0-100):</strong> Yukarıdaki göstergelerin hepsini tek sayıya indiren
-            özet; ne kadar yüksekse teknik görünüm o kadar güçlü. Karşılaştırma kolaylığı içindir,
-            kesin bir tahmin değildir.
-          </p>
-          <p className="muted">
-            Bu göstergeler geçmiş fiyat hareketine dayanır; geleceği garanti etmez. Teknik analiz
-            olasılık üzerine kuruludur, kesinlik üzerine değil.
-          </p>
+          {[
+            ['glossEma', 'glossEmaBody'],
+            ['glossRsi', 'glossRsiBody'],
+            ['glossMacd', 'glossMacdBody'],
+            ['glossStoch', 'glossStochBody'],
+            ['glossScore', 'glossScoreBody'],
+            ['glossRs', 'glossRsBody'],
+          ].map(([lead, body]) => (
+            <p key={lead}>
+              <strong>{t(lang, lead)}</strong> {t(lang, body)}
+            </p>
+          ))}
+          <p className="muted">{t(lang, 'glossFooter')}</p>
         </div>
       </details>
 
@@ -1383,17 +1350,9 @@ function App() {
                     key={c.key}
                     className={`sortable ${c.align === 'left' ? 'left' : ''} ${sort.key === c.key ? 'sorted' : ''}`}
                     onClick={() => toggleSort(c.key)}
-                    title="Sıralamak için tıkla"
+                    title={t(lang, 'sortHint')}
                   >
-                    {c.key === 'symbol'
-                      ? t(lang, 'colSymbol')
-                      : c.key === 'score'
-                        ? t(lang, 'colScore')
-                        : c.key === 'close'
-                          ? t(lang, 'colClose')
-                          : c.key === 'market_cap'
-                            ? t(lang, 'colMcap')
-                            : c.label}
+                    {c.i18nKey ? t(lang, c.i18nKey) : c.label}
                     <span className="sort-arrow">
                       {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
                     </span>
@@ -1407,7 +1366,7 @@ function App() {
                   <td className="star-cell">
                     <button
                       className={`star-btn ${watchlist.has(r.symbol) ? 'active' : ''}`}
-                      title={watchlist.has(r.symbol) ? 'Favorilerden çıkar' : 'Favorilere ekle'}
+                      title={t(lang, watchlist.has(r.symbol) ? 'watchRemove' : 'watchAdd')}
                       onClick={() => toggleWatch(r.symbol)}
                     >
                       {watchlist.has(r.symbol) ? '★' : '☆'}
@@ -1425,6 +1384,12 @@ function App() {
                   </td>
                   <td>{formatNum(r.close, 2)}</td>
                   <td>{formatMarketCap(r.market_cap)}</td>
+                  <td
+                    className={`pct ${pctTone(r.relative_strength)}`}
+                    title={t(lang, 'colRsTitle')}
+                  >
+                    {formatPct(r.relative_strength, 1)}
+                  </td>
                   <td>
                     <span className={`badge rsi-${rsiTone(r.rsi ?? 0)}`}>
                       {r.rsi == null ? '—' : formatNum(r.rsi, 1)}
