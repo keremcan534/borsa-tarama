@@ -530,6 +530,51 @@ th.sorted {
   cursor: default;
 }
 
+.pf-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.pf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+  flex: 1;
+}
+
+.pf-field label {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.pf-field .search-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.pf-add {
+  height: 38px;
+}
+
+.pf-remove {
+  font-size: 14px;
+}
+
+.pf-total td {
+  font-weight: 600;
+  color: var(--text-h);
+  border-top: 2px solid var(--border);
+}
+
 .badge.new-badge {
   background: rgba(22, 163, 74, 0.15);
   color: var(--up);

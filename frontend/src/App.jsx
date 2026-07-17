@@ -44,6 +44,7 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
   { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+  { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
@@ -1046,6 +1047,284 @@ function WatchlistView({
   )
 }
 
+function loadPortfolio() {
+  try {
+    const list = JSON.parse(localStorage.getItem('portfolio_funds') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function savePortfolio(list) {
+  localStorage.setItem('portfolio_funds', JSON.stringify(list))
+}
+
+/** Tutar (maliyet/değer) 2 ondalıkla; pay fiyatı için formatFundPrice (4 ondalık) kullanılır. */
+function formatLira(value, lang) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ₺`
+}
+
+/** Serideki [tarih, fiyat] noktalarından verilen güne (veya öncesindeki son güne) ait fiyat. */
+function priceOn(series, dateStr) {
+  if (!series?.length) return null
+  let best = null
+  for (const [d, px] of series) {
+    if (d <= dateStr) best = px
+    else break
+  }
+  return best
+}
+
+/**
+ * "Portföyüm": kullanıcının kendi fon alımlarını (tarih, fiyat, adet) girip
+ * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
+ * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
+ */
+function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
+  const [positions, setPositions] = useState(loadPortfolio)
+  const [form, setForm] = useState(() => ({
+    symbol: '',
+    date: new Date().toISOString().slice(0, 10),
+    price: '',
+    qty: '',
+  }))
+  const [formError, setFormError] = useState(null)
+
+  const fundList = funds?.results || []
+  const bySymbol = useMemo(() => {
+    const m = new Map()
+    for (const f of fundList) m.set(f.symbol, f)
+    return m
+  }, [fundList])
+
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+  const symbolInput = form.symbol.trim().toUpperCase()
+
+  // Fon + tarih seçilince alış fiyatını o günkü pay değeriyle önerelim;
+  // kullanıcı isterse üzerine kendi fiyatını yazar.
+  const suggestedPrice = useMemo(
+    () => priceOn(prices?.series?.[symbolInput], form.date),
+    [prices, symbolInput, form.date],
+  )
+
+  function addPosition(e) {
+    e.preventDefault()
+    const price = Number(String(form.price || suggestedPrice || '').replace(',', '.'))
+    const qty = Number(String(form.qty).replace(',', '.'))
+    if (!symbolInput) return setFormError(t(lang, 'pfErrSymbol'))
+    if (!bySymbol.has(symbolInput) && !prices?.series?.[symbolInput]) {
+      return setFormError(t(lang, 'pfErrUnknown', symbolInput))
+    }
+    if (!Number.isFinite(price) || price <= 0) return setFormError(t(lang, 'pfErrPrice'))
+    if (!Number.isFinite(qty) || qty <= 0) return setFormError(t(lang, 'pfErrQty'))
+    const next = [
+      ...positions,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, symbol: symbolInput, date: form.date, price, qty },
+    ]
+    setPositions(next)
+    savePortfolio(next)
+    setForm((f) => ({ ...f, symbol: '', price: '', qty: '' }))
+    setFormError(null)
+  }
+
+  function removePosition(id) {
+    const next = positions.filter((p) => p.id !== id)
+    setPositions(next)
+    savePortfolio(next)
+  }
+
+  const rows = useMemo(
+    () =>
+      positions.map((p) => {
+        const series = prices?.series?.[p.symbol]
+        const current = series?.length ? series[series.length - 1][1] : null
+        const cost = p.price * p.qty
+        const value = current != null ? current * p.qty : null
+        return {
+          ...p,
+          fund: bySymbol.get(p.symbol) || null,
+          current,
+          cost,
+          value,
+          pl: value != null ? value - cost : null,
+          plPct: current != null ? current / p.price - 1 : null,
+        }
+      }),
+    [positions, prices, bySymbol],
+  )
+
+  const totals = useMemo(() => {
+    // Güncel fiyatı bilinmeyen pozisyonlar toplam K/Z'ye katılamaz; ayrı sayılır
+    const known = rows.filter((r) => r.value != null)
+    const cost = known.reduce((s, r) => s + r.cost, 0)
+    const value = known.reduce((s, r) => s + r.value, 0)
+    return { cost, value, pl: value - cost, plPct: cost > 0 ? value / cost - 1 : null, missing: rows.length - known.length }
+  }, [rows])
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'pfIntro')}</span>
+      </div>
+
+      <form className="pf-form" onSubmit={addPosition}>
+        <div className="pf-field">
+          <label htmlFor="pf-symbol">{t(lang, 'pfFund')}</label>
+          <input
+            id="pf-symbol"
+            className="search-input"
+            list="pf-fund-options"
+            placeholder={t(lang, 'pfFundPh')}
+            value={form.symbol}
+            onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
+          />
+          <datalist id="pf-fund-options">
+            {fundList.map((f) => (
+              <option key={f.symbol} value={f.symbol}>
+                {f.name}
+              </option>
+            ))}
+          </datalist>
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-date">{t(lang, 'pfDate')}</label>
+          <input
+            id="pf-date"
+            className="search-input"
+            type="date"
+            max={new Date().toISOString().slice(0, 10)}
+            value={form.date}
+            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+          />
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-price">{t(lang, 'pfPrice')}</label>
+          <input
+            id="pf-price"
+            className="search-input"
+            type="text"
+            inputMode="decimal"
+            placeholder={suggestedPrice != null ? String(suggestedPrice) : '—'}
+            value={form.price}
+            onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+          />
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-qty">{t(lang, 'pfQty')}</label>
+          <input
+            id="pf-qty"
+            className="search-input"
+            type="text"
+            inputMode="decimal"
+            placeholder="100"
+            value={form.qty}
+            onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+          />
+        </div>
+        <button className="btn primary pf-add" type="submit" disabled={loading}>
+          {t(lang, 'pfAdd')}
+        </button>
+      </form>
+      {formError && <div className="error-box">{formError}</div>}
+
+      {positions.length === 0 ? (
+        <div className="empty-box">{t(lang, 'pfEmpty')}</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="left">{t(lang, 'colFund')}</th>
+                <th>{t(lang, 'pfDate')}</th>
+                <th>{t(lang, 'pfPrice')}</th>
+                <th>{t(lang, 'pfQty')}</th>
+                <th>{t(lang, 'pfCost')}</th>
+                <th>{t(lang, 'pfCurrent')}</th>
+                <th>{t(lang, 'pfValue')}</th>
+                <th>K/Z %</th>
+                <th>K/Z ₺</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="symbol-cell">
+                    {r.fund ? (
+                      <button
+                        className="symbol-btn fund-link"
+                        type="button"
+                        title={r.fund.name}
+                        onClick={() => onOpenFund(r.fund)}
+                      >
+                        <TickerLogo symbol={r.symbol} />
+                        <span className="fund-code-wrap">
+                          <strong>{r.symbol}</strong>
+                          <span className="fund-name">{r.fund.name}</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="symbol-btn watch-plain">
+                        <TickerLogo symbol={r.symbol} />
+                        <strong>{r.symbol}</strong>
+                      </span>
+                    )}
+                  </td>
+                  <td>{new Date(r.date).toLocaleDateString(locale)}</td>
+                  <td>{formatFundPrice(r.price, lang)}</td>
+                  <td>{r.qty.toLocaleString(locale)}</td>
+                  <td>{formatLira(r.cost, lang)}</td>
+                  <td>{r.current == null ? '—' : formatFundPrice(r.current, lang)}</td>
+                  <td>{r.value == null ? '—' : formatLira(r.value, lang)}</td>
+                  <td className={`pct ${pctTone(r.plPct)}`}>{formatPct(r.plPct)}</td>
+                  <td className={`pct ${pctTone(r.plPct)}`}>
+                    {r.pl == null
+                      ? '—'
+                      : `${r.pl > 0 ? '+' : ''}${r.pl.toLocaleString(locale, { maximumFractionDigits: 0 })} ₺`}
+                  </td>
+                  <td>
+                    <button
+                      className="star-btn pf-remove"
+                      type="button"
+                      title={t(lang, 'pfRemove')}
+                      onClick={() => removePosition(r.id)}
+                    >
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="pf-total">
+                <td className="left" colSpan={4}>
+                  {t(lang, 'pfTotal')}
+                  {totals.missing > 0 && <span className="watch-note">{t(lang, 'pfMissing', totals.missing)}</span>}
+                </td>
+                <td>{formatLira(totals.cost, lang)}</td>
+                <td></td>
+                <td>{formatLira(totals.value, lang)}</td>
+                <td className={`pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</td>
+                <td className={`pct ${pctTone(totals.plPct)}`}>
+                  {`${totals.pl > 0 ? '+' : ''}${totals.pl.toLocaleString(locale, { maximumFractionDigits: 0 })} ₺`}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      <p className="disclaimer">{t(lang, 'pfDisclaimer')}</p>
+    </>
+  )
+}
+
 /**
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
@@ -1696,7 +1975,14 @@ function App() {
   }, [market, timeframe])
 
   useEffect(() => {
-    if (view !== 'funds' && view !== 'today' && view !== 'fundCompare' && view !== 'watchlist') return
+    if (
+      view !== 'funds' &&
+      view !== 'today' &&
+      view !== 'fundCompare' &&
+      view !== 'watchlist' &&
+      view !== 'portfolio'
+    )
+      return
     if (funds) return
     let cancelled = false
     setFundsLoading(true)
@@ -1717,9 +2003,9 @@ function App() {
   }, [view, funds])
 
   useEffect(() => {
-    // Fiyat serileri hem karşılaştırma sekmesinde hem de bir fon modalı açılınca
-    // (fon detayındaki gerçek fiyat grafiği için) yüklenir.
-    if (view !== 'fundCompare' && !chartFund) return
+    // Fiyat serileri karşılaştırma/portföy sekmelerinde ve bir fon modalı
+    // açılınca (fon detayındaki gerçek fiyat grafiği için) yüklenir.
+    if (view !== 'fundCompare' && view !== 'portfolio' && !chartFund) return
     if (fundPricesReady) return
     let cancelled = false
     setFundPricesLoading(true)
@@ -2121,6 +2407,32 @@ function App() {
           {chartSymbol && (
             <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
           )}
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
+              onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {view === 'portfolio' && (
+        <>
+          <PortfolioView
+            funds={funds}
+            prices={fundPrices}
+            lang={lang}
+            loading={fundsLoading || fundPricesLoading}
+            onOpenFund={setChartFund}
+          />
           {chartFund && (
             <FundModal
               fund={chartFund}
