@@ -43,6 +43,7 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 // Sol menü sırası. İkonlar emoji: harici ikon kütüphanesi bağımlılığı getirmiyor.
 const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
+  { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
@@ -874,6 +875,177 @@ function loadWatchlist() {
   }
 }
 
+// Fon favorileri ayrı anahtarda: fon kodları (ör. TTE) SP500 sembolleriyle
+// çakışabilir, tek listede tip ayrımı yapılamazdı.
+function loadFundWatchlist() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('watchlist_funds') || '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * "İzlediklerim": yıldızlanan hisse ve fonları tek sayfada toplar. Veri günlük
+ * tarama çıktılarından gelir; favori artık tarama listesinde yoksa satır soluk
+ * gösterilir ama grafiği yine açılabilir.
+ */
+function WatchlistView({
+  watchlist,
+  fundWatchlist,
+  overview,
+  funds,
+  lang,
+  loading,
+  onOpenChart,
+  onOpenFund,
+  onToggleStock,
+  onToggleFund,
+}) {
+  const stockRows = useMemo(() => {
+    const bySymbol = new Map()
+    for (const payload of Object.values(overview || {})) {
+      for (const r of payload.results || []) bySymbol.set(r.symbol, r)
+    }
+    return [...watchlist].sort().map((symbol) => bySymbol.get(symbol) || { symbol, missing: true })
+  }, [watchlist, overview])
+
+  const fundRows = useMemo(() => {
+    const bySymbol = new Map()
+    for (const f of funds?.results || []) bySymbol.set(f.symbol, f)
+    return [...fundWatchlist].sort().map((symbol) => bySymbol.get(symbol) || { symbol, missing: true })
+  }, [fundWatchlist, funds])
+
+  if (!watchlist.size && !fundWatchlist.size) {
+    return (
+      <>
+        <div className="status-bar">
+          <span>{t(lang, 'watchlistIntro')}</span>
+        </div>
+        <div className="empty-box">{t(lang, 'watchlistEmpty')}</div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'watchlistIntro')}</span>
+      </div>
+      {loading && !stockRows.some((r) => !r.missing) && !fundRows.some((r) => !r.missing) && (
+        <div className="empty-box">{t(lang, 'loading')}</div>
+      )}
+
+      {watchlist.size > 0 && (
+        <section className="watch-section">
+          <h2 className="today-title">{t(lang, 'watchlistStocks')}</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="star-cell"></th>
+                  <th className="left">{t(lang, 'colSymbol')}</th>
+                  <th>{t(lang, 'colScore')}</th>
+                  <th>{t(lang, 'colClose')}</th>
+                  <th>{t(lang, 'changeColLabels').daily}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockRows.map((r) => (
+                  <tr key={r.symbol} className={r.missing ? 'watch-missing' : ''}>
+                    <td className="star-cell">
+                      <button
+                        className="star-btn active"
+                        title={t(lang, 'watchRemove')}
+                        onClick={() => onToggleStock(r.symbol)}
+                      >
+                        ★
+                      </button>
+                    </td>
+                    <td className="symbol-cell">
+                      <button className="symbol-btn" onClick={() => onOpenChart(r.symbol)}>
+                        <TickerLogo symbol={r.symbol} />
+                        {displaySymbol(r.symbol)}
+                      </button>
+                      {r.missing && <span className="watch-note">{t(lang, 'watchlistNotInScan')}</span>}
+                    </td>
+                    <td>
+                      {r.missing ? '—' : <span className={`badge score-${scoreTone(r.score)}`}>{r.score ?? '—'}</span>}
+                    </td>
+                    <td>{r.missing ? '—' : formatNum(r.close, 2)}</td>
+                    <td className={`pct ${pctTone(r.change)}`}>{r.missing ? '—' : formatPct(r.change, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {fundWatchlist.size > 0 && (
+        <section className="watch-section">
+          <h2 className="today-title">{t(lang, 'watchlistFunds')}</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="star-cell"></th>
+                  <th className="left">{t(lang, 'colFund')}</th>
+                  <th>{t(lang, 'colScore')}</th>
+                  <th>{t(lang, 'colChange')}</th>
+                  <th>1Y %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fundRows.map((f) => (
+                  <tr key={f.symbol} className={f.missing ? 'watch-missing' : ''}>
+                    <td className="star-cell">
+                      <button
+                        className="star-btn active"
+                        title={t(lang, 'watchRemove')}
+                        onClick={() => onToggleFund(f.symbol)}
+                      >
+                        ★
+                      </button>
+                    </td>
+                    <td className="symbol-cell">
+                      {f.missing ? (
+                        <span className="symbol-btn watch-plain">
+                          <TickerLogo symbol={f.symbol} />
+                          <strong>{f.symbol}</strong>
+                          <span className="watch-note">{t(lang, 'watchlistNotInScan')}</span>
+                        </span>
+                      ) : (
+                        <button
+                          className="symbol-btn fund-link"
+                          type="button"
+                          title={f.name}
+                          onClick={() => onOpenFund(f)}
+                        >
+                          <TickerLogo symbol={f.symbol} />
+                          <span className="fund-code-wrap">
+                            <strong>{f.symbol}</strong>
+                            <span className="fund-name">{f.name}</span>
+                          </span>
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      {f.missing ? '—' : <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>}
+                    </td>
+                    <td className={`pct ${pctTone(f.return_1d)}`}>{f.missing ? '—' : formatPct(f.return_1d, 2)}</td>
+                    <td className={`pct ${pctTone(f.return_1y)}`}>{f.missing ? '—' : formatPct(f.return_1y)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  )
+}
+
 /**
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
@@ -1400,6 +1572,8 @@ function App() {
   const [timeframe, setTimeframe] = useState('daily')
   const [watchlist, setWatchlist] = useState(loadWatchlist)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
+  const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -1522,7 +1696,7 @@ function App() {
   }, [market, timeframe])
 
   useEffect(() => {
-    if (view !== 'funds' && view !== 'today' && view !== 'fundCompare') return
+    if (view !== 'funds' && view !== 'today' && view !== 'fundCompare' && view !== 'watchlist') return
     if (funds) return
     let cancelled = false
     setFundsLoading(true)
@@ -1615,9 +1789,11 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    if (view !== 'today') return
+    // İzlediklerim sekmesi de günlük özetten beslenir (hisse satırları).
+    if (view !== 'today' && view !== 'watchlist') return
     if (!marketsResolved) return
-    const needed = [...new Set(['daily', todayTimeframe])].filter((tf) => !overviewCache[tf])
+    const wanted = view === 'watchlist' ? ['daily'] : ['daily', todayTimeframe]
+    const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
     if (!needed.length) return
 
     let cancelled = false
@@ -1724,6 +1900,7 @@ function App() {
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
     let list = [...funds.results]
+    if (onlyFundWatchlist) list = list.filter((f) => fundWatchlist.has(f.symbol))
     const q = fundSearch.trim().toUpperCase()
     if (q) {
       list = list.filter(
@@ -1742,7 +1919,7 @@ function App() {
       return dir === 'asc' ? av - bv : bv - av
     })
     return list
-  }, [funds, fundSearch, fundSort])
+  }, [funds, fundSearch, fundSort, onlyFundWatchlist, fundWatchlist])
 
   function toggleSort(key) {
     setSort((prev) =>
@@ -1772,6 +1949,16 @@ function App() {
       if (next.has(symbol)) next.delete(symbol)
       else next.add(symbol)
       localStorage.setItem('watchlist', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  function toggleFundWatch(symbol) {
+    setFundWatchlist((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) next.delete(symbol)
+      else next.add(symbol)
+      localStorage.setItem('watchlist_funds', JSON.stringify([...next]))
       return next
     })
   }
@@ -1917,6 +2104,40 @@ function App() {
         </>
       )}
 
+      {view === 'watchlist' && (
+        <>
+          <WatchlistView
+            watchlist={watchlist}
+            fundWatchlist={fundWatchlist}
+            overview={overviewCache.daily}
+            funds={funds}
+            lang={lang}
+            loading={overviewLoading || fundsLoading}
+            onOpenChart={setChartSymbol}
+            onOpenFund={setChartFund}
+            onToggleStock={toggleWatch}
+            onToggleFund={toggleFundWatch}
+          />
+          {chartSymbol && (
+            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+          )}
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
+              onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
+            />
+          )}
+        </>
+      )}
+
       {view === 'backtest' && (
         <BacktestView
           lang={lang}
@@ -1946,6 +2167,14 @@ function App() {
                   : ''}
             </span>
             <div className="actions">
+              <button
+                className={`btn ${onlyFundWatchlist ? 'primary' : ''}`}
+                title={t(lang, 'watchOnlyFundsHint')}
+                onClick={() => setOnlyFundWatchlist((v) => !v)}
+              >
+                ⭐ {t(lang, 'favorites')}
+                {fundWatchlist.size ? ` (${fundWatchlist.size})` : ''}
+              </button>
               <button
                 className="btn"
                 disabled={fundsLoading}
@@ -1999,6 +2228,7 @@ function App() {
               <table>
                 <thead>
                   <tr>
+                    <th className="star-cell"></th>
                     {FUND_COLUMNS.map((c) => (
                       <th
                         key={c.key}
@@ -2016,6 +2246,15 @@ function App() {
                 <tbody>
                   {fundRows.map((f) => (
                     <tr key={f.symbol}>
+                      <td className="star-cell">
+                        <button
+                          className={`star-btn ${fundWatchlist.has(f.symbol) ? 'active' : ''}`}
+                          title={t(lang, fundWatchlist.has(f.symbol) ? 'watchRemove' : 'watchAdd')}
+                          onClick={() => toggleFundWatch(f.symbol)}
+                        >
+                          {fundWatchlist.has(f.symbol) ? '★' : '☆'}
+                        </button>
+                      </td>
                       <td className="symbol-cell">
                         <button
                           className="symbol-btn fund-link"

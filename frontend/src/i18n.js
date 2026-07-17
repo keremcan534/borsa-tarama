@@ -200,6 +200,15 @@ const STRINGS = {
     sortHint: 'Sıralamak için tıkla',
     watchAdd: 'Favorilere ekle',
     watchRemove: 'Favorilerden çıkar',
+    tabWatchlist: 'İzlediklerim',
+    watchlistIntro:
+      'Yıldızladığın hisse ve fonlar tek sayfada. Eklemek için Tarama ve Fonlar sekmelerindeki ☆ işaretini kullan.',
+    watchlistEmpty:
+      'Henüz favorin yok. Tarama sekmesinde bir hissenin, Fonlar sekmesinde bir fonun yanındaki ☆ yıldıza tıklayarak buraya ekleyebilirsin.',
+    watchlistStocks: 'Hisseler',
+    watchlistFunds: 'Fonlar',
+    watchlistNotInScan: 'bugünkü taramada yok',
+    watchOnlyFundsHint: 'Sadece favori fonları göster',
     colChange: 'Bugün',
     colInvestors: 'Yatırımcı',
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
@@ -450,6 +459,15 @@ const STRINGS = {
     sortHint: 'Click to sort',
     watchAdd: 'Add to watchlist',
     watchRemove: 'Remove from watchlist',
+    tabWatchlist: 'Watchlist',
+    watchlistIntro:
+      'Your starred stocks and funds in one place. Use the ☆ icon in the Screener and Funds tabs to add more.',
+    watchlistEmpty:
+      'No favorites yet. Click the ☆ star next to a stock in the Screener tab or a fund in the Funds tab to add it here.',
+    watchlistStocks: 'Stocks',
+    watchlistFunds: 'Funds',
+    watchlistNotInScan: 'not in today’s scan',
+    watchOnlyFundsHint: 'Show only starred funds',
     colChange: 'Today',
     colInvestors: 'Investors',
     colChangeTitle: 'Change of the last close versus the previous close.',
