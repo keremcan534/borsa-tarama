@@ -12,6 +12,11 @@ from app.funds.metrics import compute_fund_metrics
 MIN_HISTORY_DAYS = 60
 # Portföy büyüklüğü (TRY) — çok küçük/illik fonları ele
 MIN_PORTFOLIO_SIZE = 100_000_000  # 100M TRY
+# Halkın gerçekten alabildiği fonlar: puan sıralamasının tepesini 1-200 yatırımcılı
+# nano fonlar işgal ediyordu (SFA 18, KFZ 1 yatırımcı) ve TLY/PHE gibi herkesin
+# aldığı fonları gömüyordu. Yatırımcı sayısı, "TEFAS/Midas'ta alınabilir ve gerçekten
+# alınıyor"un elimizdeki en dürüst vekili (Midas'ın resmi fon listesi API'si yok).
+MIN_INVESTORS = 500
 # Sonuç listesi üst sınırı (UI + JSON boyutu)
 MAX_FUNDS = 120
 # Geçmiş penceresi (takvim günü) — 1y getiri + vol için
@@ -128,6 +133,14 @@ def run_fund_screener(
     results: list[dict] = []
     for code, group in work.groupby("fund_code"):
         if code not in liquid_codes:
+            continue
+        # "ÖZEL FON"lar halka satılmaz (tek kişi/kurum için kurulur) — listede
+        # yer almaları anlamsız. Örn. KFZ: 1 yatırımcılı özel fon, puan 99'du.
+        name = name_map.get(code) or ""
+        if "ÖZEL" in name.upper():
+            continue
+        # Yatırımcı eşiği: veri investor_count içermiyorsa (eski şema) filtre atlanır
+        if investor_map and investor_map.get(code, 0) < MIN_INVESTORS:
             continue
         series = group.set_index("date")["price"].astype(float)
         metrics = compute_fund_metrics(series)

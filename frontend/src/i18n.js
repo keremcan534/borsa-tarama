@@ -157,6 +157,13 @@ const STRINGS = {
     colChange: 'Bugün',
     colInvestors: 'Yatırımcı',
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
+    // Değişim kolonu her zaman diliminde SON KAPANMIŞ mumun değişimidir; günlükte
+    // bu "bugün"dür ama haftalıkta son tamamlanan haftadır — "Bugün" yazamayız.
+    changeColLabels: { daily: 'Bugün', weekly: 'Son Hafta', monthly: 'Son Ay', quarterly: 'Son Çeyrek' },
+    // Endeks farkı penceresi rs_bars'a bağlı: günlük 60 mum ≈ 3 ay, haftalık 26 ≈ 6 ay,
+    // aylık 12 = 1 yıl, çeyreklik 4 = 1 yıl (app/screener/timeframes.py ile senkron).
+    rsColPeriods: { daily: '3a', weekly: '6a', monthly: '1y', quarterly: '1y' },
+    colRsDyn: (p) => `Endeks Farkı (${p})`,
     // Kolon adı dönemi taşımalı: çıplak bir "+%30", fiyatın yanında bugünün
     // getirisi sanılıyordu. Açıklama da somut sayıyla — soyut tanım anlaşılmıyordu.
     colRs: 'Endeks Farkı (3a)',
@@ -354,6 +361,9 @@ const STRINGS = {
     colChange: 'Today',
     colInvestors: 'Investors',
     colChangeTitle: 'Change of the last close versus the previous close.',
+    changeColLabels: { daily: 'Today', weekly: 'Last Week', monthly: 'Last Month', quarterly: 'Last Quarter' },
+    rsColPeriods: { daily: '3m', weekly: '6m', monthly: '1y', quarterly: '1y' },
+    colRsDyn: (p) => `vs Index (${p})`,
     colRs: 'vs Index (3m)',
     colRsTitle:
       'Over the last 3 months, how much better than the index? Example: the stock gained 30% while the BIST 100 gained 20% → +10%. Positive = it beat the market; negative = it lagged, even if it rose.',

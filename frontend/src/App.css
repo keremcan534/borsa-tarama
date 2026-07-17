@@ -1268,3 +1268,13 @@ a.today-card:hover {
     transition: none;
   }
 }
+
+.fund-card-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fund-card-label strong {
+  color: var(--text-h);
+}

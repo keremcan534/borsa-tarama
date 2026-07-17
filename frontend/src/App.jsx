@@ -678,8 +678,10 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                <span className="today-card-label">
-                  {f.symbol} · <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
+                <span className="today-card-label fund-card-label">
+                  <TickerLogo symbol={f.symbol} />
+                  <strong>{f.symbol}</strong> ·{' '}
+                  <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
                 </span>
                 {/* Büyük rakam bugünün getirisi ("Bugün" sayfasında beklenen bu),
                     1 yıllık altında ve HER İKİSİ de dönem etiketli: etiketsiz bir
@@ -1743,7 +1745,13 @@ function App() {
                     onClick={() => toggleSort(c.key)}
                     title={t(lang, 'sortHint')}
                   >
-                    {c.i18nKey ? t(lang, c.i18nKey) : c.label}
+                    {c.key === 'change'
+                      ? t(lang, 'changeColLabels')[timeframe]
+                      : c.key === 'relative_strength'
+                        ? t(lang, 'colRsDyn', t(lang, 'rsColPeriods')[timeframe])
+                        : c.i18nKey
+                          ? t(lang, c.i18nKey)
+                          : c.label}
                     <span className="sort-arrow">
                       {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
                     </span>

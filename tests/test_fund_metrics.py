@@ -196,3 +196,39 @@ def test_compute_fund_metrics_includes_daily_return():
     )
     m = compute_fund_metrics(prices)
     assert round(m["return_1d"], 6) == round(10.4 / 10.2 - 1, 6)
+
+
+def _smooth_prices(n=120, base=10.0, drift=0.002):
+    return [base * ((1 + drift) ** i) for i in range(n)]
+
+
+def test_ozel_fon_is_excluded_even_with_top_score():
+    """ÖZEL fonlar halka satılmaz; puanı ne olursa olsun listeye giremez."""
+    rows = _fund_rows("KFZ", "KUVEYT TÜRK PORTFÖY KFZ KATILIM SERBEST ÖZEL FON", _smooth_prices())
+    rows += _fund_rows("PHE", "PUSULA PORTFÖY HİSSE SENEDİ FONU", _smooth_prices())
+    results = run_fund_screener(df=pd.DataFrame(rows))
+    codes = {r["symbol"] for r in results}
+    assert "PHE" in codes
+    assert "KFZ" not in codes
+
+
+def test_nano_funds_below_investor_floor_are_excluded():
+    """1-200 yatırımcılı fonlar tepeyi işgal edip TLY/PHE'yi gömüyordu."""
+    rows = []
+    for code, investors in [("SFA", 18), ("TLY", 97_340)]:
+        r = _fund_rows(code, f"{code} FON", _smooth_prices())
+        for x in r:
+            x["investor_count"] = investors
+        rows += r
+    results = run_fund_screener(df=pd.DataFrame(rows))
+    codes = {r["symbol"] for r in results}
+    assert "TLY" in codes
+    assert "SFA" not in codes
+
+
+def test_missing_investor_column_skips_the_floor():
+    """Eski şemada investor_count yoksa filtre sessizce devre dışı kalmalı."""
+    rows = _fund_rows("AAA", "TEST FON", _smooth_prices())
+    df = pd.DataFrame(rows).drop(columns=["investor_count"])
+    results = run_fund_screener(df=df)
+    assert {r["symbol"] for r in results} == {"AAA"}
