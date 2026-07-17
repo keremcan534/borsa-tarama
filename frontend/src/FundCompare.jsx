@@ -1,0 +1,400 @@
+import { useEffect, useMemo, useState } from 'react'
+import { t } from './i18n'
+
+const MAX_FUNDS = 5
+
+const PERIODS = [
+  { key: '1w', days: 7, label: '1H', labelEn: '1W' },
+  { key: '1m', days: 30, label: '1A', labelEn: '1M' },
+  { key: '3m', days: 90, label: '3A', labelEn: '3M' },
+  { key: '6m', days: 180, label: '6A', labelEn: '6M' },
+  { key: 'ytd', days: null, label: 'YTD', labelEn: 'YTD' },
+  { key: '1y', days: 365, label: '1Y', labelEn: '1Y' },
+]
+
+const LINE_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d']
+
+const METRIC_ROWS = [
+  { key: 'score', i18nKey: 'colScore', format: 'score' },
+  { key: 'return_1d', label: '1G %', format: 'pct' },
+  { key: 'return_1m', label: '1A %', format: 'pct' },
+  { key: 'return_3m', label: '3A %', format: 'pct' },
+  { key: 'return_6m', label: '6A %', format: 'pct' },
+  { key: 'return_ytd', label: 'YTD %', format: 'pct' },
+  { key: 'return_1y', label: '1Y %', format: 'pct' },
+  { key: 'volatility', label: 'Vol %', format: 'vol' },
+  { key: 'sharpe', label: 'Sharpe', format: 'num' },
+  { key: 'max_drawdown', label: 'Max DD %', format: 'pct' },
+  { key: 'investor_count', i18nKey: 'colInvestors', format: 'int' },
+  { key: 'portfolio_size', i18nKey: 'colSize', format: 'mcap' },
+]
+
+function formatPct(value, digits = 1) {
+  if (value == null || Number.isNaN(value)) return '—'
+  const pct = value * 100
+  const sign = pct > 0 ? '+' : ''
+  return `${sign}${pct.toFixed(digits)}%`
+}
+
+function pctTone(value) {
+  if (value == null) return ''
+  if (value > 0.02) return 'pos'
+  if (value < -0.02) return 'neg'
+  return 'flat'
+}
+
+function formatMarketCap(value) {
+  if (value == null) return '—'
+  if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
+  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
+  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+  return value.toLocaleString('tr-TR')
+}
+
+function scoreTone(score) {
+  if (score >= 75) return 'strong'
+  if (score >= 55) return 'good'
+  return 'weak'
+}
+
+function periodStartMs(periodKey, lastMs) {
+  const p = PERIODS.find((x) => x.key === periodKey)
+  if (!p) return lastMs - 90 * 86400000
+  if (p.key === 'ytd') {
+    const d = new Date(lastMs)
+    return Date.UTC(d.getUTCFullYear(), 0, 1)
+  }
+  return lastMs - p.days * 86400000
+}
+
+/** [[date, price], ...] → dönem başından normalize edilmiş [{t, v}] (başlangıç=100). */
+function normalizeSeries(points, periodKey) {
+  if (!points?.length) return []
+  const parsed = points
+    .map(([d, p]) => ({ t: Date.parse(d), v: Number(p) }))
+    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.v) && x.v > 0)
+    .sort((a, b) => a.t - b.t)
+  if (!parsed.length) return []
+
+  const last = parsed[parsed.length - 1].t
+  const start = periodStartMs(periodKey, last)
+  const window = parsed.filter((x) => x.t >= start)
+  if (window.length < 2) return []
+
+  const base = window[0].v
+  if (base <= 0) return []
+  return window.map((x) => ({ t: x.t, v: (x.v / base) * 100 }))
+}
+
+function seriesReturn(norm) {
+  if (!norm?.length) return null
+  return norm[norm.length - 1].v / 100 - 1
+}
+
+function CompareChart({ lines, lang }) {
+  const W = 720
+  const H = 280
+  const pad = { t: 16, r: 16, b: 28, l: 44 }
+  const innerW = W - pad.l - pad.r
+  const innerH = H - pad.t - pad.b
+
+  const all = lines.flatMap((l) => l.points)
+  if (all.length < 2) {
+    return <div className="empty-box">{t(lang, 'fundCompareNoChart')}</div>
+  }
+
+  const minT = Math.min(...all.map((p) => p.t))
+  const maxT = Math.max(...all.map((p) => p.t))
+  const minV = Math.min(...all.map((p) => p.v))
+  const maxV = Math.max(...all.map((p) => p.v))
+  const vPad = Math.max((maxV - minV) * 0.08, 0.5)
+  const lo = minV - vPad
+  const hi = maxV + vPad
+
+  const x = (t) => pad.l + ((t - minT) / (maxT - minT || 1)) * innerW
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo || 1)) * innerH
+
+  const gridVals = [lo, (lo + hi) / 2, hi]
+  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')
+
+  return (
+    <svg className="fc-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'fundCompareChartLabel')}>
+      {gridVals.map((v) => (
+        <g key={v}>
+          <line className="fc-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+          <text className="fc-axis" x={pad.l - 6} y={y(v) + 3} textAnchor="end">
+            {v.toFixed(0)}
+          </text>
+        </g>
+      ))}
+      <line className="fc-baseline" x1={pad.l} x2={W - pad.r} y1={y(100)} y2={y(100)} />
+      {lines.map((line) => (
+        <path key={line.key} className="fc-line" d={path(line.points)} stroke={line.color} fill="none" />
+      ))}
+      <text className="fc-axis" x={pad.l} y={H - 6}>
+        {new Date(minT).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
+      </text>
+      <text className="fc-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+        {new Date(maxT).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
+      </text>
+    </svg>
+  )
+}
+
+function formatMetric(fund, row, lang) {
+  const v = fund[row.key]
+  if (row.format === 'score') {
+    return <span className={`badge score-${scoreTone(v)}`}>{v ?? '—'}</span>
+  }
+  if (row.format === 'pct') {
+    return <span className={`pct ${pctTone(v)}`}>{formatPct(v)}</span>
+  }
+  if (row.format === 'vol') {
+    return v == null ? '—' : `${(v * 100).toFixed(1)}%`
+  }
+  if (row.format === 'num') {
+    return v == null ? '—' : Number(v).toFixed(2)
+  }
+  if (row.format === 'int') {
+    return v == null ? '—' : Number(v).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
+  }
+  if (row.format === 'mcap') {
+    return formatMarketCap(v)
+  }
+  return '—'
+}
+
+/**
+ * Fonaly tarzı yan yana karşılaştırma: fon seçimi, normalize getiri eğrisi,
+ * benchmark katmanları ve metrik tablosu.
+ */
+export default function FundCompare({ funds, prices, lang, loading, error, seedSymbols }) {
+  const list = funds?.results || []
+  const [selected, setSelected] = useState([])
+  const [period, setPeriod] = useState('3m')
+  const [query, setQuery] = useState('')
+  const [activeBench, setActiveBench] = useState(() => new Set())
+  const [seeded, setSeeded] = useState(false)
+
+  useEffect(() => {
+    if (!list.length || seeded) return
+    const seed = (seedSymbols || []).filter((s) => list.some((f) => f.symbol === s))
+    setSelected(seed.length ? seed.slice(0, MAX_FUNDS) : list.slice(0, 2).map((f) => f.symbol))
+    setSeeded(true)
+  }, [list, seedSymbols, seeded])
+
+  const bySymbol = useMemo(() => {
+    const m = new Map()
+    for (const f of list) m.set(f.symbol, f)
+    return m
+  }, [list])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toUpperCase()
+    if (!q) return list.slice(0, 40)
+    return list
+      .filter((f) => f.symbol.includes(q) || (f.name || '').toUpperCase().includes(q))
+      .slice(0, 40)
+  }, [list, query])
+
+  function toggleFund(symbol) {
+    setSelected((prev) => {
+      if (prev.includes(symbol)) return prev.filter((s) => s !== symbol)
+      if (prev.length >= MAX_FUNDS) return prev
+      return [...prev, symbol]
+    })
+  }
+
+  function toggleBench(key) {
+    setActiveBench((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const chartLines = useMemo(() => {
+    const lines = []
+    let colorIdx = 0
+    for (const sym of selected) {
+      const pts = normalizeSeries(prices?.series?.[sym], period)
+      if (!pts.length) continue
+      lines.push({
+        key: sym,
+        label: sym,
+        color: LINE_COLORS[colorIdx % LINE_COLORS.length],
+        points: pts,
+        ret: seriesReturn(pts),
+      })
+      colorIdx += 1
+    }
+    for (const key of activeBench) {
+      const b = prices?.benchmarks?.[key]
+      if (!b) continue
+      const pts = normalizeSeries(b.points, period)
+      if (!pts.length) continue
+      lines.push({
+        key: `b:${key}`,
+        label: b.name || key,
+        color: LINE_COLORS[colorIdx % LINE_COLORS.length],
+        points: pts,
+        ret: seriesReturn(pts),
+        benchmark: true,
+      })
+      colorIdx += 1
+    }
+    return lines
+  }, [selected, activeBench, prices, period])
+
+  const selectedFunds = selected.map((s) => bySymbol.get(s)).filter(Boolean)
+  const benchmarks = Object.entries(prices?.benchmarks || {})
+
+  if (loading) return <div className="empty-box">{t(lang, 'fundCompareLoading')}</div>
+  if (error) return <div className="error-box">{error}</div>
+  if (!list.length) return <div className="empty-box">{t(lang, 'fundsEmpty')}</div>
+
+  return (
+    <div className="fund-compare">
+      <div className="status-bar">
+        <span>{t(lang, 'fundCompareIntro')}</span>
+      </div>
+
+      <section className="fc-section">
+        <h2 className="today-title">{t(lang, 'fundComparePick')}</h2>
+        <div className="search-row">
+          <input
+            className="search-input"
+            type="search"
+            placeholder={t(lang, 'searchFund')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <span className="fc-pick-hint">{t(lang, 'fundComparePickHint', selected.length, MAX_FUNDS)}</span>
+        </div>
+        <div className="fc-chips">
+          {filtered.map((f) => {
+            const on = selected.includes(f.symbol)
+            return (
+              <button
+                key={f.symbol}
+                type="button"
+                className={`fc-chip ${on ? 'active' : ''}`}
+                onClick={() => toggleFund(f.symbol)}
+                title={f.name}
+              >
+                <strong>{f.symbol}</strong>
+                <span className={`pct ${pctTone(f.return_3m)}`}>{formatPct(f.return_3m)}</span>
+              </button>
+            )
+          })}
+        </div>
+        {selectedFunds.length > 0 && (
+          <div className="fc-selected">
+            {selectedFunds.map((f, i) => (
+              <button key={f.symbol} type="button" className="fc-selected-item" onClick={() => toggleFund(f.symbol)}>
+                <span className="fc-swatch" style={{ background: LINE_COLORS[i % LINE_COLORS.length] }} />
+                {f.symbol}
+                <span className="fc-remove">✕</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="fc-section">
+        <h2 className="today-title">{t(lang, 'fundCompareChartTitle')}</h2>
+        <div className="tabs today-tf-tabs">
+          {PERIODS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className={`tab ${period === p.key ? 'active' : ''}`}
+              onClick={() => setPeriod(p.key)}
+            >
+              {lang === 'en' ? p.labelEn : p.label}
+            </button>
+          ))}
+        </div>
+
+        {benchmarks.length > 0 && (
+          <div className="fc-bench">
+            <span className="fc-bench-label">{t(lang, 'fundCompareBench')}</span>
+            {benchmarks.map(([key, b]) => (
+              <button
+                key={key}
+                type="button"
+                className={`fc-chip ${activeBench.has(key) ? 'active' : ''}`}
+                onClick={() => toggleBench(key)}
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!prices?.series ? (
+          <div className="empty-box">{t(lang, 'fundCompareNoPrices')}</div>
+        ) : selected.length === 0 ? (
+          <div className="empty-box">{t(lang, 'fundCompareNeedFunds')}</div>
+        ) : (
+          <>
+            <CompareChart lines={chartLines} lang={lang} />
+            {chartLines.length > 0 && (
+              <div className="fc-legend">
+                {chartLines.map((l) => (
+                  <span key={l.key} className="fc-legend-item">
+                    <span className="fc-swatch" style={{ background: l.color }} />
+                    {l.label}
+                    <span className={`pct ${pctTone(l.ret)}`}>{formatPct(l.ret)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {selectedFunds.length > 0 && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fundCompareMetrics')}</h2>
+          <div className="table-wrap">
+            <table className="fc-table">
+              <thead>
+                <tr>
+                  <th className="left">{t(lang, 'fundCompareMetricCol')}</th>
+                  {selectedFunds.map((f, i) => (
+                    <th key={f.symbol}>
+                      <span className="fc-swatch" style={{ background: LINE_COLORS[i % LINE_COLORS.length] }} />
+                      {f.symbol}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="left">{t(lang, 'colFund')}</td>
+                  {selectedFunds.map((f) => (
+                    <td key={f.symbol} className="fc-name-cell" title={f.name}>
+                      {f.name}
+                    </td>
+                  ))}
+                </tr>
+                {METRIC_ROWS.map((row) => (
+                  <tr key={row.key}>
+                    <td className="left">{row.i18nKey ? t(lang, row.i18nKey) : row.label}</td>
+                    {selectedFunds.map((f) => (
+                      <td key={f.symbol}>{formatMetric(f, row, lang)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
+    </div>
+  )
+}

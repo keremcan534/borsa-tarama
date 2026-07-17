@@ -232,3 +232,13 @@ def test_missing_investor_column_skips_the_floor():
     df = pd.DataFrame(rows).drop(columns=["investor_count"])
     results = run_fund_screener(df=df)
     assert {r["symbol"] for r in results} == {"AAA"}
+
+
+def test_include_series_returns_price_points_for_listed_funds():
+    rows = _fund_rows("PHE", "PUSULA", _smooth_prices())
+    rows += _fund_rows("TLY", "İŞ PORTFÖY", _smooth_prices())
+    results, series = run_fund_screener(df=pd.DataFrame(rows), include_series=True)
+    codes = {r["symbol"] for r in results}
+    assert codes <= set(series)
+    assert all(isinstance(pt[0], str) and isinstance(pt[1], float) for pt in series["PHE"][:3])
+    assert len(series["PHE"]) >= 60

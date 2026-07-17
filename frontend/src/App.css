@@ -364,6 +364,10 @@ tbody tr:hover {
 
 .search-row {
   margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .search-input {
@@ -1413,4 +1417,164 @@ button.today-card.fund-card:hover {
 
 .fund-card-label strong {
   color: var(--text-h);
+}
+
+/* ---------- fon karşılaştırma ---------- */
+
+.fund-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fc-section {
+  margin-bottom: 18px;
+}
+
+.fc-pick-hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.75;
+  margin-left: 12px;
+}
+
+.fc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.fc-chip:hover {
+  border-color: var(--accent);
+}
+
+.fc-chip.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.fc-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fc-selected-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.fc-remove {
+  opacity: 0.5;
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.fc-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fc-bench {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fc-bench-label {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.fc-chart {
+  width: 100%;
+  height: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.fc-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.fc-baseline {
+  stroke: var(--text);
+  stroke-opacity: 0.35;
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+
+.fc-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fc-axis {
+  fill: var(--text);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.fc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.fc-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-h);
+}
+
+.fc-table th,
+.fc-table td {
+  white-space: nowrap;
+}
+
+.fc-name-cell {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  opacity: 0.85;
 }

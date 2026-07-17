@@ -51,6 +51,15 @@ export async function fetchFunds() {
   return res.json();
 }
 
+/** Fon karşılaştırma grafiği: günlük fiyat serileri + opsiyonel benchmarklar. */
+export async function fetchFundPrices() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/fund_prices.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Fon fiyat verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 // Backtest ayrı ve haftalık bir workflow'da üretilip build'e kopyalanır; canlı
 // çalıştırılacak bir endpoint'i yok (600+ sembol x yıllarca veri, dakikalar sürer).
 export async function fetchBacktest() {

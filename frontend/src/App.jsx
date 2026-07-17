@@ -5,10 +5,12 @@ import {
   fetchBacktest,
   fetchDailyOverview,
   fetchEnabledMarkets,
+  fetchFundPrices,
   fetchFunds,
   fetchScreener,
   STATIC_MODE,
 } from './api'
+import FundCompare from './FundCompare'
 import { getLang, setLang as persistLang, t } from './i18n'
 
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
@@ -41,6 +43,7 @@ const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
+  { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
   { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
   { key: 'news', i18nKey: 'tabNews', icon: '📰' },
 ]
@@ -428,7 +431,7 @@ function FundReturnsChart({ fund, lang }) {
   )
 }
 
-function FundModal({ fund, news, lang, onClose }) {
+function FundModal({ fund, news, lang, onClose, onCompare }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -451,6 +454,17 @@ function FundModal({ fund, news, lang, onClose }) {
             </div>
           </div>
           <div className="modal-actions">
+            {onCompare && (
+              <button
+                className="btn small"
+                onClick={() => {
+                  onCompare(fund.symbol)
+                  onClose()
+                }}
+              >
+                {t(lang, 'fundCompareAction')}
+              </button>
+            )}
             {fund.tefas_url && (
               <a className="btn small" href={fund.tefas_url} target="_blank" rel="noreferrer noopener">
                 TEFAS'ta aç ↗
@@ -1171,6 +1185,10 @@ function App() {
   const [funds, setFunds] = useState(null)
   const [fundsLoading, setFundsLoading] = useState(false)
   const [fundsError, setFundsError] = useState(null)
+  const [fundPrices, setFundPrices] = useState(null)
+  const [fundPricesReady, setFundPricesReady] = useState(false)
+  const [fundPricesLoading, setFundPricesLoading] = useState(false)
+  const [compareSeed, setCompareSeed] = useState([])
   const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
   const [fundSearch, setFundSearch] = useState('')
   const [backtest, setBacktest] = useState(null)
@@ -1272,7 +1290,7 @@ function App() {
   }, [market, timeframe])
 
   useEffect(() => {
-    if (view !== 'funds' && view !== 'today') return // "Bugün" öne çıkan fonları gösteriyor
+    if (view !== 'funds' && view !== 'today' && view !== 'fundCompare') return
     if (funds) return
     let cancelled = false
     setFundsLoading(true)
@@ -1291,6 +1309,30 @@ function App() {
       cancelled = true
     }
   }, [view, funds])
+
+  useEffect(() => {
+    if (view !== 'fundCompare') return
+    if (fundPricesReady) return
+    let cancelled = false
+    setFundPricesLoading(true)
+    fetchFundPrices()
+      .then((result) => {
+        if (!cancelled) setFundPrices(result)
+      })
+      .catch(() => {
+        // Fiyat dosyası yoksa metrik karşılaştırması yine çalışsın
+        if (!cancelled) setFundPrices(null)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFundPricesReady(true)
+          setFundPricesLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, fundPricesReady])
 
   // Backtest tek bir dosyada tüm market/timeframe'leri taşır: bir kez yüklenir,
   // market/zaman dilimi değişince yeniden istek atılmaz.
@@ -1609,6 +1651,10 @@ function App() {
               news={chartNews}
               lang={lang}
               onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
             />
           )}
         </>
@@ -1771,9 +1817,25 @@ function App() {
               news={chartNews}
               lang={lang}
               onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
             />
           )}
         </>
+      )}
+
+      {view === 'fundCompare' && (
+        <FundCompare
+          key={compareSeed.join(',') || 'default'}
+          funds={funds}
+          prices={fundPrices}
+          lang={lang}
+          loading={fundsLoading || fundPricesLoading}
+          error={fundsError}
+          seedSymbols={compareSeed}
+        />
       )}
 
       {view === 'news' && (

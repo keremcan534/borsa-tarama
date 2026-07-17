@@ -188,7 +188,9 @@ bağımlılık kalktı.
 ## TEFAS Fonları
 `app/funds/` altında TEFAS YAT fonları için getiri/risk taraması var (RSI/MACD yok;
 1a/3a/6a/1y/YTD getiri, volatilite, Sharpe, max düşüş, 0-100 puan). `scan_to_json.py`
-her çalıştırmada `funds.json` üretir; arayüzde **Fonlar** sekmesi gösterir.
+her çalıştırmada `funds.json` (liste) ve `fund_prices.json` (günlük fiyat serileri +
+BIST100/USD/altın benchmark) üretir. Arayüzde **Fonlar** listesi ve **Karşılaştır**
+sekmesi (normalize getiri eğrisi, dönem seçimi, metrik tablosu) bunları kullanır.
 API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
 
 ## Strateji Backtest'i

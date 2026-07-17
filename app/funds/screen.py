@@ -65,6 +65,17 @@ def _fetch_history(start: date, end: date) -> pd.DataFrame:
     )
 
 
+def _series_to_points(series: pd.Series) -> list[list]:
+    """Karşılaştırma grafiği için [[YYYY-MM-DD, price], ...] listesi."""
+    clean = series.dropna().sort_index()
+    clean = clean[clean > 0]
+    clean = clean[~clean.index.duplicated(keep="last")]
+    return [
+        [ts.strftime("%Y-%m-%d"), round(float(px), 4)]
+        for ts, px in clean.items()
+    ]
+
+
 def run_fund_screener(
     *,
     as_of: date | None = None,
@@ -72,11 +83,15 @@ def run_fund_screener(
     min_portfolio_size: float = MIN_PORTFOLIO_SIZE,
     max_funds: int = MAX_FUNDS,
     df: pd.DataFrame | None = None,
-) -> list[dict]:
+    include_series: bool = False,
+) -> list[dict] | tuple[list[dict], dict[str, list]]:
     """TEFAS YAT fonlarını tara; getiri/risk skoruna göre sıralı liste döner.
 
     `df` verilirse ağ çağrısı yapılmaz (testler için). Aksi halde pytefas
     ile ~1 yıllık tüm YAT fon fiyatları çekilir (~3 dk, rate-limit'li).
+
+    `include_series=True` ise `(results, series_by_code)` döner; series_by_code
+    yalnızca listedeki fonların günlük fiyat noktalarını taşır (karşılaştırma UI).
     """
     end = as_of or date.today()
     start = end - timedelta(days=lookback_days)
@@ -86,8 +101,9 @@ def run_fund_screener(
         df = _fetch_history(start, end)
         print(f"[FON] {len(df)} satır alındı")
 
+    empty_series: dict[str, list] = {}
     if df is None or df.empty:
-        return []
+        return ([], empty_series) if include_series else []
 
     # Sütun isimleri pytefas şemasına göre
     required = {"date", "fund_code", "price"}
@@ -131,6 +147,7 @@ def run_fund_screener(
         }
 
     results: list[dict] = []
+    series_by_code: dict[str, list] = {}
     for code, group in work.groupby("fund_code"):
         if code not in liquid_codes:
             continue
@@ -167,6 +184,12 @@ def run_fund_screener(
                 **metrics,
             }
         )
+        if include_series:
+            series_by_code[code] = _series_to_points(series)
 
     results.sort(key=lambda r: (r.get("score") or 0, r.get("return_1y") or -999), reverse=True)
-    return results[:max_funds]
+    trimmed = results[:max_funds]
+    if include_series:
+        keep = {r["symbol"] for r in trimmed}
+        return trimmed, {k: v for k, v in series_by_code.items() if k in keep}
+    return trimmed

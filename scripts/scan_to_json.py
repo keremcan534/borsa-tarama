@@ -119,9 +119,11 @@ def main() -> None:
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
 
-    # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri)
+    # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri).
+    # Fiyat serileri ayrı dosyada: karşılaştırma grafiği için; liste JSON'unu şişirmez.
+    fund_series: dict = {}
     try:
-        fund_results = run_fund_screener()
+        fund_results, fund_series = run_fund_screener(include_series=True)
         funds_payload = {
             "market": "FUNDS",
             "count": len(fund_results),
@@ -142,6 +144,7 @@ def main() -> None:
         }
     except Exception as e:
         print(f"[FON] tarama başarısız ({e}); boş payload yazılıyor")
+        fund_results = []
         funds_payload = {
             "market": "FUNDS",
             "count": 0,
@@ -154,6 +157,40 @@ def main() -> None:
     funds_path = out_dir / "funds.json"
     funds_path.write_text(json.dumps(funds_payload, ensure_ascii=False), encoding="utf-8")
     print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
+
+    # Karşılaştırma benchmark'ları (normalize eğri için). Başarısız olanlar sessizce atlanır.
+    benchmarks: dict[str, dict] = {}
+    for symbol, name in (
+        ("XU100.IS", "BIST 100"),
+        ("USDTRY=X", "USD/TRY"),
+        ("GC=F", "Altın (ons)"),
+    ):
+        try:
+            bdf = fetcher.fetch_ohlcv(symbol, period="1y", interval="1d")
+            if bdf is None or bdf.empty or "close" not in bdf.columns:
+                continue
+            points = []
+            for ts, row in bdf.iterrows():
+                px = float(row["close"])
+                if px <= 0:
+                    continue
+                day = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+                points.append([day, round(px, 4)])
+            if points:
+                benchmarks[symbol] = {"name": name, "points": points}
+        except Exception as e:
+            print(f"[FON] benchmark {symbol} alınamadı: {e}")
+
+    prices_payload = {
+        "generated_at": funds_payload["generated_at"],
+        "series": fund_series,
+        "benchmarks": benchmarks,
+    }
+    prices_path = out_dir / "fund_prices.json"
+    prices_path.write_text(json.dumps(prices_payload, ensure_ascii=False), encoding="utf-8")
+    print(
+        f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
+    )
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report_path = reports_dir / f"{date_str}.html"
