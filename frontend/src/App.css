@@ -575,6 +575,12 @@ th.sorted {
   border-top: 2px solid var(--border);
 }
 
+/* USD bazı düğmesi benchmark çiplerinden görsel olarak ayrılsın */
+.fc-usd {
+  margin-left: 10px;
+  font-weight: 600;
+}
+
 .badge.new-badge {
   background: rgba(22, 163, 74, 0.15);
   color: var(--up);

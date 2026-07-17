@@ -91,12 +91,31 @@ function seriesReturn(norm) {
   return norm[norm.length - 1].v / 100 - 1
 }
 
-function formatPrice(value, lang) {
+function formatPrice(value, lang, currency = '₺') {
   if (value == null || Number.isNaN(value)) return '—'
   return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
-  })} ₺`
+  })} ${currency}`
+}
+
+/**
+ * TL serisini gün gün USDTRY kuruna bölerek USD bazına çevirir. Kur, o güne
+ * (veya öncesindeki son işlem gününe) ait değerdir; iki liste de tarih sıralıdır.
+ */
+function toUsdSeries(points, usdPoints) {
+  if (!points?.length || !usdPoints?.length) return points
+  const out = []
+  let i = 0
+  let rate = null
+  for (const [d, p] of points) {
+    while (i < usdPoints.length && usdPoints[i][0] <= d) {
+      rate = usdPoints[i][1]
+      i += 1
+    }
+    if (rate > 0) out.push([d, p / rate])
+  }
+  return out
 }
 
 function nearestPoint(points, t) {
@@ -113,7 +132,7 @@ function nearestPoint(points, t) {
   return best
 }
 
-function CompareChart({ lines, lang }) {
+function CompareChart({ lines, lang, currency = '₺' }) {
   const W = 720
   const H = 280
   const pad = { t: 16, r: 16, b: 28, l: 44 }
@@ -258,7 +277,7 @@ function CompareChart({ lines, lang }) {
             <div key={item.key} className="fc-tooltip-row">
               <span className="fc-swatch" style={{ background: item.color }} />
               <strong>{item.label}</strong>
-              <span>{formatPrice(item.px, lang)}</span>
+              <span>{formatPrice(item.px, lang, currency)}</span>
               <span className={`pct ${pctTone(item.ret)}`}>{formatPct(item.ret)}</span>
             </div>
           ))}
@@ -301,6 +320,7 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
   const [period, setPeriod] = useState('3m')
   const [query, setQuery] = useState('')
   const [activeBench, setActiveBench] = useState(() => new Set())
+  const [usdBase, setUsdBase] = useState(false)
   const [seeded, setSeeded] = useState(false)
 
   useEffect(() => {
@@ -341,11 +361,18 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
     })
   }
 
+  // USD bazı: nominal TL getirisi yüksek enflasyonda yanıltıcı; seriler gün gün
+  // USDTRY'ye bölününce "dolar cinsinden gerçekten kazandırdı mı" görünür.
+  const usdPoints = prices?.benchmarks?.['USDTRY=X']?.points
+  const usdAvailable = Boolean(usdPoints?.length)
+  const inUsd = usdBase && usdAvailable
+
   const chartLines = useMemo(() => {
+    const convert = (pts) => (inUsd ? toUsdSeries(pts, usdPoints) : pts)
     const lines = []
     let colorIdx = 0
     for (const sym of selected) {
-      const pts = normalizeSeries(prices?.series?.[sym], period)
+      const pts = normalizeSeries(convert(prices?.series?.[sym]), period)
       if (!pts.length) continue
       lines.push({
         key: sym,
@@ -357,9 +384,11 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
       colorIdx += 1
     }
     for (const key of activeBench) {
+      // USD bazında USDTRY'nin kendisi düz 100 çizgisi olurdu; atla
+      if (inUsd && key === 'USDTRY=X') continue
       const b = prices?.benchmarks?.[key]
       if (!b) continue
-      const pts = normalizeSeries(b.points, period)
+      const pts = normalizeSeries(convert(b.points), period)
       if (!pts.length) continue
       lines.push({
         key: `b:${key}`,
@@ -372,7 +401,7 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
       colorIdx += 1
     }
     return lines
-  }, [selected, activeBench, prices, period])
+  }, [selected, activeBench, prices, period, inUsd, usdPoints])
 
   const selectedFunds = selected.map((s) => bySymbol.get(s)).filter(Boolean)
   const benchmarks = Object.entries(prices?.benchmarks || {})
@@ -457,6 +486,16 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
                 {b.name}
               </button>
             ))}
+            {usdAvailable && (
+              <button
+                type="button"
+                className={`fc-chip fc-usd ${usdBase ? 'active' : ''}`}
+                title={t(lang, 'fcUsdBaseHint')}
+                onClick={() => setUsdBase((v) => !v)}
+              >
+                $ {t(lang, 'fcUsdBase')}
+              </button>
+            )}
           </div>
         )}
 
@@ -466,7 +505,7 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
           <div className="empty-box">{t(lang, 'fundCompareNeedFunds')}</div>
         ) : (
           <>
-            <CompareChart lines={chartLines} lang={lang} />
+            <CompareChart lines={chartLines} lang={lang} currency={inUsd ? '$' : '₺'} />
             {chartLines.length > 0 && (
               <div className="fc-legend">
                 {chartLines.map((l) => (

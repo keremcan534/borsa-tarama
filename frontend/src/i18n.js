@@ -79,6 +79,9 @@ const STRINGS = {
     fundCompareChartTitle: 'Getiri eğrisi (dönem başı = 100)',
     fundCompareChartLabel: 'Fon karşılaştırma grafiği',
     fundCompareBench: 'Benchmark',
+    fcUsdBase: 'USD bazında',
+    fcUsdBaseHint:
+      'Eğrileri günlük USD/TRY kuruna bölerek dolar cinsinden gösterir: nominal TL getirisi yerine reel performans.',
     fundCompareMetrics: 'Metrikler',
     fundCompareMetricCol: 'Metrik',
     fundCompareNoChart: 'Bu dönem için çizilecek yeterli veri yok.',
@@ -373,6 +376,9 @@ const STRINGS = {
     fundCompareChartTitle: 'Return curve (period start = 100)',
     fundCompareChartLabel: 'Fund comparison chart',
     fundCompareBench: 'Benchmarks',
+    fcUsdBase: 'In USD',
+    fcUsdBaseHint:
+      'Divides the curves by the daily USD/TRY rate to show dollar-based (real) performance instead of nominal TL returns.',
     fundCompareMetrics: 'Metrics',
     fundCompareMetricCol: 'Metric',
     fundCompareNoChart: 'Not enough data to chart this period.',
