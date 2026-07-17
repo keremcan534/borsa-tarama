@@ -398,6 +398,203 @@ function ChartModal({ symbol, news, onClose }) {
   )
 }
 
+// TEFAS fonlarının günlük fiyat (pay değeri) serisi fund_prices.json'dan gelir;
+// gerçek bir zaman-fiyat grafiği çizmek için kullanılır.
+const FUND_CHART_PERIODS = [
+  { key: '1m', days: 30, label: '1A', labelEn: '1M' },
+  { key: '3m', days: 90, label: '3A', labelEn: '3M' },
+  { key: '6m', days: 180, label: '6A', labelEn: '6M' },
+  { key: 'ytd', days: null, label: 'YTD', labelEn: 'YTD' },
+  { key: '1y', days: 365, label: '1Y', labelEn: '1Y' },
+]
+
+function fundPeriodStartMs(periodKey, lastMs) {
+  const p = FUND_CHART_PERIODS.find((x) => x.key === periodKey)
+  if (!p) return lastMs - 90 * 86400000
+  if (p.key === 'ytd') {
+    const d = new Date(lastMs)
+    return Date.UTC(d.getUTCFullYear(), 0, 1)
+  }
+  return lastMs - p.days * 86400000
+}
+
+/** [[YYYY-MM-DD, price], ...] → seçili dönemde sıralı [{t, px}] noktaları. */
+function parseFundSeries(points, periodKey) {
+  if (!points?.length) return []
+  const parsed = points
+    .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
+    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
+    .sort((a, b) => a.t - b.t)
+  if (parsed.length < 2) return parsed
+  const last = parsed[parsed.length - 1].t
+  const start = fundPeriodStartMs(periodKey, last)
+  const window = parsed.filter((x) => x.t >= start)
+  return window.length >= 2 ? window : parsed
+}
+
+function formatFundPrice(value, lang) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })} ₺`
+}
+
+function fundAxisPrice(v) {
+  const a = Math.abs(v)
+  if (a >= 100) return v.toFixed(0)
+  if (a >= 1) return v.toFixed(2)
+  return v.toFixed(4)
+}
+
+function nearestFundPoint(points, t) {
+  let best = points[0]
+  let bestDist = Math.abs(points[0].t - t)
+  for (let i = 1; i < points.length; i += 1) {
+    const dist = Math.abs(points[i].t - t)
+    if (dist < bestDist) {
+      best = points[i]
+      bestDist = dist
+    }
+  }
+  return best
+}
+
+/**
+ * Tek fonun pay değeri zaman serisini gerçek eksenlerle (tarih + fiyat) çizen
+ * çizgi grafik. Fareyle üzerine gelince tarih/fiyat/getiri gösteren tooltip verir.
+ */
+function FundPriceChart({ points, lang }) {
+  const [period, setPeriod] = useState('3m')
+  const [hover, setHover] = useState(null)
+  const data = useMemo(() => parseFundSeries(points, period), [points, period])
+
+  const W = 640
+  const H = 240
+  const pad = { t: 14, r: 16, b: 26, l: 52 }
+  const innerW = W - pad.l - pad.r
+  const innerH = H - pad.t - pad.b
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const selector = (
+    <div className="fund-price-periods">
+      {FUND_CHART_PERIODS.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          className={`fund-price-period ${period === p.key ? 'active' : ''}`}
+          onClick={() => setPeriod(p.key)}
+        >
+          {lang === 'en' ? p.labelEn : p.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (data.length < 2) {
+    return (
+      <div className="fund-price">
+        {selector}
+        <div className="empty-box">{t(lang, 'fundCompareNoChart')}</div>
+      </div>
+    )
+  }
+
+  const minT = data[0].t
+  const maxT = data[data.length - 1].t
+  const base = data[0].px
+  const last = data[data.length - 1].px
+  const totalRet = last / base - 1
+  const dir = totalRet >= 0 ? 'up' : 'down'
+
+  const pxVals = data.map((d) => d.px)
+  const minP = Math.min(...pxVals)
+  const maxP = Math.max(...pxVals)
+  const span = maxP - minP
+  const pPad = Math.max(span * 0.1, minP * 0.002, 1e-6)
+  const lo = minP - pPad
+  const hi = maxP + pPad
+
+  const x = (tt) => pad.l + ((tt - minT) / (maxT - minT || 1)) * innerW
+  const y = (p) => pad.t + (1 - (p - lo) / (hi - lo || 1)) * innerH
+  const tFromX = (px) => minT + ((px - pad.l) / (innerW || 1)) * (maxT - minT)
+
+  const linePath = data.map((d, i) => `${i ? 'L' : 'M'}${x(d.t).toFixed(1)},${y(d.px).toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L${x(maxT).toFixed(1)},${(H - pad.b).toFixed(1)} L${x(minT).toFixed(1)},${(H - pad.b).toFixed(1)} Z`
+  const gridVals = [hi, (lo + hi) / 2, lo]
+
+  function onMove(event) {
+    const svg = event.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const px = (event.clientX - rect.left) * (W / rect.width)
+    if (px < pad.l || px > W - pad.r) {
+      setHover(null)
+      return
+    }
+    const point = nearestFundPoint(data, tFromX(px))
+    if (!point) {
+      setHover(null)
+      return
+    }
+    setHover({ t: point.t, px: point.px, ret: point.px / base - 1 })
+  }
+
+  const tipLeft = hover ? Math.min(Math.max(x(hover.t) + 12, pad.l), W - 168) : 0
+
+  return (
+    <div className="fund-price">
+      <div className="fund-price-head">
+        {selector}
+        <span className={`fund-price-change pct ${pctTone(totalRet)}`}>{formatPct(totalRet)}</span>
+      </div>
+      <div className="fund-price-wrap">
+        <svg
+          className="fund-price-chart"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={t(lang, 'fundPriceChartLabel')}
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+        >
+          {gridVals.map((v) => (
+            <g key={v}>
+              <line className="fund-price-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+              <text className="fund-price-axis" x={pad.l - 8} y={y(v) + 3} textAnchor="end">
+                {fundAxisPrice(v)}
+              </text>
+            </g>
+          ))}
+          <path className={`fund-price-area ${dir}`} d={areaPath} />
+          <path className={`fund-price-line ${dir}`} d={linePath} />
+          {hover && (
+            <g pointerEvents="none">
+              <line className="fund-price-crosshair" x1={x(hover.t)} x2={x(hover.t)} y1={pad.t} y2={H - pad.b} />
+              <circle className={`fund-price-dot ${dir}`} cx={x(hover.t)} cy={y(hover.px)} r="4" />
+            </g>
+          )}
+          <text className="fund-price-axis" x={pad.l} y={H - 6}>
+            {new Date(minT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </text>
+          <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+            {new Date(maxT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </text>
+        </svg>
+        {hover && (
+          <div className="fund-price-tooltip" style={{ left: `${(tipLeft / W) * 100}%` }}>
+            <div className="fund-price-tooltip-date">
+              {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+            <div className="fund-price-tooltip-row">
+              <strong>{formatFundPrice(hover.px, lang)}</strong>
+              <span className={`pct ${pctTone(hover.ret)}`}>{formatPct(hover.ret)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** TEFAS fonları TradingView'da yok; dönem getirilerini bar grafik olarak gösteriyoruz. */
 const FUND_RETURN_BARS = [
   { key: 'return_1d', label: '1G', labelEn: '1D' },
@@ -434,7 +631,8 @@ function FundReturnsChart({ fund, lang }) {
   )
 }
 
-function FundModal({ fund, news, lang, onClose, onCompare }) {
+function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading }) {
+  const series = prices?.series?.[fund.symbol]
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -484,7 +682,20 @@ function FundModal({ fund, news, lang, onClose, onCompare }) {
             <span className={`badge score-${scoreTone(fund.score)}`}>{fund.score}</span>
             <span className="modal-fund-score-label">{t(lang, 'colScore')}</span>
           </div>
-          <FundReturnsChart fund={fund} lang={lang} />
+          <div className="fund-price-section">
+            <div className="fund-section-title">{t(lang, 'fundPriceTitle')}</div>
+            {series?.length ? (
+              <FundPriceChart points={series} lang={lang} />
+            ) : (
+              <div className="empty-box">
+                {pricesLoading ? t(lang, 'fundCompareLoading') : t(lang, 'fundCompareNoPrices')}
+              </div>
+            )}
+          </div>
+          <div className="fund-returns-section">
+            <div className="fund-section-title">{t(lang, 'fundChartLabel')}</div>
+            <FundReturnsChart fund={fund} lang={lang} />
+          </div>
           <div className="fund-metrics">
             <div className="fund-metric">
               <span className="fund-metric-label">{t(lang, 'colInvestors')}</span>
@@ -1317,7 +1528,9 @@ function App() {
   }, [view, funds])
 
   useEffect(() => {
-    if (view !== 'fundCompare') return
+    // Fiyat serileri hem karşılaştırma sekmesinde hem de bir fon modalı açılınca
+    // (fon detayındaki gerçek fiyat grafiği için) yüklenir.
+    if (view !== 'fundCompare' && !chartFund) return
     if (fundPricesReady) return
     let cancelled = false
     setFundPricesLoading(true)
@@ -1338,7 +1551,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, fundPricesReady])
+  }, [view, chartFund, fundPricesReady])
 
   useEffect(() => {
     if (view !== 'stockPositions') return
@@ -1677,6 +1890,8 @@ function App() {
               fund={chartFund}
               news={chartNews}
               lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
               onClose={() => setChartFund(null)}
               onCompare={(symbol) => {
                 setCompareSeed([symbol])
@@ -1843,6 +2058,8 @@ function App() {
               fund={chartFund}
               news={chartNews}
               lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
               onClose={() => setChartFund(null)}
               onCompare={(symbol) => {
                 setCompareSeed([symbol])

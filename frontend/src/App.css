@@ -624,6 +624,165 @@ th.sorted {
   color: var(--text);
 }
 
+.fund-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+
+.fund-price {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fund-price-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fund-price-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fund-price-period {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.fund-price-period:hover {
+  border-color: var(--accent);
+}
+
+.fund-price-period.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.fund-price-change {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fund-price-wrap {
+  position: relative;
+}
+
+.fund-price-chart {
+  width: 100%;
+  height: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: crosshair;
+}
+
+.fund-price-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.fund-price-axis {
+  fill: var(--text);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.fund-price-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fund-price-line.up {
+  stroke: var(--up);
+}
+
+.fund-price-line.down {
+  stroke: var(--down);
+}
+
+.fund-price-area {
+  stroke: none;
+}
+
+.fund-price-area.up {
+  fill: var(--up);
+  opacity: 0.1;
+}
+
+.fund-price-area.down {
+  fill: var(--down);
+  opacity: 0.1;
+}
+
+.fund-price-crosshair {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+}
+
+.fund-price-dot.up {
+  fill: var(--up);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.fund-price-dot.down {
+  fill: var(--down);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.fund-price-tooltip {
+  position: absolute;
+  z-index: 4;
+  min-width: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, #000 8%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  font-size: 12px;
+  top: 10px;
+}
+
+.fund-price-tooltip-date {
+  margin-bottom: 6px;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.fund-price-tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fund-price-tooltip-row strong {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
 .fund-chart {
   display: flex;
   align-items: flex-end;
