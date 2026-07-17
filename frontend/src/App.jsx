@@ -29,6 +29,9 @@ const TIMEFRAMES = [
   { key: 'quarterly', label: '3 Aylık', labelEn: 'Quarterly', horizon: 'çeyrekler ve ötesi', horizonEn: 'quarters+' },
 ]
 
+// "Bugün" sayfasındaki market sinyalleri: günlük / haftalık / aylık (çeyreklik hariç)
+const TODAY_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key !== 'quarterly')
+
 // Backtest yalnızca günlük/haftalık için üretilir (backtest.yml): aylık/çeyreklik
 // mumlarda 5-10 yıllık veriden anlamlı sayıda geçmiş sinyal çıkmıyor.
 const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.key === 'weekly')
@@ -389,6 +392,133 @@ function ChartModal({ symbol, news, onClose }) {
   )
 }
 
+/** TEFAS fonları TradingView'da yok; dönem getirilerini bar grafik olarak gösteriyoruz. */
+const FUND_RETURN_BARS = [
+  { key: 'return_1d', label: '1G', labelEn: '1D' },
+  { key: 'return_1m', label: '1A', labelEn: '1M' },
+  { key: 'return_3m', label: '3A', labelEn: '3M' },
+  { key: 'return_6m', label: '6A', labelEn: '6M' },
+  { key: 'return_ytd', label: 'YTD', labelEn: 'YTD' },
+  { key: 'return_1y', label: '1Y', labelEn: '1Y' },
+]
+
+function FundReturnsChart({ fund, lang }) {
+  const values = FUND_RETURN_BARS.map((p) => fund[p.key]).filter((v) => v != null)
+  const maxAbs = Math.max(...values.map(Math.abs), 0.01)
+
+  return (
+    <div className="fund-chart" role="img" aria-label={t(lang, 'fundChartLabel')}>
+      {FUND_RETURN_BARS.map((p) => {
+        const v = fund[p.key]
+        const h = v == null ? 0 : (Math.abs(v) / maxAbs) * 100
+        return (
+          <div key={p.key} className="fund-bar">
+            <span className={`fund-bar-val pct ${pctTone(v)}`}>{formatPct(v)}</span>
+            <div className="fund-bar-track">
+              <div
+                className={`fund-bar-fill ${v == null ? '' : v >= 0 ? 'pos' : 'neg'}`}
+                style={{ height: `${h}%` }}
+              />
+            </div>
+            <span className="fund-bar-label">{lang === 'en' ? p.labelEn : p.label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function FundModal({ fund, news, lang, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal modal-fund" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="modal-fund-title">
+            <TickerLogo symbol={fund.symbol} />
+            <div>
+              <strong>{fund.symbol}</strong>
+              {fund.name && <div className="modal-fund-name">{fund.name}</div>}
+            </div>
+          </div>
+          <div className="modal-actions">
+            {fund.tefas_url && (
+              <a className="btn small" href={fund.tefas_url} target="_blank" rel="noreferrer noopener">
+                TEFAS'ta aç ↗
+              </a>
+            )}
+            <button className="btn small" onClick={onClose}>
+              Kapat ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="modal-fund-body">
+          <div className="modal-fund-score">
+            <span className={`badge score-${scoreTone(fund.score)}`}>{fund.score}</span>
+            <span className="modal-fund-score-label">{t(lang, 'colScore')}</span>
+          </div>
+          <FundReturnsChart fund={fund} lang={lang} />
+          <div className="fund-metrics">
+            <div className="fund-metric">
+              <span className="fund-metric-label">{t(lang, 'colInvestors')}</span>
+              <strong>
+                {fund.investor_count == null
+                  ? '—'
+                  : fund.investor_count.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')}
+              </strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">Sharpe</span>
+              <strong>{fund.sharpe != null ? fund.sharpe.toFixed(2) : '—'}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">Vol</span>
+              <strong>{fund.volatility != null ? `${(fund.volatility * 100).toFixed(1)}%` : '—'}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">Max DD</span>
+              <strong className={`pct ${pctTone(fund.max_drawdown)}`}>{formatPct(fund.max_drawdown)}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">{t(lang, 'colSize')}</span>
+              <strong>{formatMarketCap(fund.portfolio_size)}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-news">
+          <div className="modal-news-title">📰 {t(lang, 'fundModalNews')}</div>
+          {news && news.length > 0 ? (
+            news.slice(0, 3).map((item, i) => (
+              <a
+                key={item.link + i}
+                className="modal-news-item"
+                href={item.link}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <span className="news-time">{formatRelativeTime(item.published_at, lang)}</span> {item.title}
+              </a>
+            ))
+          ) : (
+            <p className="modal-news-empty">{t(lang, 'fundModalNewsEmpty')}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Listedeki sinyallerin sektör dağılımı. Filtre/arama sonucuna göre canlı hesaplanır.
  * Amacı süs değil: sinyaller tek sektörde toplanmışsa liste göründüğü kadar çeşitli
@@ -505,10 +635,25 @@ function loadWatchlist() {
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
  */
-function TodayView({ overview, funds, news, lang, loading, error, allMarkets, onOpenChart, onNavigate }) {
+function TodayView({
+  overview,
+  marketOverview,
+  funds,
+  news,
+  lang,
+  loading,
+  error,
+  allMarkets,
+  todayTimeframe,
+  onTodayTimeframe,
+  onOpenChart,
+  onOpenFund,
+  onNavigate,
+}) {
+  // Market kartları seçilen zaman dilimine göre; öne çıkan sinyaller / nabız günlük kalır.
   const markets = useMemo(
-    () => (overview ? allMarkets.filter((m) => overview[m.key]) : []),
-    [overview, allMarkets],
+    () => (marketOverview ? allMarkets.filter((m) => marketOverview[m.key]) : []),
+    [marketOverview, allMarkets],
   )
 
   // Tüm marketlerin sinyalleri, teknik puana göre. Önceden yalnızca "yeni" sinyaller
@@ -574,11 +719,12 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
     ]
   }, [news])
 
-  if (loading) return <div className="empty-box">{t(lang, 'todayLoading')}</div>
-  if (error) return <div className="error-box">{error}</div>
+  if (loading && !overview) return <div className="empty-box">{t(lang, 'todayLoading')}</div>
+  if (error && !overview) return <div className="error-box">{error}</div>
   if (!overview) return null
 
-  const generatedAt = overview[markets[0]?.key]?.generated_at
+  const firstMarketKey = allMarkets.find((m) => overview[m.key])?.key
+  const generatedAt = firstMarketKey ? overview[firstMarketKey]?.generated_at : null
 
   return (
     <div className="today">
@@ -643,21 +789,43 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
 
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'todayMarkets')}</h2>
-        <div className="today-cards">
-          {markets.map((m) => (
+        <div className="tabs today-tf-tabs">
+          {TODAY_TIMEFRAMES.map((tf) => (
             <button
-              key={m.key}
-              className="today-card market-card"
-              onClick={() => onNavigate('screener', m.key)}
+              key={tf.key}
+              className={`tab ${todayTimeframe === tf.key ? 'active' : ''}`}
+              onClick={() => onTodayTimeframe(tf.key)}
             >
-              <span className="today-card-label">{mLabel(m, lang)}</span>
-              <strong className="today-card-value">{overview[m.key].count}</strong>
-              <span className="today-card-sub">
-                {t(lang, 'todayMarketLine', overview[m.key].count, overview[m.key].scanned)}
-              </span>
+              {tfLabel(tf, lang)}
             </button>
           ))}
         </div>
+        {loading && !marketOverview ? (
+          <div className="empty-box">{t(lang, 'todayLoading')}</div>
+        ) : error && !marketOverview ? (
+          <div className="error-box">{error}</div>
+        ) : marketOverview ? (
+          <div className="today-cards">
+            {markets.map((m) => (
+              <button
+                key={m.key}
+                className="today-card market-card"
+                onClick={() => onNavigate('screener', m.key, todayTimeframe)}
+              >
+                <span className="today-card-label">{mLabel(m, lang)}</span>
+                <strong className="today-card-value">{marketOverview[m.key].count}</strong>
+                <span className="today-card-sub">
+                  {t(
+                    lang,
+                    'todayMarketLine',
+                    marketOverview[m.key].count,
+                    marketOverview[m.key].scanned,
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {popularFunds.length > 0 && (
@@ -671,13 +839,7 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
           <p className="today-note">{t(lang, 'todayFundsNote')}</p>
           <div className="today-cards">
             {popularFunds.map((f) => (
-              <a
-                key={f.symbol}
-                className="today-card fund-card"
-                href={f.tefas_url}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
+              <button key={f.symbol} className="today-card fund-card" onClick={() => onOpenFund(f)}>
                 <span className="today-card-label fund-card-label">
                   <TickerLogo symbol={f.symbol} />
                   <strong>{f.symbol}</strong> ·{' '}
@@ -695,7 +857,7 @@ function TodayView({ overview, funds, news, lang, loading, error, allMarkets, on
                   {t(lang, 'todayFundReturnLabel')} · {t(lang, 'todayFundHolders', f.investor_count)}
                 </span>
                 <span className="today-card-sub">{f.name}</span>
-              </a>
+              </button>
             ))}
           </div>
         </section>
@@ -1002,6 +1164,7 @@ function App() {
   const [sort, setSort] = useState({ key: 'score', dir: 'desc' })
   const [search, setSearch] = useState('')
   const [chartSymbol, setChartSymbol] = useState(null)
+  const [chartFund, setChartFund] = useState(null)
   const [news, setNews] = useState(null)
   const [newsLoading, setNewsLoading] = useState(false)
   const [newsError, setNewsError] = useState(null)
@@ -1013,19 +1176,23 @@ function App() {
   const [backtest, setBacktest] = useState(null)
   const [backtestLoading, setBacktestLoading] = useState(false)
   const [backtestError, setBacktestError] = useState(null)
-  const [overview, setOverview] = useState(null)
+  const [overviewCache, setOverviewCache] = useState({})
   const [overviewLoading, setOverviewLoading] = useState(false)
   const [overviewError, setOverviewError] = useState(null)
+  const [todayTimeframe, setTodayTimeframe] = useState('daily')
   const [menuOpen, setMenuOpen] = useState(false)
   const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
   // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
   // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
   const [marketsResolved, setMarketsResolved] = useState(false)
 
-  // Etkin marketler backend'den gelir (markets.json); manifest okunamazsa tanımlı
-  // tüm marketlere düşülür — eski yayınlarda bu dosya yok.
+  // Etkin marketler backend'den gelir (markets.json); manifest okunamazsa config
+  // varsayılanıyla aynı liste kullanılır (sp500/etf kapalı).
   const activeMarkets = useMemo(
-    () => (enabledMarketKeys ? MARKETS.filter((m) => enabledMarketKeys.includes(m.key)) : MARKETS),
+    () =>
+      MARKETS.filter((m) =>
+        (enabledMarketKeys || ['bist100', 'commodity']).includes(m.key),
+      ),
     [enabledMarketKeys],
   )
 
@@ -1148,18 +1315,31 @@ function App() {
     }
   }, [view, backtest])
 
-  // "Bugün" tüm marketlerin günlük özetini ister; fonlar/haberler kendi effect'lerinde
-  // zaten lazily yükleniyor, burada yalnızca market taramaları toplanır.
+  // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
+  // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
     if (view !== 'today') return
-    if (!marketsResolved) return // market listesi kesinleşmeden istek atma
-    if (overview) return
+    if (!marketsResolved) return
+    const needed = [...new Set(['daily', todayTimeframe])].filter((tf) => !overviewCache[tf])
+    if (!needed.length) return
+
     let cancelled = false
     setOverviewLoading(true)
     setOverviewError(null)
-    fetchDailyOverview(activeMarkets.map((m) => m.key))
-      .then((result) => {
-        if (!cancelled) setOverview(result)
+    const keys = activeMarkets.map((m) => m.key)
+
+    Promise.all(
+      needed.map((tf) =>
+        fetchDailyOverview(keys, tf).then((result) => ({ tf, result })),
+      ),
+    )
+      .then((rows) => {
+        if (cancelled) return
+        setOverviewCache((prev) => {
+          const next = { ...prev }
+          for (const { tf, result } of rows) next[tf] = result
+          return next
+        })
       })
       .catch((err) => {
         if (!cancelled) setOverviewError(err.message)
@@ -1170,12 +1350,12 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, overview, activeMarkets, marketsResolved])
+  }, [view, todayTimeframe, overviewCache, activeMarkets, marketsResolved])
 
   // Haberler tüm marketler için tek seferde yüklenir (akış BIST/Global olarak bölünür,
   // market sekmesine bağlı değil); sekme açılınca veya grafik modalı için lazily.
   useEffect(() => {
-    if (view !== 'news' && view !== 'today' && !chartSymbol) return
+    if (view !== 'news' && view !== 'today' && !chartSymbol && !chartFund) return
     if (!marketsResolved) return // market listesi kesinleşmeden istek atma
     if (news) return
     let ignore = false
@@ -1194,13 +1374,17 @@ function App() {
     return () => {
       ignore = true
     }
-  }, [view, chartSymbol, news, activeMarkets, marketsResolved])
+  }, [view, chartSymbol, chartFund, news, activeMarkets, marketsResolved])
 
+  const overview = overviewCache.daily || null
+  const marketOverview = overviewCache[todayTimeframe] || null
   const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
   const chartNews = useMemo(() => {
-    if (!chartSymbol || !news) return null
-    return news.items.filter((n) => n.symbol === chartSymbol)
-  }, [chartSymbol, news])
+    if (!news) return null
+    const sym = chartFund?.symbol || chartSymbol
+    if (!sym) return null
+    return news.items.filter((n) => n.symbol === sym)
+  }, [chartSymbol, chartFund, news])
   const availableEmas = data?.ema_periods || (timeframe === 'monthly' ? [9, 21, 50] : [9, 21, 50, 200])
 
   const isCustom = useMemo(() => {
@@ -1399,20 +1583,33 @@ function App() {
         <>
           <TodayView
             overview={overview}
+            marketOverview={marketOverview}
             funds={funds}
             news={news}
             lang={lang}
             allMarkets={activeMarkets}
             loading={overviewLoading}
             error={overviewError}
+            todayTimeframe={todayTimeframe}
+            onTodayTimeframe={setTodayTimeframe}
             onOpenChart={setChartSymbol}
-            onNavigate={(nextView, nextMarket) => {
+            onOpenFund={setChartFund}
+            onNavigate={(nextView, nextMarket, nextTimeframe) => {
               if (nextMarket) setMarket(nextMarket)
+              if (nextTimeframe) setTimeframe(nextTimeframe)
               selectView(nextView)
             }}
           />
           {chartSymbol && (
             <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+          )}
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              onClose={() => setChartFund(null)}
+            />
           )}
         </>
       )}
@@ -1517,19 +1714,18 @@ function App() {
                   {fundRows.map((f) => (
                     <tr key={f.symbol}>
                       <td className="symbol-cell">
-                        <a
+                        <button
                           className="symbol-btn fund-link"
-                          href={f.tefas_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          type="button"
                           title={f.name}
+                          onClick={() => setChartFund(f)}
                         >
                           <TickerLogo symbol={f.symbol} />
                           <span className="fund-code-wrap">
                             <strong>{f.symbol}</strong>
                             <span className="fund-name">{f.name}</span>
                           </span>
-                        </a>
+                        </button>
                       </td>
                       <td>
                         <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
@@ -1569,6 +1765,14 @@ function App() {
           )}
 
           <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              onClose={() => setChartFund(null)}
+            />
+          )}
         </>
       )}
 

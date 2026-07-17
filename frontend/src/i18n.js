@@ -24,7 +24,8 @@ const STRINGS = {
       "Veriler resmi TEFAS (Türkiye Elektronik Fon Alım Satım Platformu) API'sinden çekilir. Listede portföy büyüklüğü 100M TRY üzeri yatırım fonları (YAT) yer alır; getiri, volatilite, Sharpe ve maksimum düşüş hesaplanır.",
     fundsHowBody2:
       '1 yıllık getiri (45) + Sharpe oranı (40) + düşük max düşüş (15). Hisse tarayıcısındaki RSI/MACD burada kullanılmaz — fonlar için asıl anlamlı olan getiri/risk metrikleridir.',
-    fundsHowBody3: 'Fon koduna tıklayınca TEFAS sayfası açılır. Bu liste yatırım tavsiyesi değildir.',
+    fundsHowBody3:
+      'Fon koduna tıklayınca sitede getiri grafiği ve haberler açılır; TEFAS sayfasına modal içinden geçebilirsin. Bu liste yatırım tavsiyesi değildir.',
     fundsStatus: (count, when) =>
       `${count} likit TEFAS yatırım fonu · Getiri / risk sıralaması${when ? ` · Güncelleme: ${when}` : ''}`,
     fundsLoading: 'Fon verisi yükleniyor...',
@@ -62,6 +63,9 @@ const STRINGS = {
     todayFundHolders: (n) => `${(n || 0).toLocaleString('tr-TR')} yatırımcı`,
     todayMarkets: 'Marketlere göre sinyaller',
     todayMarketLine: (passed, scanned) => `${scanned} tarandı · ${passed} sinyal`,
+    fundChartLabel: 'Dönem getirileri',
+    fundModalNews: 'Son haberler',
+    fundModalNewsEmpty: 'Bu fon için şu an haber yok.',
     todayFunds: 'Öne çıkan TEFAS fonları',
     todayNews: 'Öne çıkan haberler',
     todaySeeAll: 'Tümünü gör →',
@@ -97,7 +101,7 @@ const STRINGS = {
     howTitle: 'Bu liste nasıl oluşuyor? Ne kadar süre geçerli?',
     howLead1: 'Nasıl oluşuyor?',
     howBody1:
-      "Seçtiğin kategorideki tüm enstrümanlar (BIST 100'de 100 hisse, S&P 500'de ~503 hisse, ETF'ler, emtia/kripto) her iş günü piyasa kapanışından sonra otomatik taranır. Aşağıdaki kriterlerin hepsini birden sağlayanlar listeye girer, kalanlar elenir:",
+      "Seçtiğin kategorideki tüm enstrümanlar (BIST 100'de 100 hisse, S&P 500'de ~503 hisse, emtia/kripto) her iş günü piyasa kapanışından sonra otomatik taranır. Aşağıdaki kriterlerin hepsini birden sağlayanlar listeye girer, kalanlar elenir:",
     howCriteria: [
       'Fiyat 9, 21, 50 ve 200 periyotluk üstel ortalamaların (EMA) üzerinde → güçlü yükseliş trendi',
       'MACD > 0 → momentum pozitif',
@@ -242,7 +246,8 @@ const STRINGS = {
       'Data is pulled from the official TEFAS API. The list includes investment funds (YAT) with portfolio size over 100M TRY; returns, volatility, Sharpe and max drawdown are computed.',
     fundsHowBody2:
       '1y return (45) + Sharpe (40) + low max drawdown (15). Stock RSI/MACD are not used — return/risk metrics matter for funds.',
-    fundsHowBody3: 'Click a fund code to open its TEFAS page. This list is not investment advice.',
+    fundsHowBody3:
+      'Click a fund code to open its return chart and news on this site; TEFAS is available from the modal. This list is not investment advice.',
     fundsStatus: (count, when) =>
       `${count} liquid TEFAS funds · Return / risk ranking${when ? ` · Updated: ${when}` : ''}`,
     fundsLoading: 'Loading fund data...',
@@ -279,6 +284,9 @@ const STRINGS = {
     todayFundHolders: (n) => `${(n || 0).toLocaleString('en-US')} investors`,
     todayMarkets: 'Signals by market',
     todayMarketLine: (passed, scanned) => `${scanned} scanned · ${passed} signals`,
+    fundChartLabel: 'Period returns',
+    fundModalNews: 'Latest news',
+    fundModalNewsEmpty: 'No news for this fund right now.',
     todayFunds: 'Standout TEFAS funds',
     todayNews: 'Top headlines',
     todaySeeAll: 'See all →',
@@ -301,7 +309,7 @@ const STRINGS = {
     howTitle: 'How is this list built? How long is it valid?',
     howLead1: 'How is it built?',
     howBody1:
-      'Every instrument in the selected category (100 stocks in BIST 100, ~503 in the S&P 500, ETFs, commodities/crypto) is scanned automatically after each trading day closes. Only instruments meeting all of the criteria below make the list:',
+      'Every instrument in the selected category (100 stocks in BIST 100, ~503 in the S&P 500, commodities/crypto) is scanned automatically after each trading day closes. Only instruments meeting all of the criteria below make the list:',
     howCriteria: [
       'Price above the 9, 21, 50 and 200 period exponential moving averages (EMA) → strong uptrend',
       'MACD > 0 → positive momentum',

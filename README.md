@@ -135,19 +135,20 @@ dakikası tarama adımıydı** (frontend build yalnızca 0,1 dk). Sembol dağıl
 |---|---|---|---|
 | bist100 | 100 | 400 | etkin |
 | **sp500** | **503** | **2012 (%76)** | **kapalı** |
-| etf | 46 | 184 | etkin |
+| **etf** | **46** | **184** | **kapalı** |
 | commodity | 10 | 40 | etkin |
 
 Yani S&P tek başına tüm işin **%76'sı**. Kapatınca 2636 → 624 istek; tarama ~5 dk'ya
-iner. ETF + emtia toplam %8 olduğundan onları kapatmak anlamlı bir kazanç getirmez ve
-Global haber akışını onlar besler.
+iner. ETF de kapalı: tarama/strateji vizyonu hisse + emtia/kripto + TEFAS fonlarına
+odaklanıyor. Global haber akışını emtia/kripto sembolleri besler.
 
-**Geri açmak tek satır:** `enabled_markets` listesine `"sp500"` eklemek. Kod ve sembol
-listesi silinmedi. Daha ucuza geri getirmenin yolu için aşağıdaki "Bilinen darboğaz"a bak.
+**Geri açmak tek satır:** `enabled_markets` listesine `"sp500"` veya `"etf"` eklemek.
+Kod ve sembol listeleri silinmedi. Daha ucuza geri getirmenin yolu için aşağıdaki
+"Bilinen darboğaz"a bak.
 
-**S&P nabzı kaybolmadı:** `^GSPC` "Bugün" sayfasında görünmeye devam ediyor — ETF
-marketinin karşılaştırma endeksi zaten o ve tek istekle geliyor. Kart marketin değil
-endeksin adını gösterir (`BENCHMARK_NAMES`), yoksa "ETF 7.542" gibi yanlış bir etiket çıkardı.
+**S&P nabzı:** `^GSPC` eskiden ETF marketinin karşılaştırma endeksi üzerinden "Bugün"
+sayfasında görünüyordu. ETF kapalıyken bu kart gelmez; geri açınca (`"etf"` veya
+`"sp500"`) kart marketin değil endeksin adını gösterir (`BENCHMARK_NAMES`).
 
 **Arayüz senkronu:** tarama her koşuda `data/markets.json` manifestini yazar, arayüz
 market sekmelerini bundan üretir. Böylece kapalı bir marketin sekmesi gösterilip veri

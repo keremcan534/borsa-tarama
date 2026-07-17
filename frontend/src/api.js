@@ -76,10 +76,11 @@ export async function fetchEnabledMarkets() {
   return res.json();
 }
 
-// "Bugün" sayfası tek bir marketin değil, tüm marketlerin günlük özetini gösterir.
-export async function fetchDailyOverview(markets) {
+// "Bugün" sayfası tek bir marketin değil, tüm marketlerin özetini gösterir.
+// timeframe: daily | weekly | monthly (Marketlere göre sinyaller sekmeleri).
+export async function fetchDailyOverview(markets, timeframe = "daily") {
   const results = await Promise.allSettled(
-    markets.map((m) => fetchScreener(m, { timeframe: "daily" })),
+    markets.map((m) => fetchScreener(m, { timeframe })),
   );
 
   const byMarket = {};

@@ -12,10 +12,13 @@ def set_enabled(monkeypatch):
     return _set
 
 
-def test_sp500_is_disabled_by_default():
-    # 503 sembol x 4 zaman dilimi taramanın ~%76'sıydı; kapalı olması bilinçli.
+def test_sp500_and_etf_are_disabled_by_default():
+    # S&P: 503 sembol x 4 zaman dilimi taramanın ~%76'sıydı; kapalı olması bilinçli.
+    # ETF: tarama/strateji vizyonunda yok; sembol listesi ve kod duruyor.
     assert "sp500" not in enabled_markets()
+    assert "etf" not in enabled_markets()
     assert "bist100" in enabled_markets()
+    assert "commodity" in enabled_markets()
 
 
 def test_disabled_market_keeps_its_definition_and_symbols():

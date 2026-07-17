@@ -6,11 +6,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]  # Vite dev sunucusu
 
     # Taranacak marketler. S&P 500 kapalı: 503 sembol x 4 zaman dilimi = tüm
-    # taramanın ~%76'sı ve bu her deploy'u ~23 dakikaya çıkarıyordu. Kod ve sembol
-    # listesi duruyor; geri açmak için listeye "sp500" eklemek yeterli.
-    # NOT: S&P endeksi (^GSPC) "Bugün" sayfasında görünmeye devam eder — onu ETF
-    # marketinin karşılaştırma endeksi zaten tek istekle çekiyor.
-    enabled_markets: list[str] = ["bist100", "etf", "commodity"]
+    # taramanın ~%76'sı ve bu her deploy'u ~23 dakikaya çıkarıyordu. ETF de
+    # kapalı: vizyon hisse + emtia/kripto + TEFAS fonlarına odaklanıyor; kod ve
+    # sembol listeleri duruyor — geri açmak için listeye "sp500" / "etf" eklemek
+    # yeterli.
+    enabled_markets: list[str] = ["bist100", "commodity"]
 
     # Likidite tabanı: son 20 mumun ortalama günlük cirosu (hacim x kapanış)
     # bu eşiğin altındaysa hisse listeye giremez. Birim markete göre yerel
