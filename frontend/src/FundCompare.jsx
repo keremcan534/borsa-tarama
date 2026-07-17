@@ -132,6 +132,33 @@ function nearestPoint(points, t) {
   return best
 }
 
+/**
+ * KAP aylık portföy verisini fon → {hisse: son ağırlık %} matrisine çevirir.
+ * Kaynak veri hisse → fon yönünde tutulur (Hisse Pozisyonları sekmesi için);
+ * örtüşme hesabı ters yönü ister.
+ */
+function buildFundHoldings(positions) {
+  const holdings = new Map()
+  const months = positions?.months || []
+  const stocks = positions?.stocks || {}
+  for (const [stockSym, stock] of Object.entries(stocks)) {
+    for (const fund of stock.funds || []) {
+      let weight = null
+      for (let i = months.length - 1; i >= 0; i -= 1) {
+        const w = fund.positions?.[months[i]]?.weight
+        if (w != null) {
+          weight = w
+          break
+        }
+      }
+      if (weight == null || weight <= 0) continue
+      if (!holdings.has(fund.fund_code)) holdings.set(fund.fund_code, new Map())
+      holdings.get(fund.fund_code).set(stockSym, { weight, name: stock.name })
+    }
+  }
+  return holdings
+}
+
 function CompareChart({ lines, lang, currency = '₺' }) {
   const W = 720
   const H = 280
@@ -314,7 +341,7 @@ function formatMetric(fund, row, lang) {
  * Fonaly tarzı yan yana karşılaştırma: fon seçimi, normalize getiri eğrisi,
  * benchmark katmanları ve metrik tablosu.
  */
-export default function FundCompare({ funds, prices, lang, loading, error, seedSymbols }) {
+export default function FundCompare({ funds, prices, positions, lang, loading, error, seedSymbols }) {
   const list = funds?.results || []
   const [selected, setSelected] = useState([])
   const [period, setPeriod] = useState('3m')
@@ -402,6 +429,46 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
     }
     return lines
   }, [selected, activeBench, prices, period, inUsd, usdPoints])
+
+  const fundHoldings = useMemo(() => buildFundHoldings(positions), [positions])
+
+  // Seçili fonlardan en az ikisinin KAP verisi varsa örtüşme hesaplanır:
+  // ikili örtüşme = ortak hisselerde min(ağırlık) toplamı.
+  const overlap = useMemo(() => {
+    const withData = selected.filter((s) => fundHoldings.has(s))
+    if (withData.length < 2) return null
+    const pairs = []
+    for (let i = 0; i < withData.length; i += 1) {
+      for (let j = i + 1; j < withData.length; j += 1) {
+        const a = fundHoldings.get(withData[i])
+        const b = fundHoldings.get(withData[j])
+        let sum = 0
+        for (const [sym, va] of a) {
+          const vb = b.get(sym)
+          if (vb) sum += Math.min(va.weight, vb.weight)
+        }
+        pairs.push({ a: withData[i], b: withData[j], overlap: sum })
+      }
+    }
+    pairs.sort((x, y) => y.overlap - x.overlap)
+    const stockAgg = new Map()
+    for (const sym of withData) {
+      for (const [stockSym, v] of fundHoldings.get(sym)) {
+        if (!stockAgg.has(stockSym)) stockAgg.set(stockSym, { name: v.name, weights: {}, count: 0, total: 0 })
+        const row = stockAgg.get(stockSym)
+        row.weights[sym] = v.weight
+        row.count += 1
+        row.total += v.weight
+      }
+    }
+    const shared = [...stockAgg.entries()]
+      .filter(([, r]) => r.count >= 2)
+      .map(([stockSym, r]) => ({ symbol: stockSym, ...r }))
+      .sort((x, y) => y.total - x.total)
+      .slice(0, 15)
+    const missing = selected.filter((s) => !fundHoldings.has(s))
+    return { funds: withData, pairs, shared, missing }
+  }, [selected, fundHoldings])
 
   const selectedFunds = selected.map((s) => bySymbol.get(s)).filter(Boolean)
   const benchmarks = Object.entries(prices?.benchmarks || {})
@@ -557,6 +624,55 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {overlap && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fcOverlapTitle')}</h2>
+          <p className="fc-overlap-hint">{t(lang, 'fcOverlapHint')}</p>
+          <div className="fc-overlap-pairs">
+            {overlap.pairs.map((p) => (
+              <div key={`${p.a}-${p.b}`} className="today-card fc-overlap-card">
+                <span className="today-card-label">
+                  {p.a} ↔ {p.b}
+                </span>
+                <strong className={`today-card-value ${p.overlap >= 50 ? 'fc-overlap-high' : ''}`}>
+                  %{p.overlap.toFixed(1)}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {overlap.shared.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="left">{t(lang, 'fcOverlapStock')}</th>
+                    {overlap.funds.map((s) => (
+                      <th key={s}>{s}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {overlap.shared.map((row) => (
+                    <tr key={row.symbol}>
+                      <td className="left">
+                        <strong>{row.symbol}</strong>
+                        {row.name && <span className="sp-fund-name">{row.name}</span>}
+                      </td>
+                      {overlap.funds.map((s) => (
+                        <td key={s}>{row.weights[s] != null ? `%${row.weights[s].toFixed(2)}` : '—'}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {overlap.missing.length > 0 && (
+            <p className="fc-overlap-note">{t(lang, 'fcOverlapMissing', overlap.missing.join(', '))}</p>
+          )}
         </section>
       )}
 

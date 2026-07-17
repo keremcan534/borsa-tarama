@@ -5,6 +5,7 @@ import {
   fetchBacktest,
   fetchDailyOverview,
   fetchEnabledMarkets,
+  fetchFundFlows,
   fetchFundPrices,
   fetchFunds,
   fetchScreener,
@@ -1081,6 +1082,294 @@ function priceOn(series, dateStr) {
 }
 
 /**
+ * Fon akışı: günlük yatırımcı sayısı arşivinden (fund_flows.json) seçilen
+ * penceredeki değişimi hesaplar. "Para nereye akıyor" sorusuna popülerlik
+ * üzerinden yaklaşık bir cevap; arşiv birikene kadar panel görünmez.
+ */
+function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
+  const [win, setWin] = useState(30)
+  const history = flows?.history || {}
+  const dates = useMemo(() => Object.keys(history).sort(), [history])
+
+  const computed = useMemo(() => {
+    if (dates.length < 2) return null
+    const lastDate = dates[dates.length - 1]
+    const cutoff = new Date(Date.parse(lastDate) - win * 86400000).toISOString().slice(0, 10)
+    const baseDate = dates.find((d) => d >= cutoff) ?? dates[0]
+    if (baseDate === lastDate) return null
+    const base = history[baseDate]
+    const last = history[lastDate]
+    const bySymbol = new Map((funds?.results || []).map((f) => [f.symbol, f]))
+    const rows = []
+    for (const [sym, cur] of Object.entries(last)) {
+      const prev = base?.[sym]
+      if (prev == null || cur == null) continue
+      const delta = cur - prev
+      if (!delta) continue
+      rows.push({ symbol: sym, fund: bySymbol.get(sym) || null, delta, pct: prev > 0 ? delta / prev : null })
+    }
+    if (!rows.length) return null
+    const gainers = [...rows].sort((a, b) => b.delta - a.delta).filter((r) => r.delta > 0).slice(0, 5)
+    const losers = [...rows].sort((a, b) => a.delta - b.delta).filter((r) => r.delta < 0).slice(0, 5)
+    return { gainers, losers, baseDate, lastDate }
+  }, [dates, history, win, funds])
+
+  if (!computed) return null
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const renderList = (items, tone) => (
+    <div className="flow-col">
+      <h3 className="flow-col-title">{t(lang, tone === 'pos' ? 'flowGainers' : 'flowLosers')}</h3>
+      {items.length === 0 && <div className="flow-empty">—</div>}
+      {items.map((r) => (
+        <button
+          key={r.symbol}
+          type="button"
+          className="flow-row"
+          disabled={!r.fund}
+          onClick={() => r.fund && onOpenFund(r.fund)}
+          title={r.fund?.name}
+        >
+          <TickerLogo symbol={r.symbol} />
+          <span className="flow-code">
+            <strong>{r.symbol}</strong>
+            {r.fund?.name && <span className="fund-name">{r.fund.name}</span>}
+          </span>
+          <span className={`pct ${tone}`}>
+            {r.delta > 0 ? '+' : ''}
+            {r.delta.toLocaleString(locale)}
+            {r.pct != null && ` (${formatPct(r.pct)})`}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+
+  return (
+    <section className="watch-section flow-panel">
+      <div className="pf-chart-head">
+        <h2 className="today-title">{t(lang, 'flowTitle')}</h2>
+        <div className="tabs">
+          {[7, 30].map((d) => (
+            <button key={d} type="button" className={`tab ${win === d ? 'active' : ''}`} onClick={() => setWin(d)}>
+              {d}G
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="fc-overlap-hint">
+        {t(
+          lang,
+          'flowRange',
+          new Date(computed.baseDate).toLocaleDateString(locale),
+          new Date(computed.lastDate).toLocaleDateString(locale),
+        )}
+      </p>
+      <div className="flow-grid">
+        {renderList(computed.gainers, 'pos')}
+        {renderList(computed.losers, 'neg')}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Portföyün gün gün toplam değeri. Bir günün değeri, o güne kadar alınmış tüm
+ * pozisyonların o günkü pay değeriyle çarpımı; maliyet de aynı günün birikimli
+ * yatırılan tutarı (kademeli alımlar basamak olarak görünür).
+ */
+function buildPortfolioSeries(positions, prices) {
+  const seriesBySym = {}
+  const dateSet = new Set()
+  for (const p of positions) {
+    const s = prices?.series?.[p.symbol]
+    if (!s?.length) continue
+    seriesBySym[p.symbol] = s
+    for (const [d] of s) dateSet.add(d)
+  }
+  if (!Object.keys(seriesBySym).length) return null
+  const firstBuy = positions.reduce((m, p) => (m == null || p.date < m ? p.date : m), null)
+  const dates = [...dateSet].sort().filter((d) => d >= firstBuy)
+  const points = []
+  for (const d of dates) {
+    let value = 0
+    let invested = 0
+    let complete = true
+    for (const p of positions) {
+      if (p.date > d) continue
+      const px = priceOn(seriesBySym[p.symbol], d)
+      if (px == null) {
+        complete = false
+        break
+      }
+      value += px * p.qty
+      invested += p.price * p.qty
+    }
+    if (!complete || invested <= 0) continue
+    points.push({ t: Date.parse(d), d, value, invested })
+  }
+  return points.length >= 2 ? points : null
+}
+
+/**
+ * "Aynı parayı aynı tarihlerde benchmark'a koysaydın": her alımın maliyeti o
+ * günkü benchmark fiyatından pay'a çevrilir, toplam değer gün gün izlenir.
+ * Herhangi bir alım gününde benchmark fiyatı yoksa (seri o kadar geriye
+ * gitmiyorsa) yanıltıcı kısmi eğri yerine hiç çizilmez.
+ */
+function buildBenchmarkSeries(positions, benchPoints, portfolioPoints) {
+  if (!benchPoints?.length || !portfolioPoints?.length) return null
+  const units = []
+  for (const p of positions) {
+    const px = priceOn(benchPoints, p.date)
+    if (px == null || px <= 0) return null
+    units.push({ date: p.date, units: (p.price * p.qty) / px })
+  }
+  const points = []
+  for (const pt of portfolioPoints) {
+    const bpx = priceOn(benchPoints, pt.d)
+    if (bpx == null) continue
+    let value = 0
+    for (const u of units) {
+      if (u.date > pt.d) continue
+      value += u.units * bpx
+    }
+    if (value > 0) points.push({ t: pt.t, d: pt.d, value })
+  }
+  return points.length >= 2 ? points : null
+}
+
+const PF_BENCH_DEFS = [
+  { key: 'XU100.IS', label: 'BIST 100', color: '#2563eb' },
+  { key: 'USDTRY=X', label: 'USD', color: '#d97706' },
+]
+
+function formatAxisMoney(v) {
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`
+  if (Math.abs(v) >= 1e4) return `${(v / 1e3).toFixed(0)}k`
+  return v.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
+}
+
+/** Portföy değeri + maliyet + benchmark eğrilerini ₺ ekseniyle çizen grafik. */
+function PortfolioChart({ lines, lang }) {
+  const [hover, setHover] = useState(null)
+  const W = 680
+  const H = 260
+  const pad = { t: 14, r: 16, b: 26, l: 56 }
+  const innerW = W - pad.l - pad.r
+  const innerH = H - pad.t - pad.b
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const all = lines.flatMap((l) => l.points)
+  if (all.length < 2) return null
+  const minT = Math.min(...all.map((p) => p.t))
+  const maxT = Math.max(...all.map((p) => p.t))
+  const minV = Math.min(...all.map((p) => p.value))
+  const maxV = Math.max(...all.map((p) => p.value))
+  const vPad = Math.max((maxV - minV) * 0.08, maxV * 0.01, 1)
+  const lo = minV - vPad
+  const hi = maxV + vPad
+
+  const x = (tt) => pad.l + ((tt - minT) / (maxT - minT || 1)) * innerW
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo || 1)) * innerH
+  const tFromX = (px) => minT + ((px - pad.l) / (innerW || 1)) * (maxT - minT)
+  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
+  const gridVals = [hi, (lo + hi) / 2, lo]
+
+  function onMove(event) {
+    const svg = event.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * (W / rect.width)
+    if (px < pad.l || px > W - pad.r) {
+      setHover(null)
+      return
+    }
+    const targetT = tFromX(px)
+    const items = lines
+      .map((line) => {
+        const point = nearestFundPoint(line.points, targetT)
+        if (!point) return null
+        return { key: line.key, label: line.label, color: line.color, dashed: line.dashed, t: point.t, value: point.value }
+      })
+      .filter(Boolean)
+    if (!items.length) {
+      setHover(null)
+      return
+    }
+    setHover({ t: items[0].t, x: x(items[0].t), items })
+  }
+
+  const tipPct = hover ? (hover.x / W) * 100 : 0
+  const tipFlip = hover ? hover.x > W * 0.5 : false
+
+  return (
+    <div className="fund-price-wrap">
+      <svg
+        className="fund-price-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={t(lang, 'pfChartLabel')}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        onTouchStart={onMove}
+        onTouchMove={onMove}
+      >
+        {gridVals.map((v) => (
+          <g key={v}>
+            <line className="fund-price-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+            <text className="fund-price-axis" x={pad.l - 8} y={y(v) + 3} textAnchor="end">
+              {formatAxisMoney(v)}
+            </text>
+          </g>
+        ))}
+        {lines.map((line) => (
+          <path
+            key={line.key}
+            className={`pf-line ${line.dashed ? 'dashed' : ''}`}
+            d={path(line.points)}
+            stroke={line.color}
+            fill="none"
+          />
+        ))}
+        {hover && (
+          <g pointerEvents="none">
+            <line className="fund-price-crosshair" x1={hover.x} x2={hover.x} y1={pad.t} y2={H - pad.b} />
+            {hover.items.map((item) => (
+              <circle key={item.key} cx={hover.x} cy={y(item.value)} r="4" fill={item.color} stroke="#fff" strokeWidth="1.5" />
+            ))}
+          </g>
+        )}
+        <text className="fund-price-axis" x={pad.l} y={H - 6}>
+          {new Date(minT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+        </text>
+        <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+          {new Date(maxT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+        </text>
+      </svg>
+      {hover && (
+        <div
+          className="fund-price-tooltip"
+          style={{ left: `${tipPct}%`, transform: tipFlip ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)' }}
+        >
+          <div className="fund-price-tooltip-date">
+            {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+          {hover.items.map((item) => (
+            <div key={item.key} className="fc-tooltip-row">
+              <span className="fc-swatch" style={{ background: item.color }} />
+              <strong>{item.label}</strong>
+              <span>{formatLira(item.value, lang)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
  * "Portföyüm": kullanıcının kendi fon alımlarını (tarih, fiyat, adet) girip
  * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
  * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
@@ -1165,6 +1454,109 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
     const value = known.reduce((s, r) => s + r.value, 0)
     return { cost, value, pl: value - cost, plPct: cost > 0 ? value / cost - 1 : null, missing: rows.length - known.length }
   }, [rows])
+
+  const [pfBench, setPfBench] = useState(() => new Set(['XU100.IS']))
+  const portfolioPoints = useMemo(() => buildPortfolioSeries(positions, prices), [positions, prices])
+  const pfChartLines = useMemo(() => {
+    if (!portfolioPoints) return null
+    const lines = [
+      { key: 'pf', label: t(lang, 'pfLineValue'), color: '#7c3aed', points: portfolioPoints },
+      {
+        key: 'cost',
+        label: t(lang, 'pfLineCost'),
+        color: '#94a3b8',
+        dashed: true,
+        points: portfolioPoints.map((p) => ({ t: p.t, d: p.d, value: p.invested })),
+      },
+    ]
+    for (const b of PF_BENCH_DEFS) {
+      if (!pfBench.has(b.key)) continue
+      const pts = buildBenchmarkSeries(positions, prices?.benchmarks?.[b.key]?.points, portfolioPoints)
+      if (pts) lines.push({ key: b.key, label: t(lang, 'pfLineBench', b.label), color: b.color, points: pts })
+    }
+    return lines
+  }, [portfolioPoints, positions, prices, pfBench, lang])
+
+  function togglePfBench(key) {
+    setPfBench((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const [backupMsg, setBackupMsg] = useState(null)
+
+  // Favoriler + portföy localStorage'da yaşar; cihaz değişiminde tek taşıma
+  // yolu bu dosya. Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
+  function exportBackup() {
+    const read = (key) => {
+      try {
+        return JSON.parse(localStorage.getItem(key) || '[]')
+      } catch {
+        return []
+      }
+    }
+    const payload = {
+      app: 'borsa-tarama',
+      exported_at: new Date().toISOString(),
+      watchlist: read('watchlist'),
+      watchlist_funds: read('watchlist_funds'),
+      portfolio_funds: read('portfolio_funds'),
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `borsa-tarama-yedek-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupMsg(t(lang, 'bkExported'))
+  }
+
+  function importBackup(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result)
+        if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
+        // Mevcut verinin ÜZERİNE yazmaz, birleştirir: yanlış dosya seçiminde kayıp olmasın
+        const mergeSet = (key) => {
+          const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+          for (const s of data[key] || []) if (typeof s === 'string') cur.add(s)
+          localStorage.setItem(key, JSON.stringify([...cur]))
+        }
+        mergeSet('watchlist')
+        mergeSet('watchlist_funds')
+        const cur = loadPortfolio()
+        const ids = new Set(cur.map((p) => p.id))
+        for (const p of data.portfolio_funds || []) {
+          if (!p || typeof p.symbol !== 'string' || typeof p.date !== 'string') continue
+          const price = Number(p.price)
+          const qty = Number(p.qty)
+          if (!(price > 0) || !(qty > 0)) continue
+          if (p.id && ids.has(p.id)) continue
+          cur.push({
+            id: p.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            symbol: p.symbol.toUpperCase(),
+            date: p.date,
+            price,
+            qty,
+          })
+        }
+        savePortfolio(cur)
+        // Favori set'leri App state'inde: en güvenilir senkron tam yeniden yükleme
+        window.location.reload()
+      } catch {
+        setBackupMsg(t(lang, 'bkImportErr'))
+      }
+    }
+    reader.readAsText(file)
+  }
 
   return (
     <>
@@ -1319,6 +1711,55 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
           </table>
         </div>
       )}
+
+      {pfChartLines && (
+        <section className="watch-section">
+          <div className="pf-chart-head">
+            <h2 className="today-title">{t(lang, 'pfChartTitle')}</h2>
+            <div className="fc-bench">
+              {PF_BENCH_DEFS.filter((b) => prices?.benchmarks?.[b.key]?.points?.length).map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  className={`fc-chip ${pfBench.has(b.key) ? 'active' : ''}`}
+                  title={t(lang, 'pfBenchHint', b.label)}
+                  onClick={() => togglePfBench(b.key)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <PortfolioChart lines={pfChartLines} lang={lang} />
+          <div className="fc-legend">
+            {pfChartLines.map((l) => {
+              const last = l.points[l.points.length - 1]
+              return (
+                <span key={l.key} className="fc-legend-item">
+                  <span className="fc-swatch" style={{ background: l.color }} />
+                  {l.label}
+                  <span>{formatLira(last.value, lang)}</span>
+                </span>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="watch-section pf-backup">
+        <h2 className="today-title">{t(lang, 'bkTitle')}</h2>
+        <p className="fc-overlap-hint">{t(lang, 'bkHint')}</p>
+        <div className="actions">
+          <button className="btn" type="button" onClick={exportBackup}>
+            ⬇ {t(lang, 'bkExport')}
+          </button>
+          <label className="btn">
+            ⬆ {t(lang, 'bkImport')}
+            <input type="file" accept="application/json,.json" hidden onChange={importBackup} />
+          </label>
+        </div>
+        {backupMsg && <p className="fc-overlap-note">{backupMsg}</p>}
+      </section>
 
       <p className="disclaimer">{t(lang, 'pfDisclaimer')}</p>
     </>
@@ -1853,6 +2294,8 @@ function App() {
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
+  const [fundFlows, setFundFlows] = useState(null)
+  const [fundFlowsReady, setFundFlowsReady] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -2028,8 +2471,27 @@ function App() {
     }
   }, [view, chartFund, fundPricesReady])
 
+  // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
+  // 404 döner ve panel görünmez (fetch null döndürür).
   useEffect(() => {
-    if (view !== 'stockPositions') return
+    if (view !== 'funds' || fundFlowsReady) return
+    let cancelled = false
+    fetchFundFlows()
+      .then((result) => {
+        if (!cancelled) setFundFlows(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFundFlowsReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, fundFlowsReady])
+
+  useEffect(() => {
+    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi)
+    if (view !== 'stockPositions' && view !== 'fundCompare') return
     if (stockPositions) return
     let cancelled = false
     setStockPositionsLoading(true)
@@ -2513,6 +2975,8 @@ function App() {
             </div>
           </details>
 
+          <FundFlowsPanel flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
+
           {!fundsError && funds && (
             <div className="search-row">
               <input
@@ -2641,6 +3105,7 @@ function App() {
           key={compareSeed.join(',') || 'default'}
           funds={funds}
           prices={fundPrices}
+          positions={stockPositions}
           lang={lang}
           loading={fundsLoading || fundPricesLoading}
           error={fundsError}

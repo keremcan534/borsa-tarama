@@ -581,6 +581,117 @@ th.sorted {
   font-weight: 600;
 }
 
+.fc-overlap-hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.8;
+  margin: 6px 0 12px;
+}
+
+.fc-overlap-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* %50+ örtüşme: iki fon fiilen aynı portföy — vurgula */
+.fc-overlap-high {
+  color: var(--down);
+}
+
+.fc-overlap-note {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+  margin-top: 10px;
+}
+
+.pf-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pf-chart-head .fc-bench {
+  margin-bottom: 0;
+}
+
+.pf-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.pf-line.dashed {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.flow-panel {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.flow-col-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 8px;
+}
+
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.flow-row:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+.flow-row:disabled {
+  cursor: default;
+}
+
+.flow-code {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.flow-code .fund-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-empty {
+  opacity: 0.5;
+  padding: 6px 10px;
+}
+
 .badge.new-badge {
   background: rgba(22, 163, 74, 0.15);
   color: var(--up);

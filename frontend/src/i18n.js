@@ -82,6 +82,11 @@ const STRINGS = {
     fcUsdBase: 'USD bazında',
     fcUsdBaseHint:
       'Eğrileri günlük USD/TRY kuruna bölerek dolar cinsinden gösterir: nominal TL getirisi yerine reel performans.',
+    fcOverlapTitle: 'Portföy örtüşmesi (KAP)',
+    fcOverlapHint:
+      'İki fonun son açıklanan portföylerinde aynı hisselere verdiği ortak ağırlık. Yüksek örtüşme, iki fonu birden almanın çeşitlendirme sağlamadığı anlamına gelir.',
+    fcOverlapStock: 'Hisse',
+    fcOverlapMissing: (codes) => `KAP portföy verisi bulunamayan fonlar: ${codes} (hisse dışı fon olabilir).`,
     fundCompareMetrics: 'Metrikler',
     fundCompareMetricCol: 'Metrik',
     fundCompareNoChart: 'Bu dönem için çizilecek yeterli veri yok.',
@@ -234,6 +239,24 @@ const STRINGS = {
     pfErrQty: 'Geçerli bir adet gir.',
     pfDisclaimer:
       'Portföy verileri yalnızca bu cihazın tarayıcısında saklanır; sunucuya gönderilmez. Yatırım tavsiyesi değildir.',
+    pfChartTitle: 'Portföy gelişimi',
+    pfChartLabel: 'Portföy değer grafiği',
+    pfLineValue: 'Portföy',
+    pfLineCost: 'Maliyet',
+    pfLineBench: (label) => `${label} alsaydın`,
+    pfBenchHint: (label) =>
+      `Aynı tutarları aynı tarihlerde ${label} almak için kullansaydın portföyün bugün ne ederdi?`,
+    bkTitle: 'Yedekleme',
+    bkHint:
+      'Favoriler ve portföy yalnızca bu tarayıcıda durur. Başka cihaza taşımak için dışa aktarıp orada içe aktar; içe aktarma mevcut verinin üzerine yazmaz, birleştirir.',
+    bkExport: 'Dışa aktar (JSON)',
+    bkImport: 'İçe aktar',
+    bkExported: 'Yedek dosyası indirildi.',
+    bkImportErr: 'Dosya okunamadı: geçerli bir Borsa Tarama yedeği değil.',
+    flowTitle: 'Fon akışı — yatırımcı sayısı değişimi',
+    flowGainers: 'En çok yatırımcı kazanan',
+    flowLosers: 'En çok yatırımcı kaybeden',
+    flowRange: (from, to) => `${from} → ${to} arası değişim. Yatırımcı sayısı paranın yönü için yaklaşık bir göstergedir.`,
     colChange: 'Bugün',
     colInvestors: 'Yatırımcı',
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
@@ -379,6 +402,11 @@ const STRINGS = {
     fcUsdBase: 'In USD',
     fcUsdBaseHint:
       'Divides the curves by the daily USD/TRY rate to show dollar-based (real) performance instead of nominal TL returns.',
+    fcOverlapTitle: 'Portfolio overlap (KAP)',
+    fcOverlapHint:
+      'Shared weight the funds give to the same stocks in their latest disclosed portfolios. High overlap means holding both funds adds little diversification.',
+    fcOverlapStock: 'Stock',
+    fcOverlapMissing: (codes) => `No KAP portfolio data for: ${codes} (may not be equity funds).`,
     fundCompareMetrics: 'Metrics',
     fundCompareMetricCol: 'Metric',
     fundCompareNoChart: 'Not enough data to chart this period.',
@@ -518,6 +546,24 @@ const STRINGS = {
     pfErrQty: 'Enter a valid unit count.',
     pfDisclaimer:
       'Portfolio data is stored only in this device’s browser; nothing is sent to a server. Not investment advice.',
+    pfChartTitle: 'Portfolio growth',
+    pfChartLabel: 'Portfolio value chart',
+    pfLineValue: 'Portfolio',
+    pfLineCost: 'Cost basis',
+    pfLineBench: (label) => `If you'd bought ${label}`,
+    pfBenchHint: (label) =>
+      `What would your portfolio be worth today if the same amounts had bought ${label} on the same dates?`,
+    bkTitle: 'Backup',
+    bkHint:
+      'Watchlist and portfolio live only in this browser. Export a file and import it on another device to move them; importing merges with existing data, it does not overwrite.',
+    bkExport: 'Export (JSON)',
+    bkImport: 'Import',
+    bkExported: 'Backup file downloaded.',
+    bkImportErr: 'Could not read the file: not a valid Borsa Tarama backup.',
+    flowTitle: 'Fund flows — investor count change',
+    flowGainers: 'Most investors gained',
+    flowLosers: 'Most investors lost',
+    flowRange: (from, to) => `Change between ${from} → ${to}. Investor count is a rough proxy for where money is flowing.`,
     colChange: 'Today',
     colInvestors: 'Investors',
     colChangeTitle: 'Change of the last close versus the previous close.',

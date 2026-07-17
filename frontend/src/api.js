@@ -60,6 +60,15 @@ export async function fetchFundPrices() {
   return res.json();
 }
 
+/** Günlük yatırımcı sayısı arşivi (fon akışı paneli). Veri birikene kadar 404 normaldir. */
+export async function fetchFundFlows() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/fund_flows.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Fon akışı verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 /** Aylık KAP portföy raporlarından üretilen hisse → taşıyan fon matrisi. */
 export async function fetchStockPositions() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fund_stock_positions.json`);
