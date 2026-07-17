@@ -145,7 +145,13 @@ function CompareChart({ lines, lang }) {
     const svg = event.currentTarget
     const rect = svg.getBoundingClientRect()
     const scaleX = W / rect.width
-    const px = (event.clientX - rect.left) * scaleX
+    // Fare ve dokunma (parmak) olaylarının ikisini de destekle: mobilde
+    // onMouseMove tetiklenmez, koordinat touches[0]'dan gelir. Sayfanın
+    // kaymaması CSS'teki touch-action:none ile sağlanır (passive listener'da
+    // preventDefault çalışmaz).
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * scaleX
     if (px < pad.l || px > W - pad.r) {
       setHover(null)
       return
@@ -188,7 +194,10 @@ function CompareChart({ lines, lang }) {
   }
 
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
-  const tipLeft = hover ? Math.min(Math.max(hover.x + 12, pad.l), W - 210) : 0
+  // Tooltip'i imlecin bulunduğu noktaya sabitle; sağ yarıdaysa kendi genişliği
+  // kadar sola çevir ki ekrandan (özellikle mobilde) taşmasın.
+  const tipPct = hover ? (hover.x / W) * 100 : 0
+  const tipFlip = hover ? hover.x > W * 0.5 : false
 
   return (
     <div className="fc-chart-wrap">
@@ -199,6 +208,8 @@ function CompareChart({ lines, lang }) {
         aria-label={t(lang, 'fundCompareChartLabel')}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
+        onTouchStart={onMove}
+        onTouchMove={onMove}
       >
         {gridVals.map((v) => (
           <g key={v}>
@@ -228,7 +239,14 @@ function CompareChart({ lines, lang }) {
         </text>
       </svg>
       {hover && (
-        <div className="fc-tooltip" style={{ left: `${(tipLeft / W) * 100}%`, top: '18px' }}>
+        <div
+          className="fc-tooltip"
+          style={{
+            left: `${tipPct}%`,
+            top: '18px',
+            transform: tipFlip ? 'translateX(calc(-100% - 14px))' : 'translateX(14px)',
+          }}
+        >
           <div className="fc-tooltip-date">
             {new Date(hover.t).toLocaleDateString(locale, {
               day: 'numeric',

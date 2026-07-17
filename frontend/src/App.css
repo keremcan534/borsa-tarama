@@ -690,6 +690,7 @@ th.sorted {
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .fund-price-grid {
@@ -1685,6 +1686,7 @@ button.today-card.fund-card:hover {
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .fc-chart-wrap {

@@ -526,7 +526,11 @@ function FundPriceChart({ points, lang }) {
   function onMove(event) {
     const svg = event.currentTarget
     const rect = svg.getBoundingClientRect()
-    const px = (event.clientX - rect.left) * (W / rect.width)
+    // Fare + dokunma desteği: mobilde koordinat touches[0]'dan gelir. Sayfa
+    // kayması CSS'teki touch-action:none ile engellenir.
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * (W / rect.width)
     if (px < pad.l || px > W - pad.r) {
       setHover(null)
       return
@@ -539,7 +543,10 @@ function FundPriceChart({ points, lang }) {
     setHover({ t: point.t, px: point.px, ret: point.px / base - 1 })
   }
 
-  const tipLeft = hover ? Math.min(Math.max(x(hover.t) + 12, pad.l), W - 168) : 0
+  // Tooltip imlecin noktasına sabitlenir; sağ yarıdaysa kendi genişliği kadar
+  // sola çevrilir (mobilde ekrandan taşmasın).
+  const tipPct = hover ? (x(hover.t) / W) * 100 : 0
+  const tipFlip = hover ? x(hover.t) > W * 0.5 : false
 
   return (
     <div className="fund-price">
@@ -555,6 +562,8 @@ function FundPriceChart({ points, lang }) {
           aria-label={t(lang, 'fundPriceChartLabel')}
           onMouseMove={onMove}
           onMouseLeave={() => setHover(null)}
+          onTouchStart={onMove}
+          onTouchMove={onMove}
         >
           {gridVals.map((v) => (
             <g key={v}>
@@ -580,7 +589,13 @@ function FundPriceChart({ points, lang }) {
           </text>
         </svg>
         {hover && (
-          <div className="fund-price-tooltip" style={{ left: `${(tipLeft / W) * 100}%` }}>
+          <div
+            className="fund-price-tooltip"
+            style={{
+              left: `${tipPct}%`,
+              transform: tipFlip ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)',
+            }}
+          >
             <div className="fund-price-tooltip-date">
               {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
