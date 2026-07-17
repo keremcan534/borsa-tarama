@@ -8,5 +8,6 @@ pydantic-settings
 apscheduler
 pytest
 requests
+pypdf
 tweepy
 pytefas

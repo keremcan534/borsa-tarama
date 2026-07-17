@@ -40,6 +40,24 @@ jobs:
       - name: Marketleri tara, JSON ve günlük raporu üret
         run: python scripts/scan_to_json.py frontend/public/data reports
 
+      - name: Yayındaki fon pozisyon geçmişini koru
+        continue-on-error: true
+        run: |
+          curl -fsS \
+            https://keremcan534.github.io/borsa-tarama/data/fund_stock_positions.json \
+            -o frontend/public/data/fund_stock_positions.json
+
+      - name: Aylık KAP fon pozisyonlarını güncelle
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
+             [ "$(date -u +%d)" = "15" ] || \
+             [ ! -s frontend/public/data/fund_stock_positions.json ]; then
+            python scripts/kap_fund_positions.py \
+              --output frontend/public/data/fund_stock_positions.json
+          else
+            echo "Ayın 15'i değil; mevcut pozisyon geçmişi korunuyor."
+          fi
+
       - name: Rapor arşivini repoya commit'le
         run: |
           git config user.name "github-actions[bot]"

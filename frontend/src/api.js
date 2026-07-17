@@ -60,6 +60,19 @@ export async function fetchFundPrices() {
   return res.json();
 }
 
+/** Aylık KAP portföy raporlarından üretilen hisse → taşıyan fon matrisi. */
+export async function fetchStockPositions() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/fund_stock_positions.json`);
+  if (res.status === 404) {
+    return { generated_at: null, months: [], stocks: {} };
+  }
+  if (!res.ok) throw new Error(`Hisse pozisyonları yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) {
+    return { generated_at: null, months: [], stocks: {} };
+  }
+  return res.json();
+}
+
 // Backtest ayrı ve haftalık bir workflow'da üretilip build'e kopyalanır; canlı
 // çalıştırılacak bir endpoint'i yok (600+ sembol x yıllarca veri, dakikalar sürer).
 export async function fetchBacktest() {

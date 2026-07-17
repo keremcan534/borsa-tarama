@@ -67,12 +67,12 @@ function periodStartMs(periodKey, lastMs) {
   return lastMs - p.days * 86400000
 }
 
-/** [[date, price], ...] → dönem başından normalize edilmiş [{t, v}] (başlangıç=100). */
+/** [[date, price], ...] → dönem başından normalize edilmiş [{t, v, px}] (başlangıç=100). */
 function normalizeSeries(points, periodKey) {
   if (!points?.length) return []
   const parsed = points
-    .map(([d, p]) => ({ t: Date.parse(d), v: Number(p) }))
-    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.v) && x.v > 0)
+    .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
+    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
     .sort((a, b) => a.t - b.t)
   if (!parsed.length) return []
 
@@ -81,14 +81,36 @@ function normalizeSeries(points, periodKey) {
   const window = parsed.filter((x) => x.t >= start)
   if (window.length < 2) return []
 
-  const base = window[0].v
+  const base = window[0].px
   if (base <= 0) return []
-  return window.map((x) => ({ t: x.t, v: (x.v / base) * 100 }))
+  return window.map((x) => ({ t: x.t, px: x.px, v: (x.px / base) * 100 }))
 }
 
 function seriesReturn(norm) {
   if (!norm?.length) return null
   return norm[norm.length - 1].v / 100 - 1
+}
+
+function formatPrice(value, lang) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })} ₺`
+}
+
+function nearestPoint(points, t) {
+  if (!points?.length) return null
+  let best = points[0]
+  let bestDist = Math.abs(points[0].t - t)
+  for (let i = 1; i < points.length; i += 1) {
+    const dist = Math.abs(points[i].t - t)
+    if (dist < bestDist) {
+      best = points[i]
+      bestDist = dist
+    }
+  }
+  return best
 }
 
 function CompareChart({ lines, lang }) {
@@ -97,6 +119,7 @@ function CompareChart({ lines, lang }) {
   const pad = { t: 16, r: 16, b: 28, l: 44 }
   const innerW = W - pad.l - pad.r
   const innerH = H - pad.t - pad.b
+  const [hover, setHover] = useState(null)
 
   const all = lines.flatMap((l) => l.points)
   if (all.length < 2) {
@@ -113,31 +136,117 @@ function CompareChart({ lines, lang }) {
 
   const x = (t) => pad.l + ((t - minT) / (maxT - minT || 1)) * innerW
   const y = (v) => pad.t + (1 - (v - lo) / (hi - lo || 1)) * innerH
+  const tFromX = (px) => minT + ((px - pad.l) / (innerW || 1)) * (maxT - minT)
 
   const gridVals = [lo, (lo + hi) / 2, hi]
   const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')
 
+  function onMove(event) {
+    const svg = event.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const scaleX = W / rect.width
+    const px = (event.clientX - rect.left) * scaleX
+    if (px < pad.l || px > W - pad.r) {
+      setHover(null)
+      return
+    }
+    const targetT = tFromX(px)
+    const samples = lines
+      .map((line) => {
+        const point = nearestPoint(line.points, targetT)
+        if (!point) return null
+        return {
+          key: line.key,
+          label: line.label,
+          color: line.color,
+          t: point.t,
+          v: point.v,
+          px: point.px,
+          ret: point.v / 100 - 1,
+        }
+      })
+      .filter(Boolean)
+    if (!samples.length) {
+      setHover(null)
+      return
+    }
+    // En yakın ortak tarihe hizala (günlük serilerde genelde aynı gün).
+    samples.sort((a, b) => Math.abs(a.t - targetT) - Math.abs(b.t - targetT))
+    const focusT = samples[0].t
+    const focused = samples
+      .map((s) => {
+        const point = nearestPoint(lines.find((l) => l.key === s.key)?.points, focusT)
+        if (!point || Math.abs(point.t - focusT) > 2 * 86400000) return null
+        return { ...s, t: point.t, v: point.v, px: point.px, ret: point.v / 100 - 1 }
+      })
+      .filter(Boolean)
+    setHover({
+      t: focusT,
+      x: x(focusT),
+      items: focused,
+    })
+  }
+
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+  const tipLeft = hover ? Math.min(Math.max(hover.x + 12, pad.l), W - 210) : 0
+
   return (
-    <svg className="fc-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'fundCompareChartLabel')}>
-      {gridVals.map((v) => (
-        <g key={v}>
-          <line className="fc-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
-          <text className="fc-axis" x={pad.l - 6} y={y(v) + 3} textAnchor="end">
-            {v.toFixed(0)}
-          </text>
-        </g>
-      ))}
-      <line className="fc-baseline" x1={pad.l} x2={W - pad.r} y1={y(100)} y2={y(100)} />
-      {lines.map((line) => (
-        <path key={line.key} className="fc-line" d={path(line.points)} stroke={line.color} fill="none" />
-      ))}
-      <text className="fc-axis" x={pad.l} y={H - 6}>
-        {new Date(minT).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
-      </text>
-      <text className="fc-axis" x={W - pad.r} y={H - 6} textAnchor="end">
-        {new Date(maxT).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
-      </text>
-    </svg>
+    <div className="fc-chart-wrap">
+      <svg
+        className="fc-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={t(lang, 'fundCompareChartLabel')}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        {gridVals.map((v) => (
+          <g key={v}>
+            <line className="fc-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+            <text className="fc-axis" x={pad.l - 6} y={y(v) + 3} textAnchor="end">
+              {v.toFixed(0)}
+            </text>
+          </g>
+        ))}
+        <line className="fc-baseline" x1={pad.l} x2={W - pad.r} y1={y(100)} y2={y(100)} />
+        {lines.map((line) => (
+          <path key={line.key} className="fc-line" d={path(line.points)} stroke={line.color} fill="none" />
+        ))}
+        {hover && (
+          <g className="fc-crosshair" pointerEvents="none">
+            <line x1={hover.x} x2={hover.x} y1={pad.t} y2={H - pad.b} />
+            {hover.items.map((item) => (
+              <circle key={item.key} cx={hover.x} cy={y(item.v)} r="4" fill={item.color} stroke="#fff" strokeWidth="1.5" />
+            ))}
+          </g>
+        )}
+        <text className="fc-axis" x={pad.l} y={H - 6}>
+          {new Date(minT).toLocaleDateString(locale)}
+        </text>
+        <text className="fc-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+          {new Date(maxT).toLocaleDateString(locale)}
+        </text>
+      </svg>
+      {hover && (
+        <div className="fc-tooltip" style={{ left: `${(tipLeft / W) * 100}%`, top: '18px' }}>
+          <div className="fc-tooltip-date">
+            {new Date(hover.t).toLocaleDateString(locale, {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}
+          </div>
+          {hover.items.map((item) => (
+            <div key={item.key} className="fc-tooltip-row">
+              <span className="fc-swatch" style={{ background: item.color }} />
+              <strong>{item.label}</strong>
+              <span>{formatPrice(item.px, lang)}</span>
+              <span className={`pct ${pctTone(item.ret)}`}>{formatPct(item.ret)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

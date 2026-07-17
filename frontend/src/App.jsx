@@ -8,9 +8,11 @@ import {
   fetchFundPrices,
   fetchFunds,
   fetchScreener,
+  fetchStockPositions,
   STATIC_MODE,
 } from './api'
 import FundCompare from './FundCompare'
+import StockPositions from './StockPositions'
 import { getLang, setLang as persistLang, t } from './i18n'
 
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
@@ -44,6 +46,7 @@ const NAV_ITEMS = [
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
+  { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
   { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
   { key: 'news', i18nKey: 'tabNews', icon: '📰' },
 ]
@@ -1188,6 +1191,9 @@ function App() {
   const [fundPrices, setFundPrices] = useState(null)
   const [fundPricesReady, setFundPricesReady] = useState(false)
   const [fundPricesLoading, setFundPricesLoading] = useState(false)
+  const [stockPositions, setStockPositions] = useState(null)
+  const [stockPositionsLoading, setStockPositionsLoading] = useState(false)
+  const [stockPositionsError, setStockPositionsError] = useState(null)
   const [compareSeed, setCompareSeed] = useState([])
   const [fundSort, setFundSort] = useState({ key: 'score', dir: 'desc' })
   const [fundSearch, setFundSearch] = useState('')
@@ -1333,6 +1339,27 @@ function App() {
       cancelled = true
     }
   }, [view, fundPricesReady])
+
+  useEffect(() => {
+    if (view !== 'stockPositions') return
+    if (stockPositions) return
+    let cancelled = false
+    setStockPositionsLoading(true)
+    setStockPositionsError(null)
+    fetchStockPositions()
+      .then((result) => {
+        if (!cancelled) setStockPositions(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setStockPositionsError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setStockPositionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, stockPositions])
 
   // Backtest tek bir dosyada tüm market/timeframe'leri taşır: bir kez yüklenir,
   // market/zaman dilimi değişince yeniden istek atılmaz.
@@ -1835,6 +1862,15 @@ function App() {
           loading={fundsLoading || fundPricesLoading}
           error={fundsError}
           seedSymbols={compareSeed}
+        />
+      )}
+
+      {view === 'stockPositions' && (
+        <StockPositions
+          data={stockPositions}
+          loading={stockPositionsLoading}
+          error={stockPositionsError}
+          lang={lang}
         />
       )}
 

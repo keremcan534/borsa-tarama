@@ -193,6 +193,28 @@ BIST100/USD/altın benchmark) üretir. Arayüzde **Fonlar** listesi ve **Karşı
 sekmesi (normalize getiri eğrisi, dönem seçimi, metrik tablosu) bunları kullanır.
 API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
 
+### Fon Hisse Pozisyonları
+Arayüzdeki **Hisse Pozisyonları** sayfası `fund_stock_positions.json` dosyasını
+okur ve seçilen BIST hissesini taşıyan fonları 12 aylık ağırlık/pay adedi
+matrisinde gösterir. Normalize KAP rapor satırlarını JSON'a çevirmek için:
+
+```bash
+python scripts/fund_positions_to_json.py positions.csv \
+  frontend/public/data/fund_stock_positions.json
+```
+
+CSV alanları: `fund_code`, `fund_name`, `symbol`, `month`, `weight`, `shares`.
+`weight` fon içindeki yüzde değerdir (ör. `%4,75` için `4.75`).
+
+Üretim workflow'u ayın 15'inde `scripts/kap_fund_positions.py` komutunu
+çalıştırır. Komut resmi KAP Portföy Dağılım Raporu PDF'lerini indirir, yayındaki
+geçmişle birleştirir ve son 12 ayı korur. Workflow elle tetiklendiğinde de bu
+adım çalışır; böylece ilk veri beklemeden üretilebilir.
+
+KAP tarafında fon OID'leri `fundOid` alanından batch halinde sorgulanır (byCriteria
+2000 satır tavanı); düzeltme bildirimleri (`DUZELTILMIS`) orijinal rapora tercih
+edilir. PDF indirmelerinde Java sarmalayıcısı otomatik soyulur.
+
 ## Strateji Backtest'i
 `app/backtest/` stratejinin geçmiş verideki performansını ölçer; arayüzde **Strateji**
 sekmesi gösterir. Backtest, canlı taramanın **aynı** `compute_indicators` + `passes_filters`

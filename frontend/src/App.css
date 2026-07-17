@@ -1525,6 +1525,52 @@ button.today-card.fund-card:hover {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
+  cursor: crosshair;
+}
+
+.fc-chart-wrap {
+  position: relative;
+}
+
+.fc-crosshair line {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+}
+
+.fc-tooltip {
+  position: absolute;
+  z-index: 4;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, #000 8%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.fc-tooltip-date {
+  margin-bottom: 8px;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.fc-tooltip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  color: var(--text);
+}
+
+.fc-tooltip-row strong {
+  color: var(--text-h);
+  font-weight: 600;
 }
 
 .fc-grid {
@@ -1577,4 +1623,133 @@ button.today-card.fund-card:hover {
   text-overflow: ellipsis;
   font-size: 12px;
   opacity: 0.85;
+}
+
+/* ---------- hisse pozisyonları ---------- */
+
+.stock-positions {
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-section {
+  margin-bottom: 22px;
+}
+
+.sp-symbols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp-symbols .fc-chip span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.sp-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sp-heading h2 {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 22px;
+}
+
+.sp-heading p {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.sp-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.sp-summary .today-card {
+  min-width: 0;
+}
+
+.sp-table-wrap {
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.sp-table {
+  min-width: 980px;
+}
+
+.sp-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.sp-table th:first-child,
+.sp-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 150px;
+  background: var(--surface);
+}
+
+.sp-table thead th:first-child {
+  z-index: 3;
+}
+
+.sp-table td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-fund-name {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.65;
+}
+
+.sp-trend {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--border);
+  font-weight: 700;
+}
+
+.sp-trend.up {
+  color: var(--up);
+  background: rgba(22, 163, 74, 0.14);
+}
+
+.sp-trend.down {
+  color: var(--down);
+  background: rgba(220, 38, 38, 0.14);
+}
+
+@media (max-width: 900px) {
+  .sp-summary {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
 }
