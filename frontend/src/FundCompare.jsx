@@ -91,12 +91,31 @@ function seriesReturn(norm) {
   return norm[norm.length - 1].v / 100 - 1
 }
 
-function formatPrice(value, lang) {
+function formatPrice(value, lang, currency = '₺') {
   if (value == null || Number.isNaN(value)) return '—'
   return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
-  })} ₺`
+  })} ${currency}`
+}
+
+/**
+ * TL serisini gün gün USDTRY kuruna bölerek USD bazına çevirir. Kur, o güne
+ * (veya öncesindeki son işlem gününe) ait değerdir; iki liste de tarih sıralıdır.
+ */
+function toUsdSeries(points, usdPoints) {
+  if (!points?.length || !usdPoints?.length) return points
+  const out = []
+  let i = 0
+  let rate = null
+  for (const [d, p] of points) {
+    while (i < usdPoints.length && usdPoints[i][0] <= d) {
+      rate = usdPoints[i][1]
+      i += 1
+    }
+    if (rate > 0) out.push([d, p / rate])
+  }
+  return out
 }
 
 function nearestPoint(points, t) {
@@ -113,7 +132,34 @@ function nearestPoint(points, t) {
   return best
 }
 
-function CompareChart({ lines, lang }) {
+/**
+ * KAP aylık portföy verisini fon → {hisse: son ağırlık %} matrisine çevirir.
+ * Kaynak veri hisse → fon yönünde tutulur (Hisse Pozisyonları sekmesi için);
+ * örtüşme hesabı ters yönü ister.
+ */
+function buildFundHoldings(positions) {
+  const holdings = new Map()
+  const months = positions?.months || []
+  const stocks = positions?.stocks || {}
+  for (const [stockSym, stock] of Object.entries(stocks)) {
+    for (const fund of stock.funds || []) {
+      let weight = null
+      for (let i = months.length - 1; i >= 0; i -= 1) {
+        const w = fund.positions?.[months[i]]?.weight
+        if (w != null) {
+          weight = w
+          break
+        }
+      }
+      if (weight == null || weight <= 0) continue
+      if (!holdings.has(fund.fund_code)) holdings.set(fund.fund_code, new Map())
+      holdings.get(fund.fund_code).set(stockSym, { weight, name: stock.name })
+    }
+  }
+  return holdings
+}
+
+function CompareChart({ lines, lang, currency = '₺' }) {
   const W = 720
   const H = 280
   const pad = { t: 16, r: 16, b: 28, l: 44 }
@@ -145,7 +191,13 @@ function CompareChart({ lines, lang }) {
     const svg = event.currentTarget
     const rect = svg.getBoundingClientRect()
     const scaleX = W / rect.width
-    const px = (event.clientX - rect.left) * scaleX
+    // Fare ve dokunma (parmak) olaylarının ikisini de destekle: mobilde
+    // onMouseMove tetiklenmez, koordinat touches[0]'dan gelir. Sayfanın
+    // kaymaması CSS'teki touch-action:none ile sağlanır (passive listener'da
+    // preventDefault çalışmaz).
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * scaleX
     if (px < pad.l || px > W - pad.r) {
       setHover(null)
       return
@@ -188,7 +240,10 @@ function CompareChart({ lines, lang }) {
   }
 
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
-  const tipLeft = hover ? Math.min(Math.max(hover.x + 12, pad.l), W - 210) : 0
+  // Tooltip'i imlecin bulunduğu noktaya sabitle; sağ yarıdaysa kendi genişliği
+  // kadar sola çevir ki ekrandan (özellikle mobilde) taşmasın.
+  const tipPct = hover ? (hover.x / W) * 100 : 0
+  const tipFlip = hover ? hover.x > W * 0.5 : false
 
   return (
     <div className="fc-chart-wrap">
@@ -199,6 +254,8 @@ function CompareChart({ lines, lang }) {
         aria-label={t(lang, 'fundCompareChartLabel')}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
+        onTouchStart={onMove}
+        onTouchMove={onMove}
       >
         {gridVals.map((v) => (
           <g key={v}>
@@ -228,7 +285,14 @@ function CompareChart({ lines, lang }) {
         </text>
       </svg>
       {hover && (
-        <div className="fc-tooltip" style={{ left: `${(tipLeft / W) * 100}%`, top: '18px' }}>
+        <div
+          className="fc-tooltip"
+          style={{
+            left: `${tipPct}%`,
+            top: '18px',
+            transform: tipFlip ? 'translateX(calc(-100% - 14px))' : 'translateX(14px)',
+          }}
+        >
           <div className="fc-tooltip-date">
             {new Date(hover.t).toLocaleDateString(locale, {
               day: 'numeric',
@@ -240,7 +304,7 @@ function CompareChart({ lines, lang }) {
             <div key={item.key} className="fc-tooltip-row">
               <span className="fc-swatch" style={{ background: item.color }} />
               <strong>{item.label}</strong>
-              <span>{formatPrice(item.px, lang)}</span>
+              <span>{formatPrice(item.px, lang, currency)}</span>
               <span className={`pct ${pctTone(item.ret)}`}>{formatPct(item.ret)}</span>
             </div>
           ))}
@@ -277,12 +341,13 @@ function formatMetric(fund, row, lang) {
  * Fonaly tarzı yan yana karşılaştırma: fon seçimi, normalize getiri eğrisi,
  * benchmark katmanları ve metrik tablosu.
  */
-export default function FundCompare({ funds, prices, lang, loading, error, seedSymbols }) {
+export default function FundCompare({ funds, prices, positions, lang, loading, error, seedSymbols }) {
   const list = funds?.results || []
   const [selected, setSelected] = useState([])
   const [period, setPeriod] = useState('3m')
   const [query, setQuery] = useState('')
   const [activeBench, setActiveBench] = useState(() => new Set())
+  const [usdBase, setUsdBase] = useState(false)
   const [seeded, setSeeded] = useState(false)
 
   useEffect(() => {
@@ -323,11 +388,18 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
     })
   }
 
+  // USD bazı: nominal TL getirisi yüksek enflasyonda yanıltıcı; seriler gün gün
+  // USDTRY'ye bölününce "dolar cinsinden gerçekten kazandırdı mı" görünür.
+  const usdPoints = prices?.benchmarks?.['USDTRY=X']?.points
+  const usdAvailable = Boolean(usdPoints?.length)
+  const inUsd = usdBase && usdAvailable
+
   const chartLines = useMemo(() => {
+    const convert = (pts) => (inUsd ? toUsdSeries(pts, usdPoints) : pts)
     const lines = []
     let colorIdx = 0
     for (const sym of selected) {
-      const pts = normalizeSeries(prices?.series?.[sym], period)
+      const pts = normalizeSeries(convert(prices?.series?.[sym]), period)
       if (!pts.length) continue
       lines.push({
         key: sym,
@@ -339,9 +411,11 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
       colorIdx += 1
     }
     for (const key of activeBench) {
+      // USD bazında USDTRY'nin kendisi düz 100 çizgisi olurdu; atla
+      if (inUsd && key === 'USDTRY=X') continue
       const b = prices?.benchmarks?.[key]
       if (!b) continue
-      const pts = normalizeSeries(b.points, period)
+      const pts = normalizeSeries(convert(b.points), period)
       if (!pts.length) continue
       lines.push({
         key: `b:${key}`,
@@ -354,7 +428,47 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
       colorIdx += 1
     }
     return lines
-  }, [selected, activeBench, prices, period])
+  }, [selected, activeBench, prices, period, inUsd, usdPoints])
+
+  const fundHoldings = useMemo(() => buildFundHoldings(positions), [positions])
+
+  // Seçili fonlardan en az ikisinin KAP verisi varsa örtüşme hesaplanır:
+  // ikili örtüşme = ortak hisselerde min(ağırlık) toplamı.
+  const overlap = useMemo(() => {
+    const withData = selected.filter((s) => fundHoldings.has(s))
+    if (withData.length < 2) return null
+    const pairs = []
+    for (let i = 0; i < withData.length; i += 1) {
+      for (let j = i + 1; j < withData.length; j += 1) {
+        const a = fundHoldings.get(withData[i])
+        const b = fundHoldings.get(withData[j])
+        let sum = 0
+        for (const [sym, va] of a) {
+          const vb = b.get(sym)
+          if (vb) sum += Math.min(va.weight, vb.weight)
+        }
+        pairs.push({ a: withData[i], b: withData[j], overlap: sum })
+      }
+    }
+    pairs.sort((x, y) => y.overlap - x.overlap)
+    const stockAgg = new Map()
+    for (const sym of withData) {
+      for (const [stockSym, v] of fundHoldings.get(sym)) {
+        if (!stockAgg.has(stockSym)) stockAgg.set(stockSym, { name: v.name, weights: {}, count: 0, total: 0 })
+        const row = stockAgg.get(stockSym)
+        row.weights[sym] = v.weight
+        row.count += 1
+        row.total += v.weight
+      }
+    }
+    const shared = [...stockAgg.entries()]
+      .filter(([, r]) => r.count >= 2)
+      .map(([stockSym, r]) => ({ symbol: stockSym, ...r }))
+      .sort((x, y) => y.total - x.total)
+      .slice(0, 15)
+    const missing = selected.filter((s) => !fundHoldings.has(s))
+    return { funds: withData, pairs, shared, missing }
+  }, [selected, fundHoldings])
 
   const selectedFunds = selected.map((s) => bySymbol.get(s)).filter(Boolean)
   const benchmarks = Object.entries(prices?.benchmarks || {})
@@ -439,6 +553,16 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
                 {b.name}
               </button>
             ))}
+            {usdAvailable && (
+              <button
+                type="button"
+                className={`fc-chip fc-usd ${usdBase ? 'active' : ''}`}
+                title={t(lang, 'fcUsdBaseHint')}
+                onClick={() => setUsdBase((v) => !v)}
+              >
+                $ {t(lang, 'fcUsdBase')}
+              </button>
+            )}
           </div>
         )}
 
@@ -448,7 +572,7 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
           <div className="empty-box">{t(lang, 'fundCompareNeedFunds')}</div>
         ) : (
           <>
-            <CompareChart lines={chartLines} lang={lang} />
+            <CompareChart lines={chartLines} lang={lang} currency={inUsd ? '$' : '₺'} />
             {chartLines.length > 0 && (
               <div className="fc-legend">
                 {chartLines.map((l) => (
@@ -500,6 +624,55 @@ export default function FundCompare({ funds, prices, lang, loading, error, seedS
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {overlap && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fcOverlapTitle')}</h2>
+          <p className="fc-overlap-hint">{t(lang, 'fcOverlapHint')}</p>
+          <div className="fc-overlap-pairs">
+            {overlap.pairs.map((p) => (
+              <div key={`${p.a}-${p.b}`} className="today-card fc-overlap-card">
+                <span className="today-card-label">
+                  {p.a} ↔ {p.b}
+                </span>
+                <strong className={`today-card-value ${p.overlap >= 50 ? 'fc-overlap-high' : ''}`}>
+                  %{p.overlap.toFixed(1)}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {overlap.shared.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="left">{t(lang, 'fcOverlapStock')}</th>
+                    {overlap.funds.map((s) => (
+                      <th key={s}>{s}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {overlap.shared.map((row) => (
+                    <tr key={row.symbol}>
+                      <td className="left">
+                        <strong>{row.symbol}</strong>
+                        {row.name && <span className="sp-fund-name">{row.name}</span>}
+                      </td>
+                      {overlap.funds.map((s) => (
+                        <td key={s}>{row.weights[s] != null ? `%${row.weights[s].toFixed(2)}` : '—'}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {overlap.missing.length > 0 && (
+            <p className="fc-overlap-note">{t(lang, 'fcOverlapMissing', overlap.missing.join(', '))}</p>
+          )}
         </section>
       )}
 

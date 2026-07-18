@@ -5,6 +5,7 @@ import {
   fetchBacktest,
   fetchDailyOverview,
   fetchEnabledMarkets,
+  fetchFundFlows,
   fetchFundPrices,
   fetchFunds,
   fetchScreener,
@@ -43,6 +44,8 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 // Sol menü sırası. İkonlar emoji: harici ikon kütüphanesi bağımlılığı getirmiyor.
 const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
+  { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+  { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
@@ -398,6 +401,218 @@ function ChartModal({ symbol, news, onClose }) {
   )
 }
 
+// TEFAS fonlarının günlük fiyat (pay değeri) serisi fund_prices.json'dan gelir;
+// gerçek bir zaman-fiyat grafiği çizmek için kullanılır.
+const FUND_CHART_PERIODS = [
+  { key: '1m', days: 30, label: '1A', labelEn: '1M' },
+  { key: '3m', days: 90, label: '3A', labelEn: '3M' },
+  { key: '6m', days: 180, label: '6A', labelEn: '6M' },
+  { key: 'ytd', days: null, label: 'YTD', labelEn: 'YTD' },
+  { key: '1y', days: 365, label: '1Y', labelEn: '1Y' },
+]
+
+function fundPeriodStartMs(periodKey, lastMs) {
+  const p = FUND_CHART_PERIODS.find((x) => x.key === periodKey)
+  if (!p) return lastMs - 90 * 86400000
+  if (p.key === 'ytd') {
+    const d = new Date(lastMs)
+    return Date.UTC(d.getUTCFullYear(), 0, 1)
+  }
+  return lastMs - p.days * 86400000
+}
+
+/** [[YYYY-MM-DD, price], ...] → seçili dönemde sıralı [{t, px}] noktaları. */
+function parseFundSeries(points, periodKey) {
+  if (!points?.length) return []
+  const parsed = points
+    .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
+    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
+    .sort((a, b) => a.t - b.t)
+  if (parsed.length < 2) return parsed
+  const last = parsed[parsed.length - 1].t
+  const start = fundPeriodStartMs(periodKey, last)
+  const window = parsed.filter((x) => x.t >= start)
+  return window.length >= 2 ? window : parsed
+}
+
+function formatFundPrice(value, lang) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })} ₺`
+}
+
+function fundAxisPrice(v) {
+  const a = Math.abs(v)
+  if (a >= 100) return v.toFixed(0)
+  if (a >= 1) return v.toFixed(2)
+  return v.toFixed(4)
+}
+
+function nearestFundPoint(points, t) {
+  let best = points[0]
+  let bestDist = Math.abs(points[0].t - t)
+  for (let i = 1; i < points.length; i += 1) {
+    const dist = Math.abs(points[i].t - t)
+    if (dist < bestDist) {
+      best = points[i]
+      bestDist = dist
+    }
+  }
+  return best
+}
+
+/**
+ * Tek fonun pay değeri zaman serisini gerçek eksenlerle (tarih + fiyat) çizen
+ * çizgi grafik. Fareyle üzerine gelince tarih/fiyat/getiri gösteren tooltip verir.
+ */
+function FundPriceChart({ points, lang }) {
+  const [period, setPeriod] = useState('3m')
+  const [hover, setHover] = useState(null)
+  const data = useMemo(() => parseFundSeries(points, period), [points, period])
+
+  const W = 640
+  const H = 240
+  const pad = { t: 14, r: 16, b: 26, l: 52 }
+  const innerW = W - pad.l - pad.r
+  const innerH = H - pad.t - pad.b
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const selector = (
+    <div className="fund-price-periods">
+      {FUND_CHART_PERIODS.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          className={`fund-price-period ${period === p.key ? 'active' : ''}`}
+          onClick={() => setPeriod(p.key)}
+        >
+          {lang === 'en' ? p.labelEn : p.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (data.length < 2) {
+    return (
+      <div className="fund-price">
+        {selector}
+        <div className="empty-box">{t(lang, 'fundCompareNoChart')}</div>
+      </div>
+    )
+  }
+
+  const minT = data[0].t
+  const maxT = data[data.length - 1].t
+  const base = data[0].px
+  const last = data[data.length - 1].px
+  const totalRet = last / base - 1
+  const dir = totalRet >= 0 ? 'up' : 'down'
+
+  const pxVals = data.map((d) => d.px)
+  const minP = Math.min(...pxVals)
+  const maxP = Math.max(...pxVals)
+  const span = maxP - minP
+  const pPad = Math.max(span * 0.1, minP * 0.002, 1e-6)
+  const lo = minP - pPad
+  const hi = maxP + pPad
+
+  const x = (tt) => pad.l + ((tt - minT) / (maxT - minT || 1)) * innerW
+  const y = (p) => pad.t + (1 - (p - lo) / (hi - lo || 1)) * innerH
+  const tFromX = (px) => minT + ((px - pad.l) / (innerW || 1)) * (maxT - minT)
+
+  const linePath = data.map((d, i) => `${i ? 'L' : 'M'}${x(d.t).toFixed(1)},${y(d.px).toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L${x(maxT).toFixed(1)},${(H - pad.b).toFixed(1)} L${x(minT).toFixed(1)},${(H - pad.b).toFixed(1)} Z`
+  const gridVals = [hi, (lo + hi) / 2, lo]
+
+  function onMove(event) {
+    const svg = event.currentTarget
+    const rect = svg.getBoundingClientRect()
+    // Fare + dokunma desteği: mobilde koordinat touches[0]'dan gelir. Sayfa
+    // kayması CSS'teki touch-action:none ile engellenir.
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * (W / rect.width)
+    if (px < pad.l || px > W - pad.r) {
+      setHover(null)
+      return
+    }
+    const point = nearestFundPoint(data, tFromX(px))
+    if (!point) {
+      setHover(null)
+      return
+    }
+    setHover({ t: point.t, px: point.px, ret: point.px / base - 1 })
+  }
+
+  // Tooltip imlecin noktasına sabitlenir; sağ yarıdaysa kendi genişliği kadar
+  // sola çevrilir (mobilde ekrandan taşmasın).
+  const tipPct = hover ? (x(hover.t) / W) * 100 : 0
+  const tipFlip = hover ? x(hover.t) > W * 0.5 : false
+
+  return (
+    <div className="fund-price">
+      <div className="fund-price-head">
+        {selector}
+        <span className={`fund-price-change pct ${pctTone(totalRet)}`}>{formatPct(totalRet)}</span>
+      </div>
+      <div className="fund-price-wrap">
+        <svg
+          className="fund-price-chart"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={t(lang, 'fundPriceChartLabel')}
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+          onTouchStart={onMove}
+          onTouchMove={onMove}
+        >
+          {gridVals.map((v) => (
+            <g key={v}>
+              <line className="fund-price-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+              <text className="fund-price-axis" x={pad.l - 8} y={y(v) + 3} textAnchor="end">
+                {fundAxisPrice(v)}
+              </text>
+            </g>
+          ))}
+          <path className={`fund-price-area ${dir}`} d={areaPath} />
+          <path className={`fund-price-line ${dir}`} d={linePath} />
+          {hover && (
+            <g pointerEvents="none">
+              <line className="fund-price-crosshair" x1={x(hover.t)} x2={x(hover.t)} y1={pad.t} y2={H - pad.b} />
+              <circle className={`fund-price-dot ${dir}`} cx={x(hover.t)} cy={y(hover.px)} r="4" />
+            </g>
+          )}
+          <text className="fund-price-axis" x={pad.l} y={H - 6}>
+            {new Date(minT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </text>
+          <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+            {new Date(maxT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </text>
+        </svg>
+        {hover && (
+          <div
+            className="fund-price-tooltip"
+            style={{
+              left: `${tipPct}%`,
+              transform: tipFlip ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)',
+            }}
+          >
+            <div className="fund-price-tooltip-date">
+              {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+            <div className="fund-price-tooltip-row">
+              <strong>{formatFundPrice(hover.px, lang)}</strong>
+              <span className={`pct ${pctTone(hover.ret)}`}>{formatPct(hover.ret)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** TEFAS fonları TradingView'da yok; dönem getirilerini bar grafik olarak gösteriyoruz. */
 const FUND_RETURN_BARS = [
   { key: 'return_1d', label: '1G', labelEn: '1D' },
@@ -434,7 +649,8 @@ function FundReturnsChart({ fund, lang }) {
   )
 }
 
-function FundModal({ fund, news, lang, onClose, onCompare }) {
+function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading }) {
+  const series = prices?.series?.[fund.symbol]
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -484,7 +700,20 @@ function FundModal({ fund, news, lang, onClose, onCompare }) {
             <span className={`badge score-${scoreTone(fund.score)}`}>{fund.score}</span>
             <span className="modal-fund-score-label">{t(lang, 'colScore')}</span>
           </div>
-          <FundReturnsChart fund={fund} lang={lang} />
+          <div className="fund-price-section">
+            <div className="fund-section-title">{t(lang, 'fundPriceTitle')}</div>
+            {series?.length ? (
+              <FundPriceChart points={series} lang={lang} />
+            ) : (
+              <div className="empty-box">
+                {pricesLoading ? t(lang, 'fundCompareLoading') : t(lang, 'fundCompareNoPrices')}
+              </div>
+            )}
+          </div>
+          <div className="fund-returns-section">
+            <div className="fund-section-title">{t(lang, 'fundChartLabel')}</div>
+            <FundReturnsChart fund={fund} lang={lang} />
+          </div>
           <div className="fund-metrics">
             <div className="fund-metric">
               <span className="fund-metric-label">{t(lang, 'colInvestors')}</span>
@@ -646,6 +875,895 @@ function loadWatchlist() {
   } catch {
     return new Set()
   }
+}
+
+// Fon favorileri ayrı anahtarda: fon kodları (ör. TTE) SP500 sembolleriyle
+// çakışabilir, tek listede tip ayrımı yapılamazdı.
+function loadFundWatchlist() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('watchlist_funds') || '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * "İzlediklerim": yıldızlanan hisse ve fonları tek sayfada toplar. Veri günlük
+ * tarama çıktılarından gelir; favori artık tarama listesinde yoksa satır soluk
+ * gösterilir ama grafiği yine açılabilir.
+ */
+function WatchlistView({
+  watchlist,
+  fundWatchlist,
+  overview,
+  funds,
+  lang,
+  loading,
+  onOpenChart,
+  onOpenFund,
+  onToggleStock,
+  onToggleFund,
+}) {
+  const stockRows = useMemo(() => {
+    const bySymbol = new Map()
+    for (const payload of Object.values(overview || {})) {
+      for (const r of payload.results || []) bySymbol.set(r.symbol, r)
+    }
+    return [...watchlist].sort().map((symbol) => bySymbol.get(symbol) || { symbol, missing: true })
+  }, [watchlist, overview])
+
+  const fundRows = useMemo(() => {
+    const bySymbol = new Map()
+    for (const f of funds?.results || []) bySymbol.set(f.symbol, f)
+    return [...fundWatchlist].sort().map((symbol) => bySymbol.get(symbol) || { symbol, missing: true })
+  }, [fundWatchlist, funds])
+
+  if (!watchlist.size && !fundWatchlist.size) {
+    return (
+      <>
+        <div className="status-bar">
+          <span>{t(lang, 'watchlistIntro')}</span>
+        </div>
+        <div className="empty-box">{t(lang, 'watchlistEmpty')}</div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'watchlistIntro')}</span>
+      </div>
+      {loading && !stockRows.some((r) => !r.missing) && !fundRows.some((r) => !r.missing) && (
+        <div className="empty-box">{t(lang, 'loading')}</div>
+      )}
+
+      {watchlist.size > 0 && (
+        <section className="watch-section">
+          <h2 className="today-title">{t(lang, 'watchlistStocks')}</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="star-cell"></th>
+                  <th className="left">{t(lang, 'colSymbol')}</th>
+                  <th>{t(lang, 'colScore')}</th>
+                  <th>{t(lang, 'colClose')}</th>
+                  <th>{t(lang, 'changeColLabels').daily}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockRows.map((r) => (
+                  <tr key={r.symbol} className={r.missing ? 'watch-missing' : ''}>
+                    <td className="star-cell">
+                      <button
+                        className="star-btn active"
+                        title={t(lang, 'watchRemove')}
+                        onClick={() => onToggleStock(r.symbol)}
+                      >
+                        ★
+                      </button>
+                    </td>
+                    <td className="symbol-cell">
+                      <button className="symbol-btn" onClick={() => onOpenChart(r.symbol)}>
+                        <TickerLogo symbol={r.symbol} />
+                        {displaySymbol(r.symbol)}
+                      </button>
+                      {r.missing && <span className="watch-note">{t(lang, 'watchlistNotInScan')}</span>}
+                    </td>
+                    <td>
+                      {r.missing ? '—' : <span className={`badge score-${scoreTone(r.score)}`}>{r.score ?? '—'}</span>}
+                    </td>
+                    <td>{r.missing ? '—' : formatNum(r.close, 2)}</td>
+                    <td className={`pct ${pctTone(r.change)}`}>{r.missing ? '—' : formatPct(r.change, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {fundWatchlist.size > 0 && (
+        <section className="watch-section">
+          <h2 className="today-title">{t(lang, 'watchlistFunds')}</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="star-cell"></th>
+                  <th className="left">{t(lang, 'colFund')}</th>
+                  <th>{t(lang, 'colScore')}</th>
+                  <th>{t(lang, 'colChange')}</th>
+                  <th>1Y %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fundRows.map((f) => (
+                  <tr key={f.symbol} className={f.missing ? 'watch-missing' : ''}>
+                    <td className="star-cell">
+                      <button
+                        className="star-btn active"
+                        title={t(lang, 'watchRemove')}
+                        onClick={() => onToggleFund(f.symbol)}
+                      >
+                        ★
+                      </button>
+                    </td>
+                    <td className="symbol-cell">
+                      {f.missing ? (
+                        <span className="symbol-btn watch-plain">
+                          <TickerLogo symbol={f.symbol} />
+                          <strong>{f.symbol}</strong>
+                          <span className="watch-note">{t(lang, 'watchlistNotInScan')}</span>
+                        </span>
+                      ) : (
+                        <button
+                          className="symbol-btn fund-link"
+                          type="button"
+                          title={f.name}
+                          onClick={() => onOpenFund(f)}
+                        >
+                          <TickerLogo symbol={f.symbol} />
+                          <span className="fund-code-wrap">
+                            <strong>{f.symbol}</strong>
+                            <span className="fund-name">{f.name}</span>
+                          </span>
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      {f.missing ? '—' : <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>}
+                    </td>
+                    <td className={`pct ${pctTone(f.return_1d)}`}>{f.missing ? '—' : formatPct(f.return_1d, 2)}</td>
+                    <td className={`pct ${pctTone(f.return_1y)}`}>{f.missing ? '—' : formatPct(f.return_1y)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  )
+}
+
+function loadPortfolio() {
+  try {
+    const list = JSON.parse(localStorage.getItem('portfolio_funds') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function savePortfolio(list) {
+  localStorage.setItem('portfolio_funds', JSON.stringify(list))
+}
+
+/** Tutar (maliyet/değer) 2 ondalıkla; pay fiyatı için formatFundPrice (4 ondalık) kullanılır. */
+function formatLira(value, lang) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ₺`
+}
+
+/** Serideki [tarih, fiyat] noktalarından verilen güne (veya öncesindeki son güne) ait fiyat. */
+function priceOn(series, dateStr) {
+  if (!series?.length) return null
+  let best = null
+  for (const [d, px] of series) {
+    if (d <= dateStr) best = px
+    else break
+  }
+  return best
+}
+
+/**
+ * Fon akışı: günlük yatırımcı sayısı arşivinden (fund_flows.json) seçilen
+ * penceredeki değişimi hesaplar. "Para nereye akıyor" sorusuna popülerlik
+ * üzerinden yaklaşık bir cevap; arşiv birikene kadar panel görünmez.
+ */
+function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
+  const [win, setWin] = useState(30)
+  const history = flows?.history || {}
+  const dates = useMemo(() => Object.keys(history).sort(), [history])
+
+  const computed = useMemo(() => {
+    if (dates.length < 2) return null
+    const lastDate = dates[dates.length - 1]
+    const cutoff = new Date(Date.parse(lastDate) - win * 86400000).toISOString().slice(0, 10)
+    const baseDate = dates.find((d) => d >= cutoff) ?? dates[0]
+    if (baseDate === lastDate) return null
+    const base = history[baseDate]
+    const last = history[lastDate]
+    const bySymbol = new Map((funds?.results || []).map((f) => [f.symbol, f]))
+    const rows = []
+    for (const [sym, cur] of Object.entries(last)) {
+      const prev = base?.[sym]
+      if (prev == null || cur == null) continue
+      const delta = cur - prev
+      if (!delta) continue
+      rows.push({ symbol: sym, fund: bySymbol.get(sym) || null, delta, pct: prev > 0 ? delta / prev : null })
+    }
+    if (!rows.length) return null
+    const gainers = [...rows].sort((a, b) => b.delta - a.delta).filter((r) => r.delta > 0).slice(0, 5)
+    const losers = [...rows].sort((a, b) => a.delta - b.delta).filter((r) => r.delta < 0).slice(0, 5)
+    return { gainers, losers, baseDate, lastDate }
+  }, [dates, history, win, funds])
+
+  if (!computed) return null
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const renderList = (items, tone) => (
+    <div className="flow-col">
+      <h3 className="flow-col-title">{t(lang, tone === 'pos' ? 'flowGainers' : 'flowLosers')}</h3>
+      {items.length === 0 && <div className="flow-empty">—</div>}
+      {items.map((r) => (
+        <button
+          key={r.symbol}
+          type="button"
+          className="flow-row"
+          disabled={!r.fund}
+          onClick={() => r.fund && onOpenFund(r.fund)}
+          title={r.fund?.name}
+        >
+          <TickerLogo symbol={r.symbol} />
+          <span className="flow-code">
+            <strong>{r.symbol}</strong>
+            {r.fund?.name && <span className="fund-name">{r.fund.name}</span>}
+          </span>
+          <span className={`pct ${tone}`}>
+            {r.delta > 0 ? '+' : ''}
+            {r.delta.toLocaleString(locale)}
+            {r.pct != null && ` (${formatPct(r.pct)})`}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+
+  return (
+    <section className="watch-section flow-panel">
+      <div className="pf-chart-head">
+        <h2 className="today-title">{t(lang, 'flowTitle')}</h2>
+        <div className="tabs">
+          {[7, 30].map((d) => (
+            <button key={d} type="button" className={`tab ${win === d ? 'active' : ''}`} onClick={() => setWin(d)}>
+              {d}G
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="fc-overlap-hint">
+        {t(
+          lang,
+          'flowRange',
+          new Date(computed.baseDate).toLocaleDateString(locale),
+          new Date(computed.lastDate).toLocaleDateString(locale),
+        )}
+      </p>
+      <div className="flow-grid">
+        {renderList(computed.gainers, 'pos')}
+        {renderList(computed.losers, 'neg')}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Portföyün gün gün toplam değeri. Bir günün değeri, o güne kadar alınmış tüm
+ * pozisyonların o günkü pay değeriyle çarpımı; maliyet de aynı günün birikimli
+ * yatırılan tutarı (kademeli alımlar basamak olarak görünür).
+ */
+function buildPortfolioSeries(positions, prices) {
+  const seriesBySym = {}
+  const dateSet = new Set()
+  for (const p of positions) {
+    const s = prices?.series?.[p.symbol]
+    if (!s?.length) continue
+    seriesBySym[p.symbol] = s
+    for (const [d] of s) dateSet.add(d)
+  }
+  if (!Object.keys(seriesBySym).length) return null
+  const firstBuy = positions.reduce((m, p) => (m == null || p.date < m ? p.date : m), null)
+  const dates = [...dateSet].sort().filter((d) => d >= firstBuy)
+  const points = []
+  for (const d of dates) {
+    let value = 0
+    let invested = 0
+    let complete = true
+    for (const p of positions) {
+      if (p.date > d) continue
+      const px = priceOn(seriesBySym[p.symbol], d)
+      if (px == null) {
+        complete = false
+        break
+      }
+      value += px * p.qty
+      invested += p.price * p.qty
+    }
+    if (!complete || invested <= 0) continue
+    points.push({ t: Date.parse(d), d, value, invested })
+  }
+  return points.length >= 2 ? points : null
+}
+
+/**
+ * "Aynı parayı aynı tarihlerde benchmark'a koysaydın": her alımın maliyeti o
+ * günkü benchmark fiyatından pay'a çevrilir, toplam değer gün gün izlenir.
+ * Herhangi bir alım gününde benchmark fiyatı yoksa (seri o kadar geriye
+ * gitmiyorsa) yanıltıcı kısmi eğri yerine hiç çizilmez.
+ */
+function buildBenchmarkSeries(positions, benchPoints, portfolioPoints) {
+  if (!benchPoints?.length || !portfolioPoints?.length) return null
+  const units = []
+  for (const p of positions) {
+    const px = priceOn(benchPoints, p.date)
+    if (px == null || px <= 0) return null
+    units.push({ date: p.date, units: (p.price * p.qty) / px })
+  }
+  const points = []
+  for (const pt of portfolioPoints) {
+    const bpx = priceOn(benchPoints, pt.d)
+    if (bpx == null) continue
+    let value = 0
+    for (const u of units) {
+      if (u.date > pt.d) continue
+      value += u.units * bpx
+    }
+    if (value > 0) points.push({ t: pt.t, d: pt.d, value })
+  }
+  return points.length >= 2 ? points : null
+}
+
+const PF_BENCH_DEFS = [
+  { key: 'XU100.IS', label: 'BIST 100', color: '#2563eb' },
+  { key: 'USDTRY=X', label: 'USD', color: '#d97706' },
+]
+
+function formatAxisMoney(v) {
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`
+  if (Math.abs(v) >= 1e4) return `${(v / 1e3).toFixed(0)}k`
+  return v.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
+}
+
+/** Portföy değeri + maliyet + benchmark eğrilerini ₺ ekseniyle çizen grafik. */
+function PortfolioChart({ lines, lang }) {
+  const [hover, setHover] = useState(null)
+  const W = 680
+  const H = 260
+  const pad = { t: 14, r: 16, b: 26, l: 56 }
+  const innerW = W - pad.l - pad.r
+  const innerH = H - pad.t - pad.b
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const all = lines.flatMap((l) => l.points)
+  if (all.length < 2) return null
+  const minT = Math.min(...all.map((p) => p.t))
+  const maxT = Math.max(...all.map((p) => p.t))
+  const minV = Math.min(...all.map((p) => p.value))
+  const maxV = Math.max(...all.map((p) => p.value))
+  const vPad = Math.max((maxV - minV) * 0.08, maxV * 0.01, 1)
+  const lo = minV - vPad
+  const hi = maxV + vPad
+
+  const x = (tt) => pad.l + ((tt - minT) / (maxT - minT || 1)) * innerW
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo || 1)) * innerH
+  const tFromX = (px) => minT + ((px - pad.l) / (innerW || 1)) * (maxT - minT)
+  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
+  const gridVals = [hi, (lo + hi) / 2, lo]
+
+  function onMove(event) {
+    const svg = event.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event
+    if (source.clientX == null) return
+    const px = (source.clientX - rect.left) * (W / rect.width)
+    if (px < pad.l || px > W - pad.r) {
+      setHover(null)
+      return
+    }
+    const targetT = tFromX(px)
+    const items = lines
+      .map((line) => {
+        const point = nearestFundPoint(line.points, targetT)
+        if (!point) return null
+        return { key: line.key, label: line.label, color: line.color, dashed: line.dashed, t: point.t, value: point.value }
+      })
+      .filter(Boolean)
+    if (!items.length) {
+      setHover(null)
+      return
+    }
+    setHover({ t: items[0].t, x: x(items[0].t), items })
+  }
+
+  const tipPct = hover ? (hover.x / W) * 100 : 0
+  const tipFlip = hover ? hover.x > W * 0.5 : false
+
+  return (
+    <div className="fund-price-wrap">
+      <svg
+        className="fund-price-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={t(lang, 'pfChartLabel')}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        onTouchStart={onMove}
+        onTouchMove={onMove}
+      >
+        {gridVals.map((v) => (
+          <g key={v}>
+            <line className="fund-price-grid" x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} />
+            <text className="fund-price-axis" x={pad.l - 8} y={y(v) + 3} textAnchor="end">
+              {formatAxisMoney(v)}
+            </text>
+          </g>
+        ))}
+        {lines.map((line) => (
+          <path
+            key={line.key}
+            className={`pf-line ${line.dashed ? 'dashed' : ''}`}
+            d={path(line.points)}
+            stroke={line.color}
+            fill="none"
+          />
+        ))}
+        {hover && (
+          <g pointerEvents="none">
+            <line className="fund-price-crosshair" x1={hover.x} x2={hover.x} y1={pad.t} y2={H - pad.b} />
+            {hover.items.map((item) => (
+              <circle key={item.key} cx={hover.x} cy={y(item.value)} r="4" fill={item.color} stroke="#fff" strokeWidth="1.5" />
+            ))}
+          </g>
+        )}
+        <text className="fund-price-axis" x={pad.l} y={H - 6}>
+          {new Date(minT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+        </text>
+        <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+          {new Date(maxT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+        </text>
+      </svg>
+      {hover && (
+        <div
+          className="fund-price-tooltip"
+          style={{ left: `${tipPct}%`, transform: tipFlip ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)' }}
+        >
+          <div className="fund-price-tooltip-date">
+            {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+          {hover.items.map((item) => (
+            <div key={item.key} className="fc-tooltip-row">
+              <span className="fc-swatch" style={{ background: item.color }} />
+              <strong>{item.label}</strong>
+              <span>{formatLira(item.value, lang)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * "Portföyüm": kullanıcının kendi fon alımlarını (tarih, fiyat, adet) girip
+ * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
+ * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
+ */
+function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
+  const [positions, setPositions] = useState(loadPortfolio)
+  const [form, setForm] = useState(() => ({
+    symbol: '',
+    date: new Date().toISOString().slice(0, 10),
+    price: '',
+    qty: '',
+  }))
+  const [formError, setFormError] = useState(null)
+
+  const fundList = funds?.results || []
+  const bySymbol = useMemo(() => {
+    const m = new Map()
+    for (const f of fundList) m.set(f.symbol, f)
+    return m
+  }, [fundList])
+
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+  const symbolInput = form.symbol.trim().toUpperCase()
+
+  // Fon + tarih seçilince alış fiyatını o günkü pay değeriyle önerelim;
+  // kullanıcı isterse üzerine kendi fiyatını yazar.
+  const suggestedPrice = useMemo(
+    () => priceOn(prices?.series?.[symbolInput], form.date),
+    [prices, symbolInput, form.date],
+  )
+
+  function addPosition(e) {
+    e.preventDefault()
+    const price = Number(String(form.price || suggestedPrice || '').replace(',', '.'))
+    const qty = Number(String(form.qty).replace(',', '.'))
+    if (!symbolInput) return setFormError(t(lang, 'pfErrSymbol'))
+    if (!bySymbol.has(symbolInput) && !prices?.series?.[symbolInput]) {
+      return setFormError(t(lang, 'pfErrUnknown', symbolInput))
+    }
+    if (!Number.isFinite(price) || price <= 0) return setFormError(t(lang, 'pfErrPrice'))
+    if (!Number.isFinite(qty) || qty <= 0) return setFormError(t(lang, 'pfErrQty'))
+    const next = [
+      ...positions,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, symbol: symbolInput, date: form.date, price, qty },
+    ]
+    setPositions(next)
+    savePortfolio(next)
+    setForm((f) => ({ ...f, symbol: '', price: '', qty: '' }))
+    setFormError(null)
+  }
+
+  function removePosition(id) {
+    const next = positions.filter((p) => p.id !== id)
+    setPositions(next)
+    savePortfolio(next)
+  }
+
+  const rows = useMemo(
+    () =>
+      positions.map((p) => {
+        const series = prices?.series?.[p.symbol]
+        const current = series?.length ? series[series.length - 1][1] : null
+        const cost = p.price * p.qty
+        const value = current != null ? current * p.qty : null
+        return {
+          ...p,
+          fund: bySymbol.get(p.symbol) || null,
+          current,
+          cost,
+          value,
+          pl: value != null ? value - cost : null,
+          plPct: current != null ? current / p.price - 1 : null,
+        }
+      }),
+    [positions, prices, bySymbol],
+  )
+
+  const totals = useMemo(() => {
+    // Güncel fiyatı bilinmeyen pozisyonlar toplam K/Z'ye katılamaz; ayrı sayılır
+    const known = rows.filter((r) => r.value != null)
+    const cost = known.reduce((s, r) => s + r.cost, 0)
+    const value = known.reduce((s, r) => s + r.value, 0)
+    return { cost, value, pl: value - cost, plPct: cost > 0 ? value / cost - 1 : null, missing: rows.length - known.length }
+  }, [rows])
+
+  const [pfBench, setPfBench] = useState(() => new Set(['XU100.IS']))
+  const portfolioPoints = useMemo(() => buildPortfolioSeries(positions, prices), [positions, prices])
+  const pfChartLines = useMemo(() => {
+    if (!portfolioPoints) return null
+    const lines = [
+      { key: 'pf', label: t(lang, 'pfLineValue'), color: '#7c3aed', points: portfolioPoints },
+      {
+        key: 'cost',
+        label: t(lang, 'pfLineCost'),
+        color: '#94a3b8',
+        dashed: true,
+        points: portfolioPoints.map((p) => ({ t: p.t, d: p.d, value: p.invested })),
+      },
+    ]
+    for (const b of PF_BENCH_DEFS) {
+      if (!pfBench.has(b.key)) continue
+      const pts = buildBenchmarkSeries(positions, prices?.benchmarks?.[b.key]?.points, portfolioPoints)
+      if (pts) lines.push({ key: b.key, label: t(lang, 'pfLineBench', b.label), color: b.color, points: pts })
+    }
+    return lines
+  }, [portfolioPoints, positions, prices, pfBench, lang])
+
+  function togglePfBench(key) {
+    setPfBench((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const [backupMsg, setBackupMsg] = useState(null)
+
+  // Favoriler + portföy localStorage'da yaşar; cihaz değişiminde tek taşıma
+  // yolu bu dosya. Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
+  function exportBackup() {
+    const read = (key) => {
+      try {
+        return JSON.parse(localStorage.getItem(key) || '[]')
+      } catch {
+        return []
+      }
+    }
+    const payload = {
+      app: 'borsa-tarama',
+      exported_at: new Date().toISOString(),
+      watchlist: read('watchlist'),
+      watchlist_funds: read('watchlist_funds'),
+      portfolio_funds: read('portfolio_funds'),
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `borsa-tarama-yedek-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupMsg(t(lang, 'bkExported'))
+  }
+
+  function importBackup(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result)
+        if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
+        // Mevcut verinin ÜZERİNE yazmaz, birleştirir: yanlış dosya seçiminde kayıp olmasın
+        const mergeSet = (key) => {
+          const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+          for (const s of data[key] || []) if (typeof s === 'string') cur.add(s)
+          localStorage.setItem(key, JSON.stringify([...cur]))
+        }
+        mergeSet('watchlist')
+        mergeSet('watchlist_funds')
+        const cur = loadPortfolio()
+        const ids = new Set(cur.map((p) => p.id))
+        for (const p of data.portfolio_funds || []) {
+          if (!p || typeof p.symbol !== 'string' || typeof p.date !== 'string') continue
+          const price = Number(p.price)
+          const qty = Number(p.qty)
+          if (!(price > 0) || !(qty > 0)) continue
+          if (p.id && ids.has(p.id)) continue
+          cur.push({
+            id: p.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            symbol: p.symbol.toUpperCase(),
+            date: p.date,
+            price,
+            qty,
+          })
+        }
+        savePortfolio(cur)
+        // Favori set'leri App state'inde: en güvenilir senkron tam yeniden yükleme
+        window.location.reload()
+      } catch {
+        setBackupMsg(t(lang, 'bkImportErr'))
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'pfIntro')}</span>
+      </div>
+
+      <form className="pf-form" onSubmit={addPosition}>
+        <div className="pf-field">
+          <label htmlFor="pf-symbol">{t(lang, 'pfFund')}</label>
+          <input
+            id="pf-symbol"
+            className="search-input"
+            list="pf-fund-options"
+            placeholder={t(lang, 'pfFundPh')}
+            value={form.symbol}
+            onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
+          />
+          <datalist id="pf-fund-options">
+            {fundList.map((f) => (
+              <option key={f.symbol} value={f.symbol}>
+                {f.name}
+              </option>
+            ))}
+          </datalist>
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-date">{t(lang, 'pfDate')}</label>
+          <input
+            id="pf-date"
+            className="search-input"
+            type="date"
+            max={new Date().toISOString().slice(0, 10)}
+            value={form.date}
+            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+          />
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-price">{t(lang, 'pfPrice')}</label>
+          <input
+            id="pf-price"
+            className="search-input"
+            type="text"
+            inputMode="decimal"
+            placeholder={suggestedPrice != null ? String(suggestedPrice) : '—'}
+            value={form.price}
+            onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+          />
+        </div>
+        <div className="pf-field">
+          <label htmlFor="pf-qty">{t(lang, 'pfQty')}</label>
+          <input
+            id="pf-qty"
+            className="search-input"
+            type="text"
+            inputMode="decimal"
+            placeholder="100"
+            value={form.qty}
+            onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+          />
+        </div>
+        <button className="btn primary pf-add" type="submit" disabled={loading}>
+          {t(lang, 'pfAdd')}
+        </button>
+      </form>
+      {formError && <div className="error-box">{formError}</div>}
+
+      {positions.length === 0 ? (
+        <div className="empty-box">{t(lang, 'pfEmpty')}</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="left">{t(lang, 'colFund')}</th>
+                <th>{t(lang, 'pfDate')}</th>
+                <th>{t(lang, 'pfPrice')}</th>
+                <th>{t(lang, 'pfQty')}</th>
+                <th>{t(lang, 'pfCost')}</th>
+                <th>{t(lang, 'pfCurrent')}</th>
+                <th>{t(lang, 'pfValue')}</th>
+                <th>K/Z %</th>
+                <th>K/Z ₺</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="symbol-cell">
+                    {r.fund ? (
+                      <button
+                        className="symbol-btn fund-link"
+                        type="button"
+                        title={r.fund.name}
+                        onClick={() => onOpenFund(r.fund)}
+                      >
+                        <TickerLogo symbol={r.symbol} />
+                        <span className="fund-code-wrap">
+                          <strong>{r.symbol}</strong>
+                          <span className="fund-name">{r.fund.name}</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="symbol-btn watch-plain">
+                        <TickerLogo symbol={r.symbol} />
+                        <strong>{r.symbol}</strong>
+                      </span>
+                    )}
+                  </td>
+                  <td>{new Date(r.date).toLocaleDateString(locale)}</td>
+                  <td>{formatFundPrice(r.price, lang)}</td>
+                  <td>{r.qty.toLocaleString(locale)}</td>
+                  <td>{formatLira(r.cost, lang)}</td>
+                  <td>{r.current == null ? '—' : formatFundPrice(r.current, lang)}</td>
+                  <td>{r.value == null ? '—' : formatLira(r.value, lang)}</td>
+                  <td className={`pct ${pctTone(r.plPct)}`}>{formatPct(r.plPct)}</td>
+                  <td className={`pct ${pctTone(r.plPct)}`}>
+                    {r.pl == null
+                      ? '—'
+                      : `${r.pl > 0 ? '+' : ''}${r.pl.toLocaleString(locale, { maximumFractionDigits: 0 })} ₺`}
+                  </td>
+                  <td>
+                    <button
+                      className="star-btn pf-remove"
+                      type="button"
+                      title={t(lang, 'pfRemove')}
+                      onClick={() => removePosition(r.id)}
+                    >
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="pf-total">
+                <td className="left" colSpan={4}>
+                  {t(lang, 'pfTotal')}
+                  {totals.missing > 0 && <span className="watch-note">{t(lang, 'pfMissing', totals.missing)}</span>}
+                </td>
+                <td>{formatLira(totals.cost, lang)}</td>
+                <td></td>
+                <td>{formatLira(totals.value, lang)}</td>
+                <td className={`pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</td>
+                <td className={`pct ${pctTone(totals.plPct)}`}>
+                  {`${totals.pl > 0 ? '+' : ''}${totals.pl.toLocaleString(locale, { maximumFractionDigits: 0 })} ₺`}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {pfChartLines && (
+        <section className="watch-section">
+          <div className="pf-chart-head">
+            <h2 className="today-title">{t(lang, 'pfChartTitle')}</h2>
+            <div className="fc-bench">
+              {PF_BENCH_DEFS.filter((b) => prices?.benchmarks?.[b.key]?.points?.length).map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  className={`fc-chip ${pfBench.has(b.key) ? 'active' : ''}`}
+                  title={t(lang, 'pfBenchHint', b.label)}
+                  onClick={() => togglePfBench(b.key)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <PortfolioChart lines={pfChartLines} lang={lang} />
+          <div className="fc-legend">
+            {pfChartLines.map((l) => {
+              const last = l.points[l.points.length - 1]
+              return (
+                <span key={l.key} className="fc-legend-item">
+                  <span className="fc-swatch" style={{ background: l.color }} />
+                  {l.label}
+                  <span>{formatLira(last.value, lang)}</span>
+                </span>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="watch-section pf-backup">
+        <h2 className="today-title">{t(lang, 'bkTitle')}</h2>
+        <p className="fc-overlap-hint">{t(lang, 'bkHint')}</p>
+        <div className="actions">
+          <button className="btn" type="button" onClick={exportBackup}>
+            ⬇ {t(lang, 'bkExport')}
+          </button>
+          <label className="btn">
+            ⬆ {t(lang, 'bkImport')}
+            <input type="file" accept="application/json,.json" hidden onChange={importBackup} />
+          </label>
+        </div>
+        {backupMsg && <p className="fc-overlap-note">{backupMsg}</p>}
+      </section>
+
+      <p className="disclaimer">{t(lang, 'pfDisclaimer')}</p>
+    </>
+  )
 }
 
 /**
@@ -1174,6 +2292,10 @@ function App() {
   const [timeframe, setTimeframe] = useState('daily')
   const [watchlist, setWatchlist] = useState(loadWatchlist)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
+  const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
+  const [fundFlows, setFundFlows] = useState(null)
+  const [fundFlowsReady, setFundFlowsReady] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -1296,7 +2418,14 @@ function App() {
   }, [market, timeframe])
 
   useEffect(() => {
-    if (view !== 'funds' && view !== 'today' && view !== 'fundCompare') return
+    if (
+      view !== 'funds' &&
+      view !== 'today' &&
+      view !== 'fundCompare' &&
+      view !== 'watchlist' &&
+      view !== 'portfolio'
+    )
+      return
     if (funds) return
     let cancelled = false
     setFundsLoading(true)
@@ -1317,7 +2446,9 @@ function App() {
   }, [view, funds])
 
   useEffect(() => {
-    if (view !== 'fundCompare') return
+    // Fiyat serileri karşılaştırma/portföy sekmelerinde ve bir fon modalı
+    // açılınca (fon detayındaki gerçek fiyat grafiği için) yüklenir.
+    if (view !== 'fundCompare' && view !== 'portfolio' && !chartFund) return
     if (fundPricesReady) return
     let cancelled = false
     setFundPricesLoading(true)
@@ -1338,10 +2469,29 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, fundPricesReady])
+  }, [view, chartFund, fundPricesReady])
+
+  // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
+  // 404 döner ve panel görünmez (fetch null döndürür).
+  useEffect(() => {
+    if (view !== 'funds' || fundFlowsReady) return
+    let cancelled = false
+    fetchFundFlows()
+      .then((result) => {
+        if (!cancelled) setFundFlows(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFundFlowsReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, fundFlowsReady])
 
   useEffect(() => {
-    if (view !== 'stockPositions') return
+    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi)
+    if (view !== 'stockPositions' && view !== 'fundCompare') return
     if (stockPositions) return
     let cancelled = false
     setStockPositionsLoading(true)
@@ -1387,9 +2537,11 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    if (view !== 'today') return
+    // İzlediklerim sekmesi de günlük özetten beslenir (hisse satırları).
+    if (view !== 'today' && view !== 'watchlist') return
     if (!marketsResolved) return
-    const needed = [...new Set(['daily', todayTimeframe])].filter((tf) => !overviewCache[tf])
+    const wanted = view === 'watchlist' ? ['daily'] : ['daily', todayTimeframe]
+    const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
     if (!needed.length) return
 
     let cancelled = false
@@ -1496,6 +2648,7 @@ function App() {
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
     let list = [...funds.results]
+    if (onlyFundWatchlist) list = list.filter((f) => fundWatchlist.has(f.symbol))
     const q = fundSearch.trim().toUpperCase()
     if (q) {
       list = list.filter(
@@ -1514,7 +2667,7 @@ function App() {
       return dir === 'asc' ? av - bv : bv - av
     })
     return list
-  }, [funds, fundSearch, fundSort])
+  }, [funds, fundSearch, fundSort, onlyFundWatchlist, fundWatchlist])
 
   function toggleSort(key) {
     setSort((prev) =>
@@ -1544,6 +2697,16 @@ function App() {
       if (next.has(symbol)) next.delete(symbol)
       else next.add(symbol)
       localStorage.setItem('watchlist', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  function toggleFundWatch(symbol) {
+    setFundWatchlist((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) next.delete(symbol)
+      else next.add(symbol)
+      localStorage.setItem('watchlist_funds', JSON.stringify([...next]))
       return next
     })
   }
@@ -1677,6 +2840,68 @@ function App() {
               fund={chartFund}
               news={chartNews}
               lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
+              onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {view === 'watchlist' && (
+        <>
+          <WatchlistView
+            watchlist={watchlist}
+            fundWatchlist={fundWatchlist}
+            overview={overviewCache.daily}
+            funds={funds}
+            lang={lang}
+            loading={overviewLoading || fundsLoading}
+            onOpenChart={setChartSymbol}
+            onOpenFund={setChartFund}
+            onToggleStock={toggleWatch}
+            onToggleFund={toggleFundWatch}
+          />
+          {chartSymbol && (
+            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+          )}
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
+              onClose={() => setChartFund(null)}
+              onCompare={(symbol) => {
+                setCompareSeed([symbol])
+                selectView('fundCompare')
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {view === 'portfolio' && (
+        <>
+          <PortfolioView
+            funds={funds}
+            prices={fundPrices}
+            lang={lang}
+            loading={fundsLoading || fundPricesLoading}
+            onOpenFund={setChartFund}
+          />
+          {chartFund && (
+            <FundModal
+              fund={chartFund}
+              news={chartNews}
+              lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
               onClose={() => setChartFund(null)}
               onCompare={(symbol) => {
                 setCompareSeed([symbol])
@@ -1717,6 +2942,14 @@ function App() {
             </span>
             <div className="actions">
               <button
+                className={`btn ${onlyFundWatchlist ? 'primary' : ''}`}
+                title={t(lang, 'watchOnlyFundsHint')}
+                onClick={() => setOnlyFundWatchlist((v) => !v)}
+              >
+                ⭐ {t(lang, 'favorites')}
+                {fundWatchlist.size ? ` (${fundWatchlist.size})` : ''}
+              </button>
+              <button
                 className="btn"
                 disabled={fundsLoading}
                 onClick={() => {
@@ -1741,6 +2974,8 @@ function App() {
               <p>{t(lang, 'fundsHowBody3')}</p>
             </div>
           </details>
+
+          <FundFlowsPanel flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
 
           {!fundsError && funds && (
             <div className="search-row">
@@ -1769,6 +3004,7 @@ function App() {
               <table>
                 <thead>
                   <tr>
+                    <th className="star-cell"></th>
                     {FUND_COLUMNS.map((c) => (
                       <th
                         key={c.key}
@@ -1786,6 +3022,15 @@ function App() {
                 <tbody>
                   {fundRows.map((f) => (
                     <tr key={f.symbol}>
+                      <td className="star-cell">
+                        <button
+                          className={`star-btn ${fundWatchlist.has(f.symbol) ? 'active' : ''}`}
+                          title={t(lang, fundWatchlist.has(f.symbol) ? 'watchRemove' : 'watchAdd')}
+                          onClick={() => toggleFundWatch(f.symbol)}
+                        >
+                          {fundWatchlist.has(f.symbol) ? '★' : '☆'}
+                        </button>
+                      </td>
                       <td className="symbol-cell">
                         <button
                           className="symbol-btn fund-link"
@@ -1843,6 +3088,8 @@ function App() {
               fund={chartFund}
               news={chartNews}
               lang={lang}
+              prices={fundPrices}
+              pricesLoading={fundPricesLoading}
               onClose={() => setChartFund(null)}
               onCompare={(symbol) => {
                 setCompareSeed([symbol])
@@ -1858,6 +3105,7 @@ function App() {
           key={compareSeed.join(',') || 'default'}
           funds={funds}
           prices={fundPrices}
+          positions={stockPositions}
           lang={lang}
           loading={fundsLoading || fundPricesLoading}
           error={fundsError}

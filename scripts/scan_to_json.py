@@ -49,6 +49,27 @@ def fetch_previous_symbols(market: str, timeframe: str) -> set[str] | None:
         return None
 
 
+# Fon akışı arşivi bu kadar günü aşınca en eski günler düşer
+FLOW_HISTORY_DAYS = 90
+
+
+def fetch_previous_flows() -> dict:
+    """Yayındaki fund_flows.json'dan birikmiş yatırımcı sayısı arşivini çeker.
+
+    data/ klasörü repoya commit'lenmediği için önceki koşunun çıktısı yalnızca
+    yayındaki dosyadan alınabilir (fetch_previous_symbols ile aynı desen).
+    Erişilemezse boş arşivle başlanır.
+    """
+    try:
+        resp = requests.get(f"{SITE_URL}data/fund_flows.json", timeout=15)
+        resp.raise_for_status()
+        history = resp.json().get("history")
+        return history if isinstance(history, dict) else {}
+    except Exception as e:
+        print(f"[FON] önceki akış arşivi alınamadı ({e}); yeni arşiv başlatılıyor")
+        return {}
+
+
 def main() -> None:
     out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "data")
     reports_dir = Path(sys.argv[2] if len(sys.argv) > 2 else "reports")
@@ -191,6 +212,28 @@ def main() -> None:
     print(
         f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
     )
+
+    # Fon akışı arşivi: günlük yatırımcı sayıları birikir; arayüz bundan
+    # "son 7/30 günde en çok yatırımcı kazanan/kaybeden" listesini üretir.
+    flows_history = fetch_previous_flows()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    counts = {
+        r["symbol"]: r["investor_count"]
+        for r in fund_results
+        if r.get("investor_count") is not None
+    }
+    if counts:
+        flows_history[today] = counts
+    flows_history = dict(sorted(flows_history.items())[-FLOW_HISTORY_DAYS:])
+    flows_path = out_dir / "fund_flows.json"
+    flows_path.write_text(
+        json.dumps(
+            {"generated_at": funds_payload["generated_at"], "history": flows_history},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[FON] akış arşivi: {len(flows_history)} gün -> {flows_path}")
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report_path = reports_dir / f"{date_str}.html"

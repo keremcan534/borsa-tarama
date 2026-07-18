@@ -340,6 +340,12 @@ td:first-child {
   text-align: left;
 }
 
+/* Yıldız sütunu ilk sıraya geçince sembol hücresi 2. sırada kalıyor; sola hizalı kalsın */
+td.symbol-cell,
+th.left {
+  text-align: left;
+}
+
 thead th {
   color: var(--text);
   font-weight: 500;
@@ -499,6 +505,193 @@ th.sorted {
   opacity: 1;
 }
 
+.watch-section {
+  margin-top: 20px;
+}
+
+.watch-section .table-wrap {
+  margin-top: 10px;
+}
+
+/* Favori bugünkü tarama çıktısında yoksa: satır soluk, veri hücreleri boş */
+.watch-missing {
+  opacity: 0.6;
+}
+
+.watch-note {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.7;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.watch-plain {
+  cursor: default;
+}
+
+.pf-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.pf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+  flex: 1;
+}
+
+.pf-field label {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.pf-field .search-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.pf-add {
+  height: 38px;
+}
+
+.pf-remove {
+  font-size: 14px;
+}
+
+.pf-total td {
+  font-weight: 600;
+  color: var(--text-h);
+  border-top: 2px solid var(--border);
+}
+
+/* USD bazı düğmesi benchmark çiplerinden görsel olarak ayrılsın */
+.fc-usd {
+  margin-left: 10px;
+  font-weight: 600;
+}
+
+.fc-overlap-hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.8;
+  margin: 6px 0 12px;
+}
+
+.fc-overlap-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* %50+ örtüşme: iki fon fiilen aynı portföy — vurgula */
+.fc-overlap-high {
+  color: var(--down);
+}
+
+.fc-overlap-note {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+  margin-top: 10px;
+}
+
+.pf-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pf-chart-head .fc-bench {
+  margin-bottom: 0;
+}
+
+.pf-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.pf-line.dashed {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.flow-panel {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.flow-col-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 8px;
+}
+
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.flow-row:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+.flow-row:disabled {
+  cursor: default;
+}
+
+.flow-code {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.flow-code .fund-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-empty {
+  opacity: 0.5;
+  padding: 6px 10px;
+}
+
 .badge.new-badge {
   background: rgba(22, 163, 74, 0.15);
   color: var(--up);
@@ -622,6 +815,166 @@ th.sorted {
 .modal-fund-score-label {
   font-size: 13px;
   color: var(--text);
+}
+
+.fund-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+
+.fund-price {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fund-price-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fund-price-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fund-price-period {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.fund-price-period:hover {
+  border-color: var(--accent);
+}
+
+.fund-price-period.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.fund-price-change {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fund-price-wrap {
+  position: relative;
+}
+
+.fund-price-chart {
+  width: 100%;
+  height: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.fund-price-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.fund-price-axis {
+  fill: var(--text);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.fund-price-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fund-price-line.up {
+  stroke: var(--up);
+}
+
+.fund-price-line.down {
+  stroke: var(--down);
+}
+
+.fund-price-area {
+  stroke: none;
+}
+
+.fund-price-area.up {
+  fill: var(--up);
+  opacity: 0.1;
+}
+
+.fund-price-area.down {
+  fill: var(--down);
+  opacity: 0.1;
+}
+
+.fund-price-crosshair {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+}
+
+.fund-price-dot.up {
+  fill: var(--up);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.fund-price-dot.down {
+  fill: var(--down);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.fund-price-tooltip {
+  position: absolute;
+  z-index: 4;
+  min-width: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, #000 8%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  font-size: 12px;
+  top: 10px;
+}
+
+.fund-price-tooltip-date {
+  margin-bottom: 6px;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.fund-price-tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fund-price-tooltip-row strong {
+  color: var(--text-h);
+  font-weight: 600;
 }
 
 .fund-chart {
@@ -1526,6 +1879,7 @@ button.today-card.fund-card:hover {
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .fc-chart-wrap {
