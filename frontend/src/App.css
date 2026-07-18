@@ -169,11 +169,25 @@
   color: var(--accent);
 }
 
+.filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 0;
+}
+
+.filter-presets-label {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
 .filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
-  padding: 4px 16px 16px;
+  padding: 12px 16px 16px;
 }
 
 .filter-title {
@@ -1573,6 +1587,83 @@ th.sorted {
   background: var(--surface);
   padding: 12px 14px;
   text-align: left;
+}
+
+.change-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.change-signal-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.change-signal-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.change-signal-label.pos {
+  color: var(--up);
+}
+
+.change-signal-label.neg {
+  color: var(--down);
+}
+
+.change-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip.change-in {
+  border-color: color-mix(in srgb, var(--up) 45%, var(--border));
+}
+
+.chip.change-out {
+  border-color: color-mix(in srgb, var(--down) 45%, var(--border));
+}
+
+.change-chip-score {
+  opacity: 0.65;
+  font-size: 11px;
+}
+
+.sector-heat {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.sector-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sector-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.sector-avg {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sector-sub {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.75;
 }
 
 button.today-card {

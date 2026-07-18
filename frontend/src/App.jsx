@@ -6,6 +6,7 @@ import {
   fetchDailyOverview,
   fetchEnabledMarkets,
   fetchFundFlows,
+  fetchScoreHistory,
   fetchFundPrices,
   fetchFunds,
   fetchScreener,
@@ -84,6 +85,36 @@ const DEFAULT_FILTERS = {
   stochRsiK: 80,
   macdPositive: true,
   emas: { 9: true, 21: true, 50: true, 200: true },
+}
+
+// Hazır tarama şablonları: filtre paneli yeni kullanıcı için karmaşık; tek tıkla
+// anlamlı bir taramaya inmeyi sağlar. Eşikler ÜST sınırdır (aşırı alımı eler).
+const FILTER_PRESETS = [
+  {
+    key: 'strong',
+    i18nKey: 'presetStrong',
+    // Fiyat tüm EMA'ların üstünde + MACD pozitif; momentum sınırı gevşek
+    filters: { rsi: 80, stochK: 90, stochRsiK: 90, macdPositive: true, emas: { 9: true, 21: true, 50: true, 200: true } },
+  },
+  {
+    key: 'momentum',
+    i18nKey: 'presetMomentum',
+    // Kısa EMA'ların üstünde, MACD pozitif, henüz aşırı alımda değil
+    filters: { rsi: 65, stochK: 70, stochRsiK: 70, macdPositive: true, emas: { 9: true, 21: true, 50: false, 200: false } },
+  },
+  {
+    key: 'oversold',
+    i18nKey: 'presetOversold',
+    // Düşük RSI/stokastik: aşırı satım bölgesi (trend/MACD şartı yok)
+    filters: { rsi: 45, stochK: 30, stochRsiK: 30, macdPositive: false, emas: { 9: false, 21: false, 50: false, 200: false } },
+  },
+]
+
+function filtersMatchPreset(filters, preset, availableEmas) {
+  const f = preset.filters
+  if (filters.rsi !== f.rsi || filters.stochK !== f.stochK || filters.stochRsiK !== f.stochRsiK) return false
+  if (filters.macdPositive !== f.macdPositive) return false
+  return availableEmas.every((p) => Boolean(filters.emas[p]) === Boolean(f.emas[p]))
 }
 
 function formatNum(value, digits = 2) {
@@ -925,6 +956,8 @@ function SectorBreakdown({ rows, lang }) {
 }
 
 function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
+  const applyPreset = (preset) => setFilters({ ...preset.filters, emas: { ...preset.filters.emas } })
+
   const slider = (label, key, value) => (
     <label className="slider-row">
       <span className="slider-label">
@@ -947,6 +980,20 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
         ⚙️ {t(lang, 'filterTitle')}
         {isCustom && <span className="badge custom">{t(lang, 'filterCustom')}</span>}
       </summary>
+      <div className="filter-presets">
+        <span className="filter-presets-label">{t(lang, 'presetsLabel')}</span>
+        {FILTER_PRESETS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            className={`fc-chip ${filtersMatchPreset(filters, p, availableEmas) ? 'active' : ''}`}
+            title={t(lang, `${p.i18nKey}Hint`)}
+            onClick={() => applyPreset(p)}
+          >
+            {t(lang, p.i18nKey)}
+          </button>
+        ))}
+      </div>
       <div className="filter-grid">
         <div className="filter-group">
           <div className="filter-title">{t(lang, 'filterOverbought')}</div>
@@ -1928,6 +1975,174 @@ function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, 
   )
 }
 
+// yfinance sektör adları İngilizce; arayüzde Türkçeleştirilir.
+const SECTOR_LABELS = {
+  'Financial Services': { tr: 'Finans', en: 'Financials' },
+  Industrials: { tr: 'Sanayi', en: 'Industrials' },
+  'Basic Materials': { tr: 'Temel Malzeme', en: 'Basic Materials' },
+  'Consumer Cyclical': { tr: 'Tüketim (Döngüsel)', en: 'Consumer Cyclical' },
+  'Consumer Defensive': { tr: 'Tüketim (Savunmacı)', en: 'Consumer Defensive' },
+  Utilities: { tr: 'Kamu Hizmetleri', en: 'Utilities' },
+  Technology: { tr: 'Teknoloji', en: 'Technology' },
+  'Real Estate': { tr: 'Gayrimenkul', en: 'Real Estate' },
+  'Communication Services': { tr: 'İletişim', en: 'Communication' },
+  Healthcare: { tr: 'Sağlık', en: 'Healthcare' },
+  Energy: { tr: 'Enerji', en: 'Energy' },
+}
+
+function sectorLabel(sector, lang) {
+  const m = SECTOR_LABELS[sector]
+  return m ? (lang === 'en' ? m.en : m.tr) : sector
+}
+
+/**
+ * Değişim raporu: skor arşivinin (score_history.json) son iki gününü
+ * karşılaştırır. Skoru en çok yükselen/düşen hisseler ve sinyale yeni
+ * giren/çıkanlar. Arşiv iki gün birikene kadar panel görünmez.
+ */
+function ChangeReport({ scores, lang, onOpenChart }) {
+  const computed = useMemo(() => {
+    const history = scores?.history || {}
+    const days = Object.keys(history).sort()
+    if (days.length < 2) return null
+    const today = history[days[days.length - 1]]
+    const prev = history[days[days.length - 2]]
+    const moves = []
+    const entered = []
+    const dropped = []
+    for (const [sym, cur] of Object.entries(today)) {
+      const before = prev[sym]
+      if (before) {
+        const delta = (cur.s ?? 0) - (before.s ?? 0)
+        if (delta) moves.push({ symbol: sym, delta, score: cur.s })
+        if (cur.g && !before.g) entered.push({ symbol: sym, score: cur.s })
+        if (!cur.g && before.g) dropped.push({ symbol: sym, score: cur.s })
+      } else if (cur.g) {
+        entered.push({ symbol: sym, score: cur.s })
+      }
+    }
+    const risers = [...moves].filter((m) => m.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 5)
+    const fallers = [...moves].filter((m) => m.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5)
+    if (!risers.length && !fallers.length && !entered.length && !dropped.length) return null
+    return { risers, fallers, entered, dropped, from: days[days.length - 2], to: days[days.length - 1] }
+  }, [scores])
+
+  if (!computed) return null
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const scoreList = (items, tone) => (
+    <div className="flow-col">
+      <h3 className="flow-col-title">{t(lang, tone === 'pos' ? 'changeRisers' : 'changeFallers')}</h3>
+      {items.length === 0 && <div className="flow-empty">—</div>}
+      {items.map((r) => (
+        <button key={r.symbol} type="button" className="flow-row" onClick={() => onOpenChart(r.symbol)}>
+          <TickerLogo symbol={r.symbol} />
+          <span className="flow-code">
+            <strong>{displaySymbol(r.symbol)}</strong>
+          </span>
+          <span className={`pct ${tone}`}>
+            {r.delta > 0 ? '+' : ''}
+            {r.delta} {t(lang, 'changePoint')} → {r.score}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+
+  const chipList = (items, cls) =>
+    items.length === 0 ? null : (
+      <div className="change-chips">
+        {items.map((r) => (
+          <button key={r.symbol} type="button" className={`chip ${cls}`} onClick={() => onOpenChart(r.symbol)}>
+            {displaySymbol(r.symbol)} <span className="change-chip-score">{r.score}</span>
+          </button>
+        ))}
+      </div>
+    )
+
+  return (
+    <section className="today-section watch-section">
+      <h2 className="today-title">{t(lang, 'changeTitle')}</h2>
+      <p className="today-note">
+        {t(lang, 'changeRange', new Date(computed.from).toLocaleDateString(locale), new Date(computed.to).toLocaleDateString(locale))}
+      </p>
+      <div className="flow-grid">
+        {scoreList(computed.risers, 'pos')}
+        {scoreList(computed.fallers, 'neg')}
+      </div>
+      {(computed.entered.length > 0 || computed.dropped.length > 0) && (
+        <div className="change-signals">
+          {computed.entered.length > 0 && (
+            <div className="change-signal-group">
+              <span className="change-signal-label pos">{t(lang, 'changeEntered')}</span>
+              {chipList(computed.entered, 'change-in')}
+            </div>
+          )}
+          {computed.dropped.length > 0 && (
+            <div className="change-signal-group">
+              <span className="change-signal-label neg">{t(lang, 'changeDropped')}</span>
+              {chipList(computed.dropped, 'change-out')}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Sektör ısı haritası: taranan tüm hisseleri sektöre göre gruplar, günlük
+ * değişim ortalamasına göre yeşil/kırmızı tonlar. "Bugün para hangi sektörde"
+ * sorusuna tek bakışta cevap; veri zaten tarama çıktısında (stocks[].sector).
+ */
+function SectorHeatmap({ overview, allMarkets, lang }) {
+  const sectors = useMemo(() => {
+    if (!overview) return []
+    const agg = new Map()
+    for (const m of allMarkets) {
+      for (const s of overview[m.key]?.stocks || []) {
+        if (!s.sector || s.change == null) continue
+        if (!agg.has(s.sector)) agg.set(s.sector, { sum: 0, count: 0, up: 0, down: 0 })
+        const a = agg.get(s.sector)
+        a.sum += s.change
+        a.count += 1
+        if (s.change > 0) a.up += 1
+        else if (s.change < 0) a.down += 1
+      }
+    }
+    return [...agg.entries()]
+      .map(([sector, a]) => ({ sector, avg: a.sum / a.count, count: a.count, up: a.up, down: a.down }))
+      .sort((x, y) => y.avg - x.avg)
+  }, [overview, allMarkets])
+
+  if (sectors.length < 2) return null
+  const maxAbs = Math.max(...sectors.map((s) => Math.abs(s.avg)), 0.001)
+
+  // Ortalama değişimi 0.6 doygunlukta yeşil/kırmızıya eşle
+  const tileStyle = (avg) => {
+    const mag = Math.min(Math.abs(avg) / maxAbs, 1)
+    const alpha = 0.12 + mag * 0.5
+    const rgb = avg >= 0 ? '22, 163, 74' : '220, 38, 38'
+    return { background: `rgba(${rgb}, ${alpha})` }
+  }
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'sectorHeatTitle')}</h2>
+      <p className="today-note">{t(lang, 'sectorHeatHint')}</p>
+      <div className="sector-heat">
+        {sectors.map((s) => (
+          <div key={s.sector} className="sector-tile" style={tileStyle(s.avg)}>
+            <span className="sector-name">{sectorLabel(s.sector, lang)}</span>
+            <strong className={`sector-avg pct ${pctTone(s.avg)}`}>{formatPct(s.avg, 2)}</strong>
+            <span className="sector-sub">{t(lang, 'sectorHeatCount', s.count, s.up, s.down)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 /**
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
@@ -1937,6 +2152,7 @@ function TodayView({
   marketOverview,
   funds,
   news,
+  scores,
   lang,
   loading,
   error,
@@ -2083,6 +2299,10 @@ function TodayView({
           </div>
         )}
       </section>
+
+      <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
+
+      <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
 
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'todayMarkets')}</h2>
@@ -2458,6 +2678,8 @@ function App() {
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
   const [fundFlowsReady, setFundFlowsReady] = useState(false)
+  const [scoreHistory, setScoreHistory] = useState(null)
+  const [scoreHistoryReady, setScoreHistoryReady] = useState(false)
   const [stockPrices, setStockPrices] = useState(null)
   const [stockPricesReady, setStockPricesReady] = useState(false)
   const [stockPricesLoading, setStockPricesLoading] = useState(false)
@@ -2681,6 +2903,23 @@ function App() {
       cancelled = true
     }
   }, [view, fundFlowsReady])
+
+  // Skor geçmişi (değişim raporu) yalnızca Bugün sayfasında gerekir.
+  useEffect(() => {
+    if (view !== 'today' || scoreHistoryReady) return
+    let cancelled = false
+    fetchScoreHistory()
+      .then((result) => {
+        if (!cancelled) setScoreHistory(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setScoreHistoryReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, scoreHistoryReady])
 
   useEffect(() => {
     // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi)
@@ -3011,6 +3250,7 @@ function App() {
             marketOverview={marketOverview}
             funds={funds}
             news={news}
+            scores={scoreHistory}
             lang={lang}
             allMarkets={activeMarkets}
             loading={overviewLoading}

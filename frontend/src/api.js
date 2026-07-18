@@ -70,6 +70,15 @@ export async function fetchStockPrices() {
   return res.json();
 }
 
+/** Günlük skor/sinyal arşivi (değişim raporu). İki gün birikene kadar 404/tek gün normaldir. */
+export async function fetchScoreHistory() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/score_history.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Skor geçmişi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 /** Günlük yatırımcı sayısı arşivi (fon akışı paneli). Veri birikene kadar 404 normaldir. */
 export async function fetchFundFlows() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fund_flows.json`);

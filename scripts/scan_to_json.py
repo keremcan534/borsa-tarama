@@ -26,6 +26,7 @@ from app.reports.generate import SITE_URL, build_report_html
 from app.screener.diff import mark_new_signals
 from app.screener.engine import run_analysis
 from app.screener.filters import passes_filters
+from app.screener.score import technical_score
 from app.screener.timeframes import TIMEFRAMES
 
 # Arayüzdeki filtre panelinin varsayılan eşikleri (client-side filtreleme için)
@@ -70,6 +71,22 @@ def fetch_previous_flows() -> dict:
         return {}
 
 
+# Skor/sinyal geçmişi (değişim raporu) için gün sayısı tavanı
+SCORE_HISTORY_DAYS = 30
+
+
+def fetch_previous_scores() -> dict:
+    """Yayındaki score_history.json'dan birikmiş günlük skor/sinyal arşivi."""
+    try:
+        resp = requests.get(f"{SITE_URL}data/score_history.json", timeout=15)
+        resp.raise_for_status()
+        history = resp.json().get("history")
+        return history if isinstance(history, dict) else {}
+    except Exception as e:
+        print(f"[SCAN] önceki skor arşivi alınamadı ({e}); yeni arşiv başlatılıyor")
+        return {}
+
+
 def main() -> None:
     out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "data")
     reports_dir = Path(sys.argv[2] if len(sys.argv) > 2 else "reports")
@@ -90,6 +107,9 @@ def main() -> None:
     # kaldırıldığı için grafik artık kendi verimizden çizilir. Seriler günlük
     # taramada zaten çekilen veriden toplanır (ek istek yok).
     stock_series: dict[str, list] = {}
+
+    # Değişim raporu için günlük skor + sinyal durumu: {SYM: {"s": skor, "g": 0/1}}
+    score_today: dict[str, dict] = {}
 
     for market in markets:
         symbols = load_symbols(market)
@@ -113,6 +133,16 @@ def main() -> None:
                 series_sink=stock_series if timeframe == "daily" else None,
             )
             results = [s for s in stocks if passes_filters(s, ema_periods)]
+
+            # Günlük skor arşivi (yalnızca daily): tüm taranan hisselerin puanı +
+            # sinyal (filtreden geçti mi) durumu. Değişim raporu bundan üretilir.
+            if timeframe == "daily":
+                signal_syms = {s["symbol"] for s in results}
+                for s in stocks:
+                    score_today[s["symbol"]] = {
+                        "s": technical_score(s, ema_periods),
+                        "g": 1 if s["symbol"] in signal_syms else 0,
+                    }
 
             previous = fetch_previous_symbols(market, timeframe)
             new_count = mark_new_signals(results, previous)
@@ -164,6 +194,23 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {stock_prices_path}")
+
+    # Skor/sinyal geçmişi: değişim raporu (skoru en çok yükselen/düşen, sinyale
+    # yeni giren/çıkan) arayüzde son iki günü karşılaştırarak üretilir.
+    score_history = fetch_previous_scores()
+    scan_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if score_today:
+        score_history[scan_day] = score_today
+    score_history = dict(sorted(score_history.items())[-SCORE_HISTORY_DAYS:])
+    score_path = out_dir / "score_history.json"
+    score_path.write_text(
+        json.dumps(
+            {"generated_at": datetime.now(timezone.utc).isoformat(), "history": score_history},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[SCAN] skor arşivi: {len(score_history)} gün -> {score_path}")
 
     # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri).
     # Fiyat serileri ayrı dosyada: karşılaştırma grafiği için; liste JSON'unu şişirmez.
