@@ -692,6 +692,15 @@ th.sorted {
   padding: 6px 10px;
 }
 
+/* BIST grafik modalı: kendi SVG grafiğimiz iframe yerine geçer */
+.modal-own-chart {
+  padding: 12px 16px 4px;
+}
+
+.modal-chart-empty {
+  margin: 12px 16px;
+}
+
 .badge.new-badge {
   background: rgba(22, 163, 74, 0.15);
   color: var(--up);

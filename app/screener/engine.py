@@ -84,6 +84,7 @@ def analyze_symbol(
     timeframe: str = "daily",
     min_daily_turnover: float | None = None,
     benchmark_close: pd.Series | None = None,
+    series_sink: dict[str, list] | None = None,
 ) -> dict | None:
     """
     Tek bir sembolün gösterge değerlerini hesaplar; AL/SAT filtresi UYGULAMAZ.
@@ -91,6 +92,8 @@ def analyze_symbol(
     Dönen dict, arayüzde kullanıcı tanımlı eşiklerle yeniden filtrelenebilir.
 
     `benchmark_close` verilirse göreli güç (`relative_strength`) de hesaplanır.
+    `series_sink` verilirse kapanış serisi [[YYYY-MM-DD, close], ...] olarak
+    sink'e yazılır (arayüzdeki fiyat grafiği için; veri zaten elde, ek istek yok).
     """
     config = TIMEFRAMES[timeframe]
     df = fetcher.fetch_ohlcv(symbol, period=config["period"], interval=config["interval"])
@@ -129,6 +132,12 @@ def analyze_symbol(
 
     rs = relative_strength(df["close"], benchmark_close, config["rs_bars"])
     result["relative_strength"] = None if rs is None else round(rs, 4)
+
+    if series_sink is not None:
+        closes = df["close"].dropna().tail(270)
+        series_sink[symbol] = [
+            [ts.strftime("%Y-%m-%d"), round(float(px), 4)] for ts, px in closes.items()
+        ]
     return result
 
 
@@ -155,12 +164,15 @@ def run_analysis(
     timeframe: str = "daily",
     min_daily_turnover: float | None = None,
     benchmark_close: pd.Series | None = None,
+    series_sink: dict[str, list] | None = None,
 ) -> list[dict]:
     """Tüm sembollerin gösterge değerlerini (filtresiz) döner, piyasa değerine göre sıralı."""
     stocks = []
     for symbol in symbols:
         try:
-            stock = analyze_symbol(symbol, fetcher, timeframe, min_daily_turnover, benchmark_close)
+            stock = analyze_symbol(
+                symbol, fetcher, timeframe, min_daily_turnover, benchmark_close, series_sink
+            )
             if stock:
                 stocks.append(stock)
         except Exception as e:

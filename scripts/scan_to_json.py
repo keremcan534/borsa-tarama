@@ -86,6 +86,11 @@ def main() -> None:
     manifest_path.write_text(json.dumps(markets), encoding="utf-8")
     print(f"[MARKET] etkin marketler: {', '.join(markets)} -> {manifest_path}")
 
+    # Hisse fiyat serileri: BIST verisi TradingView'in anonim embed widget'ından
+    # kaldırıldığı için grafik artık kendi verimizden çizilir. Seriler günlük
+    # taramada zaten çekilen veriden toplanır (ek istek yok).
+    stock_series: dict[str, list] = {}
+
     for market in markets:
         symbols = load_symbols(market)
         min_turnover = settings.min_daily_turnover.get(market)
@@ -99,7 +104,14 @@ def main() -> None:
             benchmark_df = fetch_benchmark(market, fetcher, config["period"], config["interval"])
             benchmark_close = benchmark_df["close"] if benchmark_df is not None else None
 
-            stocks = run_analysis(symbols, fetcher, timeframe, min_turnover, benchmark_close)
+            stocks = run_analysis(
+                symbols,
+                fetcher,
+                timeframe,
+                min_turnover,
+                benchmark_close,
+                series_sink=stock_series if timeframe == "daily" else None,
+            )
             results = [s for s in stocks if passes_filters(s, ema_periods)]
 
             previous = fetch_previous_symbols(market, timeframe)
@@ -139,6 +151,19 @@ def main() -> None:
         news_path = out_dir / f"news_{market}.json"
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
+
+    stock_prices_path = out_dir / "stock_prices.json"
+    stock_prices_path.write_text(
+        json.dumps(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "series": stock_series,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {stock_prices_path}")
 
     # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri).
     # Fiyat serileri ayrı dosyada: karşılaştırma grafiği için; liste JSON'unu şişirmez.
