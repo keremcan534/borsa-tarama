@@ -40,22 +40,39 @@ jobs:
       - name: Marketleri tara, JSON ve günlük raporu üret
         run: python scripts/scan_to_json.py frontend/public/data reports
 
+      # KAP adımlarının hiçbiri yayını engelleyemez: KAP, GitHub runner IP'lerine
+      # zaman zaman 500 döndürüyor ve bu daha önce siteyi günlerce yayınsız bıraktı.
+      # Veri alınamazsa arayüz "henüz veri yok" durumunu gösterir, sonraki koşular
+      # yeniden dener.
       - name: Yayındaki fon pozisyon geçmişini koru
-        continue-on-error: true
         run: |
-          curl -fsS \
+          if curl -fsS \
             https://keremcan534.github.io/borsa-tarama/data/fund_stock_positions.json \
-            -o frontend/public/data/fund_stock_positions.json
+            -o /tmp/fund_stock_positions.json; then
+            mv /tmp/fund_stock_positions.json frontend/public/data/fund_stock_positions.json
+          else
+            echo "Yayında pozisyon dosyası yok/ulaşılamadı; KAP'tan üretim denenecek."
+          fi
 
       - name: Aylık KAP fon pozisyonlarını güncelle
         run: |
+          POS=frontend/public/data/fund_stock_positions.json
+          # Gerçek veri var mı? (dosya mevcut + en az bir ay içeriyor)
+          has_data() {
+            python -c "import json,sys; d=json.load(open('$POS')); sys.exit(0 if d.get('months') else 1)" 2>/dev/null
+          }
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
              [ "$(date -u +%d)" = "15" ] || \
-             [ ! -s frontend/public/data/fund_stock_positions.json ]; then
-            python scripts/kap_fund_positions.py \
-              --output frontend/public/data/fund_stock_positions.json
+             [ ! -s "$POS" ] || ! has_data; then
+            python scripts/kap_fund_positions.py --output "$POS" \
+              || echo "KAP güncellemesi başarısız (yayını engellemez; sonraki koşuda yeniden denenir)."
           else
             echo "Ayın 15'i değil; mevcut pozisyon geçmişi korunuyor."
+          fi
+          # Her durumda geçerli bir JSON bulunsun: arayüz boş durumu gösterebilir
+          if [ ! -s "$POS" ] || ! python -c "import json; json.load(open('$POS'))" 2>/dev/null; then
+            echo '{"generated_at": null, "months": [], "stocks": {}}' > "$POS"
+            echo "Pozisyon verisi üretilemedi; boş iskelet yazıldı."
           fi
 
       - name: Rapor arşivini repoya commit'le

@@ -27,7 +27,13 @@ KAP = "https://www.kap.org.tr"
 SUBJECT_OID = "8aca490d502e34b801502e380044002b"
 DEFAULT_SITE = "https://keremcan534.github.io/borsa-tarama/data"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; BorsaTarama/1.0)",
+    # Tam tarayıcı UA: KAP, bot görünümlü UA'lara/datacenter IP'lerine zaman
+    # zaman 500 döndürüyor; gerçekçi kimlik bu filtreye takılma ihtimalini azaltır.
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
     "Referer": f"{KAP}/tr/bildirim-sorgu",
 }
 
