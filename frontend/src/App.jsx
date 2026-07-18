@@ -14,6 +14,7 @@ import {
   STATIC_MODE,
 } from './api'
 import FundCompare from './FundCompare'
+import StockCompare from './StockCompare'
 import StockPositions from './StockPositions'
 import { getLang, setLang as persistLang, t } from './i18n'
 
@@ -48,6 +49,7 @@ const NAV_ITEMS = [
   { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
   { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
+  { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
   { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
@@ -387,7 +389,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading 
         {isBist ? (
           series?.length ? (
             <div className="modal-own-chart">
-              <FundPriceChart points={series} lang={lang} />
+              <FundPriceChart points={series} lang={lang} showEma />
             </div>
           ) : (
             <div className="empty-box modal-chart-empty">
@@ -438,18 +440,78 @@ function fundPeriodStartMs(periodKey, lastMs) {
   return lastMs - p.days * 86400000
 }
 
-/** [[YYYY-MM-DD, price], ...] → seçili dönemde sıralı [{t, px}] noktaları. */
-function parseFundSeries(points, periodKey) {
+/** [[YYYY-MM-DD, price], ...] → temiz, sıralı [{t, px}] (tümü). */
+function cleanFundPoints(points) {
   if (!points?.length) return []
-  const parsed = points
+  return points
     .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
     .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
     .sort((a, b) => a.t - b.t)
+}
+
+/** [[YYYY-MM-DD, price], ...] → seçili dönemde sıralı [{t, px}] noktaları. */
+function parseFundSeries(points, periodKey) {
+  const parsed = cleanFundPoints(points)
   if (parsed.length < 2) return parsed
   const last = parsed[parsed.length - 1].t
   const start = fundPeriodStartMs(periodKey, last)
   const window = parsed.filter((x) => x.t >= start)
   return window.length >= 2 ? window : parsed
+}
+
+/**
+ * Tam seri üzerinde EMA hesaplar ([{t, v}]). EMA pencereye göre değil tüm
+ * geçmişe göre hesaplanır: 200-EMA'nın 3 aylık görünümde de anlamlı olması için
+ * (aksi halde ilk gün fiyata eşitlenip çarpık başlardı).
+ */
+function emaOverPoints(full, n) {
+  if (full.length < n) return []
+  const k = 2 / (n + 1)
+  let ema = full[0].px
+  const out = []
+  for (let i = 0; i < full.length; i += 1) {
+    ema = i === 0 ? full[0].px : full[i].px * k + ema * (1 - k)
+    // İlk n mumda EMA henüz "ısınmadı"; çizmeyip yanıltıcı düz başlangıçtan kaçınırız
+    if (i >= n - 1) out.push({ t: full[i].t, v: ema })
+  }
+  return out
+}
+
+const EMA_DEFS = [
+  { n: 20, color: '#2563eb' },
+  { n: 50, color: '#d97706' },
+  { n: 200, color: '#7c3aed' },
+]
+
+/** Tablo satırı için minik trend çizgisi (son ~3 ay). Eksen/etiket yok. */
+function Sparkline({ points, days = 90 }) {
+  const line = useMemo(() => {
+    const full = cleanFundPoints(points)
+    if (full.length < 2) return null
+    const start = full[full.length - 1].t - days * 86400000
+    const win = full.filter((p) => p.t >= start)
+    const data = win.length >= 2 ? win : full.slice(-2)
+    const W = 88
+    const H = 26
+    const xs = data.map((p) => p.t)
+    const ys = data.map((p) => p.px)
+    const minX = Math.min(...xs)
+    const maxX = Math.max(...xs)
+    const minY = Math.min(...ys)
+    const maxY = Math.max(...ys)
+    const x = (t) => ((t - minX) / (maxX - minX || 1)) * (W - 2) + 1
+    const y = (v) => H - 2 - ((v - minY) / (maxY - minY || 1)) * (H - 4)
+    const d = data.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.px).toFixed(1)}`).join(' ')
+    const up = data[data.length - 1].px >= data[0].px
+    return { d, up, W, H }
+  }, [points, days])
+
+  if (!line) return <span className="spark-empty">—</span>
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${line.W} ${line.H}`} width={line.W} height={line.H} aria-hidden="true">
+      <path d={line.d} fill="none" className={line.up ? 'up' : 'down'} />
+    </svg>
+  )
 }
 
 function formatFundPrice(value, lang) {
@@ -484,10 +546,18 @@ function nearestFundPoint(points, t) {
  * Tek fonun pay değeri zaman serisini gerçek eksenlerle (tarih + fiyat) çizen
  * çizgi grafik. Fareyle üzerine gelince tarih/fiyat/getiri gösteren tooltip verir.
  */
-function FundPriceChart({ points, lang }) {
+function FundPriceChart({ points, lang, showEma = false }) {
   const [period, setPeriod] = useState('3m')
   const [hover, setHover] = useState(null)
+  const [emaOn, setEmaOn] = useState(false)
+  const full = useMemo(() => cleanFundPoints(points), [points])
   const data = useMemo(() => parseFundSeries(points, period), [points, period])
+
+  // EMA'lar tam seriden hesaplanıp görünen pencereye kırpılır (aşağıda minT ile)
+  const emaLines = useMemo(() => {
+    if (!showEma || !emaOn) return []
+    return EMA_DEFS.map((d) => ({ ...d, pts: emaOverPoints(full, d.n) })).filter((l) => l.pts.length)
+  }, [showEma, emaOn, full])
 
   const W = 640
   const H = 240
@@ -508,6 +578,16 @@ function FundPriceChart({ points, lang }) {
           {lang === 'en' ? p.labelEn : p.label}
         </button>
       ))}
+      {showEma && (
+        <button
+          type="button"
+          className={`fund-price-period fund-price-ema ${emaOn ? 'active' : ''}`}
+          title={t(lang, 'emaHint')}
+          onClick={() => setEmaOn((v) => !v)}
+        >
+          EMA
+        </button>
+      )}
     </div>
   )
 
@@ -527,7 +607,13 @@ function FundPriceChart({ points, lang }) {
   const totalRet = last / base - 1
   const dir = totalRet >= 0 ? 'up' : 'down'
 
+  // EMA'ları görünen pencereye kırp; ölçeğe dahil et (aksi halde taşarlardı)
+  const emaWindows = emaLines
+    .map((l) => ({ ...l, pts: l.pts.filter((p) => p.t >= minT) }))
+    .filter((l) => l.pts.length >= 2)
+
   const pxVals = data.map((d) => d.px)
+  for (const l of emaWindows) for (const p of l.pts) pxVals.push(p.v)
   const minP = Math.min(...pxVals)
   const maxP = Math.max(...pxVals)
   const span = maxP - minP
@@ -595,6 +681,15 @@ function FundPriceChart({ points, lang }) {
           ))}
           <path className={`fund-price-area ${dir}`} d={areaPath} />
           <path className={`fund-price-line ${dir}`} d={linePath} />
+          {emaWindows.map((l) => (
+            <path
+              key={l.n}
+              className="fund-price-ema-line"
+              d={l.pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')}
+              stroke={l.color}
+              fill="none"
+            />
+          ))}
           {hover && (
             <g pointerEvents="none">
               <line className="fund-price-crosshair" x1={x(hover.t)} x2={x(hover.t)} y1={pad.t} y2={H - pad.b} />
@@ -626,6 +721,16 @@ function FundPriceChart({ points, lang }) {
           </div>
         )}
       </div>
+      {emaWindows.length > 0 && (
+        <div className="fund-price-ema-legend">
+          {emaWindows.map((l) => (
+            <span key={l.n} className="fund-price-ema-item">
+              <span className="fund-price-ema-swatch" style={{ background: l.color }} />
+              EMA {l.n}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -914,6 +1019,7 @@ function WatchlistView({
   fundWatchlist,
   overview,
   funds,
+  stockPrices,
   lang,
   loading,
   onOpenChart,
@@ -967,6 +1073,7 @@ function WatchlistView({
                   <th>{t(lang, 'colScore')}</th>
                   <th>{t(lang, 'colClose')}</th>
                   <th>{t(lang, 'changeColLabels').daily}</th>
+                  <th className="spark-col">{t(lang, 'colTrend')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -993,6 +1100,9 @@ function WatchlistView({
                     </td>
                     <td>{r.missing ? '—' : formatNum(r.close, 2)}</td>
                     <td className={`pct ${pctTone(r.change)}`}>{r.missing ? '—' : formatPct(r.change, 2)}</td>
+                    <td className="spark-col">
+                      <Sparkline points={stockPrices?.series?.[r.symbol]} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1195,11 +1305,11 @@ function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
  * pozisyonların o günkü pay değeriyle çarpımı; maliyet de aynı günün birikimli
  * yatırılan tutarı (kademeli alımlar basamak olarak görünür).
  */
-function buildPortfolioSeries(positions, prices) {
+function buildPortfolioSeries(positions, seriesOf) {
   const seriesBySym = {}
   const dateSet = new Set()
   for (const p of positions) {
-    const s = prices?.series?.[p.symbol]
+    const s = seriesOf(p.symbol)
     if (!s?.length) continue
     seriesBySym[p.symbol] = s
     for (const [d] of s) dateSet.add(d)
@@ -1391,7 +1501,7 @@ function PortfolioChart({ lines, lang }) {
  * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
  * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
  */
-function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
+function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, onOpenStock }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -1408,14 +1518,32 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
     return m
   }, [fundList])
 
-  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
-  const symbolInput = form.symbol.trim().toUpperCase()
+  // Fon ve hisse serilerini tek erişimle birleştir: portföy ikisini de tutabilir.
+  const seriesOf = useMemo(() => {
+    return (symbol) => stockPrices?.series?.[symbol] || prices?.series?.[symbol] || null
+  }, [stockPrices, prices])
 
-  // Fon + tarih seçilince alış fiyatını o günkü pay değeriyle önerelim;
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  // Kullanıcı "THYAO" yazsa da seri anahtarı "THYAO.IS"tir: fon/ham kod
+  // bulunamazsa .IS ekli hisse serisini dener.
+  const resolveSymbol = useMemo(() => {
+    return (raw) => {
+      const s = raw.trim().toUpperCase()
+      if (!s) return ''
+      if (bySymbol.has(s) || seriesOf(s)) return s
+      if (seriesOf(`${s}.IS`)) return `${s}.IS`
+      return s
+    }
+  }, [bySymbol, seriesOf])
+
+  const symbolInput = resolveSymbol(form.symbol)
+
+  // Sembol + tarih seçilince alış fiyatını o günkü fiyattan önerelim;
   // kullanıcı isterse üzerine kendi fiyatını yazar.
   const suggestedPrice = useMemo(
-    () => priceOn(prices?.series?.[symbolInput], form.date),
-    [prices, symbolInput, form.date],
+    () => priceOn(seriesOf(symbolInput), form.date),
+    [seriesOf, symbolInput, form.date],
   )
 
   function addPosition(e) {
@@ -1423,7 +1551,7 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
     const price = Number(String(form.price || suggestedPrice || '').replace(',', '.'))
     const qty = Number(String(form.qty).replace(',', '.'))
     if (!symbolInput) return setFormError(t(lang, 'pfErrSymbol'))
-    if (!bySymbol.has(symbolInput) && !prices?.series?.[symbolInput]) {
+    if (!bySymbol.has(symbolInput) && !seriesOf(symbolInput)) {
       return setFormError(t(lang, 'pfErrUnknown', symbolInput))
     }
     if (!Number.isFinite(price) || price <= 0) return setFormError(t(lang, 'pfErrPrice'))
@@ -1447,13 +1575,14 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
   const rows = useMemo(
     () =>
       positions.map((p) => {
-        const series = prices?.series?.[p.symbol]
+        const series = seriesOf(p.symbol)
         const current = series?.length ? series[series.length - 1][1] : null
         const cost = p.price * p.qty
         const value = current != null ? current * p.qty : null
         return {
           ...p,
           fund: bySymbol.get(p.symbol) || null,
+          isStock: p.symbol.endsWith('.IS'),
           current,
           cost,
           value,
@@ -1461,7 +1590,7 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
           plPct: current != null ? current / p.price - 1 : null,
         }
       }),
-    [positions, prices, bySymbol],
+    [positions, seriesOf, bySymbol],
   )
 
   const totals = useMemo(() => {
@@ -1473,7 +1602,7 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
   }, [rows])
 
   const [pfBench, setPfBench] = useState(() => new Set(['XU100.IS']))
-  const portfolioPoints = useMemo(() => buildPortfolioSeries(positions, prices), [positions, prices])
+  const portfolioPoints = useMemo(() => buildPortfolioSeries(positions, seriesOf), [positions, seriesOf])
   const pfChartLines = useMemo(() => {
     if (!portfolioPoints) return null
     const lines = [
@@ -1583,12 +1712,12 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
 
       <form className="pf-form" onSubmit={addPosition}>
         <div className="pf-field">
-          <label htmlFor="pf-symbol">{t(lang, 'pfFund')}</label>
+          <label htmlFor="pf-symbol">{t(lang, 'pfSymbol')}</label>
           <input
             id="pf-symbol"
             className="search-input"
             list="pf-fund-options"
-            placeholder={t(lang, 'pfFundPh')}
+            placeholder={t(lang, 'pfSymbolPh')}
             value={form.symbol}
             onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
           />
@@ -1598,6 +1727,13 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
                 {f.name}
               </option>
             ))}
+            {Object.keys(stockPrices?.series || {})
+              .filter((s) => s.endsWith('.IS'))
+              .map((s) => (
+                <option key={s} value={s.replace('.IS', '')}>
+                  {s.replace('.IS', '')}
+                </option>
+              ))}
           </datalist>
         </div>
         <div className="pf-field">
@@ -1648,7 +1784,7 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
           <table>
             <thead>
               <tr>
-                <th className="left">{t(lang, 'colFund')}</th>
+                <th className="left">{t(lang, 'pfSymbol')}</th>
                 <th>{t(lang, 'pfDate')}</th>
                 <th>{t(lang, 'pfPrice')}</th>
                 <th>{t(lang, 'pfQty')}</th>
@@ -1676,6 +1812,15 @@ function PortfolioView({ funds, prices, lang, loading, onOpenFund }) {
                           <strong>{r.symbol}</strong>
                           <span className="fund-name">{r.fund.name}</span>
                         </span>
+                      </button>
+                    ) : r.isStock ? (
+                      <button
+                        className="symbol-btn"
+                        type="button"
+                        onClick={() => onOpenStock(r.symbol)}
+                      >
+                        <TickerLogo symbol={r.symbol} />
+                        {displaySymbol(r.symbol)}
                       </button>
                     ) : (
                       <span className="symbol-btn watch-plain">
@@ -2491,10 +2636,16 @@ function App() {
     }
   }, [view, chartFund, fundPricesReady])
 
-  // Hisse fiyat serileri: bir BIST grafiği açıldığında bir kez yüklenir
-  // (grafik modalı kendi verimizden çizer; TradingView BIST embed'i çalışmıyor).
+  // Hisse fiyat serileri: BIST grafiği açıldığında (modal) ya da tarama/portföy/
+  // izlediklerim sekmelerinde (sparkline, hisse portföyü/karşılaştırma) bir kez yüklenir.
   useEffect(() => {
-    if (!chartSymbol?.endsWith('.IS') || stockPricesReady) return
+    const wantsPrices =
+      chartSymbol?.endsWith('.IS') ||
+      view === 'screener' ||
+      view === 'watchlist' ||
+      view === 'portfolio' ||
+      view === 'stockCompare'
+    if (!wantsPrices || stockPricesReady) return
     let cancelled = false
     setStockPricesLoading(true)
     fetchStockPrices()
@@ -2511,7 +2662,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [chartSymbol, stockPricesReady])
+  }, [chartSymbol, view, stockPricesReady])
 
   // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
   // 404 döner ve panel görünmez (fetch null döndürür).
@@ -2579,10 +2730,10 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    // İzlediklerim sekmesi de günlük özetten beslenir (hisse satırları).
-    if (view !== 'today' && view !== 'watchlist') return
+    // İzlediklerim ve Hisse Karşılaştır sekmeleri de günlük özetten beslenir.
+    if (view !== 'today' && view !== 'watchlist' && view !== 'stockCompare') return
     if (!marketsResolved) return
-    const wanted = view === 'watchlist' ? ['daily'] : ['daily', todayTimeframe]
+    const wanted = view === 'today' ? ['daily', todayTimeframe] : ['daily']
     const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
     if (!needed.length) return
 
@@ -2901,6 +3052,7 @@ function App() {
             fundWatchlist={fundWatchlist}
             overview={overviewCache.daily}
             funds={funds}
+            stockPrices={stockPrices}
             lang={lang}
             loading={overviewLoading || fundsLoading}
             onOpenChart={setChartSymbol}
@@ -2933,10 +3085,15 @@ function App() {
           <PortfolioView
             funds={funds}
             prices={fundPrices}
+            stockPrices={stockPrices}
             lang={lang}
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
+            onOpenStock={setChartSymbol}
           />
+          {chartSymbol && (
+            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
+          )}
           {chartFund && (
             <FundModal
               fund={chartFund}
@@ -3155,6 +3312,16 @@ function App() {
         />
       )}
 
+      {view === 'stockCompare' && (
+        <StockCompare
+          overview={overviewCache.daily}
+          prices={stockPrices}
+          lang={lang}
+          loading={(overviewLoading && !overviewCache.daily) || stockPricesLoading}
+          seedSymbols={compareSeed}
+        />
+      )}
+
       {view === 'stockPositions' && (
         <StockPositions
           data={stockPositions}
@@ -3349,6 +3516,7 @@ function App() {
                     </span>
                   </th>
                 ))}
+                <th className="spark-col">{t(lang, 'colTrend')}</th>
               </tr>
             </thead>
             <tbody>
@@ -3392,6 +3560,9 @@ function App() {
                   <td>{formatNum(r.macd_line, 2)}</td>
                   <td>{formatNum(r.stoch_k, 1)}</td>
                   <td>{formatNum(r.stoch_rsi_k, 1)}</td>
+                  <td className="spark-col">
+                    <Sparkline points={stockPrices?.series?.[r.symbol]} />
+                  </td>
                 </tr>
               ))}
             </tbody>

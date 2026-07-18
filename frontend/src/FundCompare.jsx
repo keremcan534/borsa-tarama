@@ -3,7 +3,7 @@ import { t } from './i18n'
 
 const MAX_FUNDS = 5
 
-const PERIODS = [
+export const PERIODS = [
   { key: '1w', days: 7, label: '1H', labelEn: '1W' },
   { key: '1m', days: 30, label: '1A', labelEn: '1M' },
   { key: '3m', days: 90, label: '3A', labelEn: '3M' },
@@ -12,7 +12,7 @@ const PERIODS = [
   { key: '1y', days: 365, label: '1Y', labelEn: '1Y' },
 ]
 
-const LINE_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d']
+export const LINE_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d']
 
 const METRIC_ROWS = [
   { key: 'score', i18nKey: 'colScore', format: 'score' },
@@ -29,21 +29,21 @@ const METRIC_ROWS = [
   { key: 'portfolio_size', i18nKey: 'colSize', format: 'mcap' },
 ]
 
-function formatPct(value, digits = 1) {
+export function formatPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
   const pct = value * 100
   const sign = pct > 0 ? '+' : ''
   return `${sign}${pct.toFixed(digits)}%`
 }
 
-function pctTone(value) {
+export function pctTone(value) {
   if (value == null) return ''
   if (value > 0.02) return 'pos'
   if (value < -0.02) return 'neg'
   return 'flat'
 }
 
-function formatMarketCap(value) {
+export function formatMarketCap(value) {
   if (value == null) return '—'
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
@@ -51,7 +51,7 @@ function formatMarketCap(value) {
   return value.toLocaleString('tr-TR')
 }
 
-function scoreTone(score) {
+export function scoreTone(score) {
   if (score >= 75) return 'strong'
   if (score >= 55) return 'good'
   return 'weak'
@@ -68,7 +68,7 @@ function periodStartMs(periodKey, lastMs) {
 }
 
 /** [[date, price], ...] → dönem başından normalize edilmiş [{t, v, px}] (başlangıç=100). */
-function normalizeSeries(points, periodKey) {
+export function normalizeSeries(points, periodKey) {
   if (!points?.length) return []
   const parsed = points
     .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
@@ -86,12 +86,12 @@ function normalizeSeries(points, periodKey) {
   return window.map((x) => ({ t: x.t, px: x.px, v: (x.px / base) * 100 }))
 }
 
-function seriesReturn(norm) {
+export function seriesReturn(norm) {
   if (!norm?.length) return null
   return norm[norm.length - 1].v / 100 - 1
 }
 
-function formatPrice(value, lang, currency = '₺') {
+export function formatPrice(value, lang, currency = '₺') {
   if (value == null || Number.isNaN(value)) return '—'
   return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
     minimumFractionDigits: 2,
@@ -103,7 +103,7 @@ function formatPrice(value, lang, currency = '₺') {
  * TL serisini gün gün USDTRY kuruna bölerek USD bazına çevirir. Kur, o güne
  * (veya öncesindeki son işlem gününe) ait değerdir; iki liste de tarih sıralıdır.
  */
-function toUsdSeries(points, usdPoints) {
+export function toUsdSeries(points, usdPoints) {
   if (!points?.length || !usdPoints?.length) return points
   const out = []
   let i = 0
@@ -159,7 +159,7 @@ function buildFundHoldings(positions) {
   return holdings
 }
 
-function CompareChart({ lines, lang, currency = '₺' }) {
+export function CompareChart({ lines, lang, currency = '₺' }) {
   const W = 720
   const H = 280
   const pad = { t: 16, r: 16, b: 28, l: 44 }
