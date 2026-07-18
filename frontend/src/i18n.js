@@ -257,6 +257,8 @@ const STRINGS = {
     flowGainers: 'En çok yatırımcı kazanan',
     flowLosers: 'En çok yatırımcı kaybeden',
     flowRange: (from, to) => `${from} → ${to} arası değişim. Yatırımcı sayısı paranın yönü için yaklaşık bir göstergedir.`,
+    stockChartPending:
+      'Fiyat grafiği bir sonraki taramayla birlikte burada görünecek. Şimdilik TradingView bağlantısını kullanabilirsin.',
     colChange: 'Bugün',
     colInvestors: 'Yatırımcı',
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
@@ -564,6 +566,8 @@ const STRINGS = {
     flowGainers: 'Most investors gained',
     flowLosers: 'Most investors lost',
     flowRange: (from, to) => `Change between ${from} → ${to}. Investor count is a rough proxy for where money is flowing.`,
+    stockChartPending:
+      'The price chart will appear here after the next scan. Use the TradingView link in the meantime.',
     colChange: 'Today',
     colInvestors: 'Investors',
     colChangeTitle: 'Change of the last close versus the previous close.',

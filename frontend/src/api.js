@@ -60,6 +60,16 @@ export async function fetchFundPrices() {
   return res.json();
 }
 
+/** Hisse kapanış serileri: BIST grafikleri kendi verimizden çizilir
+ * (TradingView anonim embed'de BIST verisi vermiyor). İlk taramaya kadar 404 normaldir. */
+export async function fetchStockPrices() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/stock_prices.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Hisse fiyat verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 /** Günlük yatırımcı sayısı arşivi (fon akışı paneli). Veri birikene kadar 404 normaldir. */
 export async function fetchFundFlows() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fund_flows.json`);

@@ -10,6 +10,7 @@ import {
   fetchFunds,
   fetchScreener,
   fetchStockPositions,
+  fetchStockPrices,
   STATIC_MODE,
 } from './api'
 import FundCompare from './FundCompare'
@@ -337,7 +338,7 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose }) {
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -348,6 +349,10 @@ function ChartModal({ symbol, news, onClose }) {
     }
   }, [onClose])
 
+  // BIST verisi TradingView'in anonim embed widget'ında yok (abonelik istiyor);
+  // widget sembolü çözemeyince varsayılan AAPL gösteriyordu. BIST hisseleri
+  // kendi serimizden çizilir; TV iframe'i yalnızca çalıştığı yerde (ABD/emtia) kalır.
+  const isBist = symbol.endsWith('.IS')
   const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
   const src =
     'https://s.tradingview.com/widgetembed/?' +
@@ -379,7 +384,19 @@ function ChartModal({ symbol, news, onClose }) {
             </button>
           </div>
         </div>
-        <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
+        {isBist ? (
+          series?.length ? (
+            <div className="modal-own-chart">
+              <FundPriceChart points={series} lang={lang} />
+            </div>
+          ) : (
+            <div className="empty-box modal-chart-empty">
+              {seriesLoading ? t(lang, 'loading') : t(lang, 'stockChartPending')}
+            </div>
+          )
+        ) : (
+          <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
+        )}
         {news && news.length > 0 && (
           <div className="modal-news">
             <div className="modal-news-title">📰 Son haberler</div>
@@ -2296,6 +2313,9 @@ function App() {
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
   const [fundFlowsReady, setFundFlowsReady] = useState(false)
+  const [stockPrices, setStockPrices] = useState(null)
+  const [stockPricesReady, setStockPricesReady] = useState(false)
+  const [stockPricesLoading, setStockPricesLoading] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -2470,6 +2490,28 @@ function App() {
       cancelled = true
     }
   }, [view, chartFund, fundPricesReady])
+
+  // Hisse fiyat serileri: bir BIST grafiği açıldığında bir kez yüklenir
+  // (grafik modalı kendi verimizden çizer; TradingView BIST embed'i çalışmıyor).
+  useEffect(() => {
+    if (!chartSymbol?.endsWith('.IS') || stockPricesReady) return
+    let cancelled = false
+    setStockPricesLoading(true)
+    fetchStockPrices()
+      .then((result) => {
+        if (!cancelled) setStockPrices(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setStockPricesReady(true)
+          setStockPricesLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chartSymbol, stockPricesReady])
 
   // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
   // 404 döner ve panel görünmez (fetch null döndürür).
@@ -2833,7 +2875,7 @@ function App() {
             }}
           />
           {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
           )}
           {chartFund && (
             <FundModal
@@ -2867,7 +2909,7 @@ function App() {
             onToggleFund={toggleFundWatch}
           />
           {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
           )}
           {chartFund && (
             <FundModal
@@ -3145,7 +3187,7 @@ function App() {
           />
           <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
           {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
           )}
         </>
       )}
@@ -3360,7 +3402,7 @@ function App() {
       <p className="disclaimer">{t(lang, 'disclaimer')}</p>
 
       {chartSymbol && (
-        <ChartModal symbol={chartSymbol} news={chartNews} onClose={() => setChartSymbol(null)} />
+        <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
       )}
         </>
       )}
