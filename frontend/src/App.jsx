@@ -3543,7 +3543,7 @@ function TopMovers({ overview, allMarkets, lang, onOpenChart }) {
  * taranan hisseler ve fonlar arasında arayıp grafiğe/fon detayına atlar.
  * "Her özelliğe kolay erişim" fikrinin merkezi giriş noktası.
  */
-function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOpenStock, onOpenFund }) {
+function CommandPalette({ open, onClose, overview, funds, allMarkets, navItems, lang, onOpenStock, onOpenFund, onNavigate }) {
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef(null)
@@ -3564,21 +3564,25 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOp
       name: f.name || f.symbol,
       fund: f,
     }))
-    return { stocks, funds: fundItems }
-  }, [overview, funds, allMarkets])
+    const pages = (navItems || []).map((it) => ({ type: 'page', key: it.key, name: t(lang, it.i18nKey), icon: it.icon }))
+    return { stocks, funds: fundItems, pages }
+  }, [overview, funds, allMarkets, navItems, lang])
 
   const results = useMemo(() => {
-    const query = q.trim().toUpperCase()
-    if (!query) return { stocks: [], funds: [] }
+    const query = q.trim().toLocaleUpperCase('tr-TR')
+    // Sorgu boşken paleti açar açmaz tüm sayfalar hızlı erişim için listelenir
+    if (!query) return { pages: index.pages, stocks: [], funds: [] }
     const match = (it) =>
-      it.symbol.toUpperCase().includes(query) || (it.name || '').toUpperCase().includes(query)
+      (it.symbol || '').toLocaleUpperCase('tr-TR').includes(query) ||
+      (it.name || '').toLocaleUpperCase('tr-TR').includes(query)
     return {
+      pages: index.pages.filter(match),
       stocks: index.stocks.filter(match).slice(0, 7),
       funds: index.funds.filter(match).slice(0, 7),
     }
   }, [q, index])
 
-  const flat = useMemo(() => [...results.stocks, ...results.funds], [results])
+  const flat = useMemo(() => [...results.pages, ...results.stocks, ...results.funds], [results])
 
   useEffect(() => {
     setActive(0)
@@ -3605,7 +3609,8 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOp
 
   const choose = (item) => {
     if (!item) return
-    if (item.type === 'stock') onOpenStock(item.symbol)
+    if (item.type === 'page') onNavigate(item.key)
+    else if (item.type === 'stock') onOpenStock(item.symbol)
     else onOpenFund(item.fund)
     onClose()
   }
@@ -3623,7 +3628,6 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOp
     }
   }
 
-  const dataReady = index.stocks.length > 0 || index.funds.length > 0
   // idx her render'da yeniden sayılır; düz listeyle (flat) aynı sırayı tutar,
   // böylece klavye ile seçili satır tıklamayla birebir eşleşir.
   let idx = -1
@@ -3632,15 +3636,19 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOp
     const i = idx
     return (
       <button
-        key={item.type + item.symbol}
+        key={item.type + (item.symbol || item.key)}
         type="button"
         className={`cmdk-row ${i === active ? 'active' : ''}`}
         onMouseEnter={() => setActive(i)}
         onClick={() => choose(item)}
       >
-        <TickerLogo symbol={item.symbol} />
+        {item.type === 'page' ? (
+          <span className="cmdk-page-icon" aria-hidden="true">{item.icon}</span>
+        ) : (
+          <TickerLogo symbol={item.symbol} />
+        )}
         <span className="cmdk-row-main">
-          <strong>{displaySymbol(item.symbol)}</strong>
+          <strong>{item.type === 'page' ? item.name : displaySymbol(item.symbol)}</strong>
           {item.type === 'fund' && item.name && <span className="cmdk-row-sub">{item.name}</span>}
         </span>
         {item.type === 'stock' && item.change != null && (
@@ -3670,14 +3678,16 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOp
           </button>
         </div>
         <div className="cmdk-body">
-          {!dataReady ? (
-            <div className="cmdk-hint">{t(lang, 'cmdkLoading')}</div>
-          ) : !q.trim() ? (
-            <div className="cmdk-hint">{t(lang, 'cmdkHintType')}</div>
-          ) : flat.length === 0 ? (
+          {flat.length === 0 ? (
             <div className="cmdk-hint">{t(lang, 'cmdkEmpty', q.trim())}</div>
           ) : (
             <>
+              {results.pages.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkPages')}</div>
+                  {results.pages.map(row)}
+                </div>
+              )}
               {results.stocks.length > 0 && (
                 <div className="cmdk-group">
                   <div className="cmdk-group-title">{t(lang, 'cmdkStocks')}</div>
@@ -5380,9 +5390,11 @@ function App() {
         overview={overviewCache.daily}
         funds={funds}
         allMarkets={activeMarkets}
+        navItems={NAV_ITEMS}
         lang={lang}
         onOpenStock={setChartSymbol}
         onOpenFund={setChartFund}
+        onNavigate={selectView}
       />
       </main>
     </div>

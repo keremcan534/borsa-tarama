@@ -354,6 +354,7 @@ const STRINGS = {
     // Global arama paleti (⌘K)
     cmdkTrigger: 'Ara',
     cmdkPlaceholder: 'Hisse veya fon ara…',
+    cmdkPages: 'Sayfalar',
     cmdkStocks: 'Hisseler',
     cmdkFunds: 'Fonlar',
     cmdkEmpty: (q) => `"${q}" için sonuç yok`,
@@ -803,6 +804,7 @@ const STRINGS = {
     // Global search palette (⌘K)
     cmdkTrigger: 'Search',
     cmdkPlaceholder: 'Search stock or fund…',
+    cmdkPages: 'Pages',
     cmdkStocks: 'Stocks',
     cmdkFunds: 'Funds',
     cmdkEmpty: (q) => `No results for "${q}"`,
