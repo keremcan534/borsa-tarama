@@ -458,6 +458,12 @@ const STRINGS = {
     paOther: 'Diğer',
     // CSV dışa aktarma
     exportCsv: 'CSV indir',
+    // Sektör filtresi + kayıtlı taramalar
+    filterSector: 'Sektör',
+    screensLabel: 'Kayıtlı taramalar:',
+    screenSave: 'Kaydet',
+    screenNamePh: 'Tarama adı…',
+    screenDelete: 'Sil',
   },
   en: {
     brand: 'Borsa Tarama',
@@ -893,6 +899,12 @@ const STRINGS = {
     paOther: 'Other',
     // CSV export
     exportCsv: 'Export CSV',
+    // Sector filter + saved screens
+    filterSector: 'Sector',
+    screensLabel: 'Saved screens:',
+    screenSave: 'Save',
+    screenNamePh: 'Screen name…',
+    screenDelete: 'Delete',
   },
 }
 

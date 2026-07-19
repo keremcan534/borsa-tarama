@@ -3147,3 +3147,69 @@ tr.alert-hit td {
   font-weight: 600;
   color: var(--text);
 }
+
+/* ---------- sektör filtresi + kayıtlı taramalar ---------- */
+
+.filter-sectors {
+  grid-column: 1 / -1;
+}
+
+.sector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.saved-screens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.screen-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.screen-load {
+  border: none;
+  background: none;
+  color: var(--text-h);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.screen-load:hover {
+  color: var(--accent);
+}
+
+.screen-del {
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.screen-del:hover {
+  color: var(--down);
+}
+
+.screen-name {
+  width: 150px;
+  padding: 6px 10px;
+  font-size: 13px;
+}

@@ -88,6 +88,7 @@ const DEFAULT_FILTERS = {
   stochRsiK: 80,
   macdPositive: true,
   emas: { 9: true, 21: true, 50: true, 200: true },
+  sectors: [], // boş = tüm sektörler
 }
 
 // Hazır tarama şablonları: filtre paneli yeni kullanıcı için karmaşık; tek tıkla
@@ -286,7 +287,22 @@ function stockPassesFilters(stock, filters, availableEmas) {
   if (!(stock.rsi < filters.rsi)) return false
   if (!(stock.stoch_k < filters.stochK)) return false
   if (!(stock.stoch_rsi_k < filters.stochRsiK)) return false
+  // Sektör filtresi (boşsa hepsi geçer)
+  if (filters.sectors?.length && !filters.sectors.includes(stock.sector)) return false
   return true
+}
+
+function loadSavedScreens() {
+  try {
+    const list = JSON.parse(localStorage.getItem('saved_screens') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveSavedScreens(list) {
+  localStorage.setItem('saved_screens', JSON.stringify(list))
 }
 
 function Logo() {
@@ -1100,8 +1116,34 @@ function SectorBreakdown({ rows, lang }) {
   )
 }
 
-function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
-  const applyPreset = (preset) => setFilters({ ...preset.filters, emas: { ...preset.filters.emas } })
+function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang, sectors = [] }) {
+  const applyPreset = (preset) => setFilters({ ...preset.filters, emas: { ...preset.filters.emas }, sectors: [] })
+
+  const [screens, setScreens] = useState(loadSavedScreens)
+  const [screenName, setScreenName] = useState('')
+
+  const toggleSector = (sec) => {
+    const cur = filters.sectors || []
+    const next = cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]
+    setFilters({ ...filters, sectors: next })
+  }
+
+  const cloneFilters = (f) => ({ ...f, emas: { ...f.emas }, sectors: [...(f.sectors || [])] })
+
+  const saveScreen = () => {
+    const name = screenName.trim()
+    if (!name) return
+    const next = [...screens, { id: `${Date.now()}`, name, filters: cloneFilters(filters) }]
+    setScreens(next)
+    saveSavedScreens(next)
+    setScreenName('')
+  }
+
+  const deleteScreen = (id) => {
+    const next = screens.filter((s) => s.id !== id)
+    setScreens(next)
+    saveSavedScreens(next)
+  }
 
   const slider = (label, key, value) => (
     <label className="slider-row">
@@ -1173,11 +1215,59 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
           </label>
           <button
             className="btn small"
-            onClick={() => setFilters({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })}
+            onClick={() => setFilters({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas }, sectors: [] })}
           >
             {t(lang, 'filterReset')}
           </button>
         </div>
+        {sectors.length > 1 && (
+          <div className="filter-group filter-sectors">
+            <div className="filter-title">{t(lang, 'filterSector')}</div>
+            <div className="sector-chips">
+              {sectors.map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  className={`fc-chip ${filters.sectors?.includes(sec) ? 'active' : ''}`}
+                  onClick={() => toggleSector(sec)}
+                >
+                  {sectorLabel(sec, lang)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="saved-screens">
+        <span className="filter-presets-label">{t(lang, 'screensLabel')}</span>
+        {screens.map((s) => (
+          <span key={s.id} className="screen-chip">
+            <button type="button" className="screen-load" onClick={() => setFilters(cloneFilters(s.filters))}>
+              {s.name}
+            </button>
+            <button
+              type="button"
+              className="screen-del"
+              title={t(lang, 'screenDelete')}
+              onClick={() => deleteScreen(s.id)}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <input
+          className="search-input screen-name"
+          type="text"
+          placeholder={t(lang, 'screenNamePh')}
+          value={screenName}
+          maxLength={28}
+          onChange={(e) => setScreenName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && saveScreen()}
+        />
+        <button type="button" className="btn small" disabled={!screenName.trim()} onClick={saveScreen}>
+          💾 {t(lang, 'screenSave')}
+        </button>
       </div>
     </details>
   )
@@ -4348,11 +4438,19 @@ function App() {
       filters.rsi !== DEFAULT_FILTERS.rsi ||
       filters.stochK !== DEFAULT_FILTERS.stochK ||
       filters.stochRsiK !== DEFAULT_FILTERS.stochRsiK ||
-      filters.macdPositive !== DEFAULT_FILTERS.macdPositive
+      filters.macdPositive !== DEFAULT_FILTERS.macdPositive ||
+      filters.sectors?.length
     )
       return true
     return availableEmas.some((p) => !filters.emas[p])
   }, [filters, availableEmas])
+
+  // Filtre panelindeki sektör seçimi için taramadaki mevcut sektörler
+  const availableSectors = useMemo(() => {
+    const set = new Set()
+    for (const s of data?.stocks || []) if (s.sector) set.add(s.sector)
+    return [...set].sort((a, b) => sectorLabel(a, lang).localeCompare(sectorLabel(b, lang), lang))
+  }, [data, lang])
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -4991,6 +5089,7 @@ function App() {
           availableEmas={availableEmas}
           isCustom={isCustom}
           lang={lang}
+          sectors={availableSectors}
         />
       )}
 
