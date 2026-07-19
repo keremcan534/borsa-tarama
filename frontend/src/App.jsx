@@ -358,13 +358,22 @@ function NewsList({ items, lang, onOpenChart }) {
  * kolayca ABD akışında bırakıyordu.
  */
 function NewsFeed({ news, loading, error, lang, onOpenChart }) {
+  const [query, setQuery] = useState('')
   const groups = useMemo(() => {
-    const items = news?.items || []
+    const q = query.trim().toLocaleLowerCase('tr-TR')
+    let items = news?.items || []
+    if (q) {
+      items = items.filter(
+        (i) =>
+          (i.title || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          displaySymbol(i.symbol || '').toLocaleLowerCase('tr-TR').includes(q),
+      )
+    }
     return {
       bist: items.filter((i) => isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
       global: items.filter((i) => !isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
     }
-  }, [news])
+  }, [news, query])
 
   if (loading) return <div className="empty-box">{t(lang, 'newsLoading')}</div>
   if (error) return <div className="error-box">{error}</div>
@@ -377,6 +386,18 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
 
   return (
     <div className="news-groups">
+      <div className="search-row">
+        <input
+          className="search-input"
+          type="search"
+          placeholder={t(lang, 'newsSearch')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {sections.length === 0 && (
+        <div className="empty-box">{t(lang, 'newsNoMatch', query.trim())}</div>
+      )}
       {sections.map((section) => (
         <section key={section.key} className="news-group">
           <h2 className="news-group-title">
