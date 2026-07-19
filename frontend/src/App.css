@@ -2573,3 +2573,92 @@ button.today-card.fund-card:hover {
   font-weight: 600;
   font-size: 14px;
 }
+
+/* ---------- piyasa ısı haritası (treemap) ---------- */
+
+.marketmap-wrap {
+  margin-top: 4px;
+}
+
+.marketmap {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1000 / 560;
+  display: block;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.marketmap-sector {
+  fill: var(--text-h);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.marketmap-tile {
+  cursor: pointer;
+}
+
+.marketmap-tile rect {
+  stroke: var(--surface);
+  stroke-width: 1;
+  transition: opacity 0.12s;
+}
+
+.marketmap-tile:hover rect {
+  opacity: 0.82;
+  stroke: var(--text-h);
+}
+
+.marketmap-label {
+  fill: #fff;
+  font-weight: 700;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.28);
+  stroke-width: 2px;
+}
+
+.marketmap-change {
+  fill: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.92;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.28);
+  stroke-width: 2px;
+}
+
+.marketmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.marketmap-scale {
+  width: 120px;
+  height: 10px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(220, 38, 38, 0.9),
+    rgba(148, 163, 184, 0.35),
+    rgba(22, 163, 74, 0.9)
+  );
+}
+
+.marketmap-size-note {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 11px;
+}

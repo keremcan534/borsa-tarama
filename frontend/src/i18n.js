@@ -372,6 +372,14 @@ const STRINGS = {
     moversHint: 'Son taramada bugün en çok yükselen ve düşen hisseler.',
     moversGainers: 'Yükselenler',
     moversLosers: 'Düşenler',
+    // Piyasa ısı haritası (treemap)
+    tabMap: 'Harita',
+    mapIntro:
+      'Piyasa değeri ağırlıklı ısı haritası: kutu alanı piyasa değerini, renk bugünkü değişimi gösterir. Sektöre göre gruplu — bir kutuya tıkla, grafiği açılsın.',
+    mapEmpty: 'Harita için yeterli veri yok. Önce tarama çalışmalı.',
+    mapLegendDown: 'Düşüş',
+    mapLegendUp: 'Yükseliş',
+    mapSizeNote: 'Kutu alanı ∝ piyasa değeri',
   },
   en: {
     brand: 'Borsa Tarama',
@@ -721,6 +729,14 @@ const STRINGS = {
     moversHint: "Today's biggest gainers and losers from the last scan.",
     moversGainers: 'Gainers',
     moversLosers: 'Losers',
+    // Market heatmap (treemap)
+    tabMap: 'Map',
+    mapIntro:
+      'Market-cap weighted heatmap: box area shows market cap, colour shows today’s change. Grouped by sector — click a box to open its chart.',
+    mapEmpty: 'Not enough data for the map. Run a scan first.',
+    mapLegendDown: 'Down',
+    mapLegendUp: 'Up',
+    mapSizeNote: 'Box area ∝ market cap',
   },
 }
 

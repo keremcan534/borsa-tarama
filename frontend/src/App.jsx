@@ -50,6 +50,7 @@ const NAV_ITEMS = [
   { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
   { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
+  { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
   { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
@@ -2669,6 +2670,194 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
 }
 
 /**
+ * Squarified treemap yerleşimi: değerleri (value) verilen kutucukları, en-boy
+ * oranı 1'e yakın (kare) kalacak şekilde dikdörtgen alana yerleştirir.
+ * Klasik "squarify" algoritması. Dönen her öğe {x, y, w, h} taşır.
+ */
+function squarifyTreemap(items, x, y, width, height) {
+  const out = []
+  const positive = items.filter((it) => it.value > 0)
+  const total = positive.reduce((s, it) => s + it.value, 0)
+  if (total <= 0 || width <= 0 || height <= 0) return out
+  const norm = (width * height) / total
+  const scaled = positive.map((it) => ({ item: it, area: it.value * norm }))
+
+  const rect = { x, y, w: width, h: height }
+
+  const worst = (row, side) => {
+    const sum = row.reduce((s, r) => s + r.area, 0)
+    const max = Math.max(...row.map((r) => r.area))
+    const min = Math.min(...row.map((r) => r.area))
+    const s2 = sum * sum
+    const side2 = side * side
+    return Math.max((side2 * max) / s2, s2 / (side2 * min))
+  }
+
+  const flush = (row) => {
+    const side = Math.min(rect.w, rect.h)
+    const sum = row.reduce((s, r) => s + r.area, 0)
+    const thickness = sum / side
+    if (rect.w >= rect.h) {
+      let cy = rect.y
+      for (const r of row) {
+        const ih = r.area / thickness
+        out.push({ ...r.item, x: rect.x, y: cy, w: thickness, h: ih })
+        cy += ih
+      }
+      rect.x += thickness
+      rect.w -= thickness
+    } else {
+      let cx = rect.x
+      for (const r of row) {
+        const iw = r.area / thickness
+        out.push({ ...r.item, x: cx, y: rect.y, w: iw, h: thickness })
+        cx += iw
+      }
+      rect.y += thickness
+      rect.h -= thickness
+    }
+  }
+
+  let row = []
+  for (const s of scaled) {
+    const side = Math.min(rect.w, rect.h)
+    if (row.length === 0 || worst([...row, s], side) <= worst(row, side)) {
+      row.push(s)
+    } else {
+      flush(row)
+      row = [s]
+    }
+  }
+  if (row.length) flush(row)
+  return out
+}
+
+// Değişimi (ör. ±%6 bandı) yeşil/kırmızı dolgu rengine çevirir (treemap kutuları).
+function heatFill(change) {
+  if (change == null) return 'rgba(148,163,184,0.35)'
+  const mag = Math.min(Math.abs(change) / 0.06, 1)
+  const alpha = 0.28 + mag * 0.62
+  const rgb = change >= 0 ? '22, 163, 74' : '220, 38, 38'
+  return `rgba(${rgb}, ${alpha})`
+}
+
+/**
+ * Piyasa ısı haritası: seçili marketin taranan hisselerini sektöre göre gruplayıp
+ * piyasa değeriyle orantılı kutulara böler; renk bugünkü değişimi verir (Finviz
+ * tarzı). Veri "Bugün" özetiyle aynı kaynaktan (overview[market].stocks).
+ */
+function MarketMap({ overview, market, lang, onOpenChart }) {
+  const W = 1000
+  const H = 560
+  const layout = useMemo(() => {
+    const stocks = (overview?.[market]?.stocks || []).filter(
+      (s) => s.market_cap > 0 && s.change != null,
+    )
+    if (stocks.length < 2) return null
+
+    // Sektöre göre grupla (sektörsüz → "Diğer")
+    const bySector = new Map()
+    for (const s of stocks) {
+      const key = s.sector || '—'
+      if (!bySector.has(key)) bySector.set(key, [])
+      bySector.get(key).push(s)
+    }
+    const sectors = [...bySector.entries()]
+      .map(([sector, list]) => ({
+        sector,
+        list,
+        value: list.reduce((sum, s) => sum + s.market_cap, 0),
+      }))
+      .sort((a, b) => b.value - a.value)
+
+    // 1. seviye: sektör dikdörtgenleri; 2. seviye: sektör içinde hisseler
+    const sectorRects = squarifyTreemap(sectors, 0, 0, W, H)
+    const tiles = []
+    for (const sr of sectorRects) {
+      const pad = 1
+      const inner = squarifyTreemap(
+        [...sr.list].sort((a, b) => b.market_cap - a.market_cap).map((s) => ({ ...s, value: s.market_cap })),
+        sr.x + pad,
+        sr.y + pad + (sr.w > 90 && sr.h > 34 ? 16 : 0), // sektör başlığına yer
+        sr.w - pad * 2,
+        sr.h - pad * 2 - (sr.w > 90 && sr.h > 34 ? 16 : 0),
+      )
+      tiles.push({ sector: sr, cells: inner })
+    }
+    return { tiles }
+  }, [overview, market])
+
+  if (!layout) return <div className="empty-box">{t(lang, 'mapEmpty')}</div>
+
+  return (
+    <div className="marketmap-wrap">
+      <svg
+        className="marketmap"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={t(lang, 'tabMap')}
+        preserveAspectRatio="none"
+      >
+        {layout.tiles.map(({ sector, cells }) => (
+          <g key={sector.sector}>
+            {sector.w > 90 && sector.h > 34 && (
+              <text className="marketmap-sector" x={sector.x + 6} y={sector.y + 12}>
+                {sectorLabel(sector.sector, lang)}
+              </text>
+            )}
+            {cells.map((c) => {
+              const big = c.w > 46 && c.h > 26
+              const mid = c.w > 30 && c.h > 16
+              return (
+                <g key={c.symbol} className="marketmap-tile" onClick={() => onOpenChart(c.symbol)}>
+                  <rect
+                    x={c.x}
+                    y={c.y}
+                    width={Math.max(c.w - 1, 0)}
+                    height={Math.max(c.h - 1, 0)}
+                    fill={heatFill(c.change)}
+                    rx="2"
+                  >
+                    <title>{`${displaySymbol(c.symbol)} · ${formatPct(c.change, 2)}`}</title>
+                  </rect>
+                  {mid && (
+                    <text
+                      className="marketmap-label"
+                      x={c.x + c.w / 2}
+                      y={c.y + c.h / 2 + (big ? -1 : 3)}
+                      textAnchor="middle"
+                      style={{ fontSize: big ? 12 : 9 }}
+                    >
+                      {displaySymbol(c.symbol)}
+                    </text>
+                  )}
+                  {big && (
+                    <text
+                      className="marketmap-change"
+                      x={c.x + c.w / 2}
+                      y={c.y + c.h / 2 + 12}
+                      textAnchor="middle"
+                    >
+                      {formatPct(c.change, 1)}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+          </g>
+        ))}
+      </svg>
+      <div className="marketmap-legend">
+        <span>{t(lang, 'mapLegendDown')}</span>
+        <span className="marketmap-scale" />
+        <span>{t(lang, 'mapLegendUp')}</span>
+        <span className="marketmap-size-note">{t(lang, 'mapSizeNote')}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Piyasa hareketlileri: taranan tüm hisseleri günlük değişime göre sıralar,
  * en çok yükselen/düşen 8 hisseyi tek bakışta gösterir. Veri zaten "Bugün"
  * özetinin içinde (overview[market].stocks); ek istek gerektirmez.
@@ -3275,8 +3464,8 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    // İzlediklerim ve Hisse Karşılaştır sekmeleri de günlük özetten beslenir.
-    if (view !== 'today' && view !== 'watchlist' && view !== 'stockCompare') return
+    // İzlediklerim, Hisse Karşılaştır ve Harita sekmeleri de günlük özetten beslenir.
+    if (view !== 'today' && view !== 'watchlist' && view !== 'stockCompare' && view !== 'map') return
     if (!marketsResolved) return
     const wanted = view === 'today' ? ['daily', todayTimeframe] : ['daily']
     const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
@@ -3547,7 +3736,7 @@ function App() {
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
-            {(view === 'screener' || view === 'backtest') && marketsResolved && (
+            {(view === 'screener' || view === 'backtest' || view === 'map') && marketsResolved && (
               <div className="tabs">
                 {activeMarkets.map((m) => (
                   <button
@@ -3837,6 +4026,26 @@ function App() {
           error={stockPositionsError}
           lang={lang}
         />
+      )}
+
+      {view === 'map' && (
+        <>
+          <div className="status-bar">
+            <span>{t(lang, 'mapIntro')}</span>
+          </div>
+          {overviewLoading && !overviewCache.daily ? (
+            <div className="empty-box">{t(lang, 'loading')}</div>
+          ) : overviewError && !overviewCache.daily ? (
+            <div className="error-box">{overviewError}</div>
+          ) : (
+            <MarketMap
+              overview={overviewCache.daily}
+              market={market}
+              lang={lang}
+              onOpenChart={setChartSymbol}
+            />
+          )}
+        </>
       )}
 
       {view === 'news' && (
