@@ -372,7 +372,142 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading }) {
+/**
+ * Hisse detay istatistikleri: teknik göstergeler, EMA trend hizası, 52 hafta
+ * aralığı, skor geçmişi ve hisseyi taşıyan fonlar. ChartModal içinde grafiğin
+ * altında gösterilir; her blok verisi olmadığında sessizce gizlenir.
+ */
+function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
+  const emaPeriods = stock ? [9, 21, 50, 200].filter((p) => stock[`ema_${p}`] != null) : []
+  const score = stock ? technicalScore(stock, emaPeriods) : null
+
+  // 52 hafta aralığı: hisse serisi ~270 günlük kapanış taşır (≈ 52 hafta)
+  const range = useMemo(() => {
+    const pts = cleanFundPoints(series)
+    if (pts.length < 5) return null
+    const pxs = pts.map((p) => p.px)
+    const hi = Math.max(...pxs)
+    const lo = Math.min(...pxs)
+    const last = pxs[pxs.length - 1]
+    if (!(hi > lo)) return null
+    return { hi, lo, last, fromHigh: last / hi - 1, pos: (last - lo) / (hi - lo) }
+  }, [series])
+
+  // Fonlar: en son ayki ağırlığa göre ilk 6
+  const funds = useMemo(() => {
+    const list = positions?.funds || []
+    const latestWeight = (row) => {
+      const ms = Object.keys(row.positions || {}).sort()
+      for (let i = ms.length - 1; i >= 0; i -= 1) {
+        const w = row.positions[ms[i]]?.weight
+        if (w != null) return w
+      }
+      return null
+    }
+    return list
+      .map((row) => ({ code: row.fund_code, name: row.fund_name, weight: latestWeight(row) }))
+      .filter((r) => r.weight != null)
+      .sort((a, b) => b.weight - a.weight)
+  }, [positions])
+
+  const metric = (label, value, cls = '') =>
+    value == null || value === '—' ? null : (
+      <div className="sd-metric">
+        <span className="sd-metric-label">{label}</span>
+        <span className={`sd-metric-value ${cls}`}>{value}</span>
+      </div>
+    )
+
+  const hasAnything = stock || range || funds.length || (scoreSeries && scoreSeries.length > 1)
+  if (!hasAnything) return null
+
+  return (
+    <div className="sd-stats">
+      {stock && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdStats')}</div>
+          <div className="sd-metrics">
+            {metric(t(lang, 'colScore'), score != null ? <span className={`badge score-${scoreTone(score)}`}>{score}</span> : null)}
+            {metric('RSI', stock.rsi != null ? <span className={`badge rsi-${rsiTone(stock.rsi)}`}>{formatNum(stock.rsi, 1)}</span> : null)}
+            {metric('MACD', stock.macd_line != null ? formatNum(stock.macd_line, 2) : null, stock.macd_line > 0 ? 'pos' : 'neg')}
+            {metric('Stoch %K', stock.stoch_k != null ? formatNum(stock.stoch_k, 1) : null)}
+            {metric('Stoch RSI %K', stock.stoch_rsi_k != null ? formatNum(stock.stoch_rsi_k, 1) : null)}
+            {metric(t(lang, 'colRs'), stock.relative_strength != null ? formatPct(stock.relative_strength, 1) : null, pctTone(stock.relative_strength))}
+          </div>
+        </div>
+      )}
+
+      {emaPeriods.length > 0 && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdTrendTitle')}</div>
+          <div className="sd-ema-row">
+            {emaPeriods.map((p) => {
+              const above = stock.close > stock[`ema_${p}`]
+              return (
+                <span
+                  key={p}
+                  className={`sd-ema ${above ? 'above' : 'below'}`}
+                  title={above ? t(lang, 'sdTrendAbove') : t(lang, 'sdTrendBelow')}
+                >
+                  {above ? '▲' : '▼'} EMA {p}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {range && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sd52wTitle')}</div>
+          <div className="sd-range">
+            <div className="sd-range-bar">
+              <div className="sd-range-fill" style={{ width: `${Math.round(range.pos * 100)}%` }} />
+              <span className="sd-range-dot" style={{ left: `${Math.round(range.pos * 100)}%` }} />
+            </div>
+            <div className="sd-range-labels">
+              <span>{t(lang, 'sd52Low')}: {formatNum(range.lo, 2)}</span>
+              <span className={`pct ${pctTone(range.fromHigh)}`}>{formatPct(range.fromHigh, 1)} {t(lang, 'sdFromHigh')}</span>
+              <span>{t(lang, 'sd52High')}: {formatNum(range.hi, 2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scoreSeries && scoreSeries.length > 1 && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdScoreHistory')}</div>
+          <Sparkline points={scoreSeries} days={40} />
+        </div>
+      )}
+
+      {positions && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdFundsTitle')}</div>
+          {funds.length === 0 ? (
+            <p className="sd-funds-empty">{t(lang, 'sdFundsEmpty')}</p>
+          ) : (
+            <div className="sd-funds">
+              {funds.slice(0, 6).map((f) => (
+                <div key={f.code} className="sd-fund">
+                  <TickerLogo symbol={f.code} />
+                  <span className="sd-fund-code">
+                    <strong>{f.code}</strong>
+                    {f.name && <span className="fund-name">{f.name}</span>}
+                  </span>
+                  <span className="sd-fund-weight">%{formatNum(f.weight, 2)}</span>
+                </div>
+              ))}
+              {funds.length > 6 && <div className="sd-fund-more">{t(lang, 'sdMore', funds.length - 6)}</div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -401,7 +536,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading 
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-stock" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <strong>{displaySymbol(symbol)}</strong>
           <div className="modal-actions">
@@ -431,6 +566,13 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading 
         ) : (
           <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
         )}
+        <StockDetailStats
+          stock={stock}
+          positions={positions}
+          scoreSeries={scoreSeries}
+          series={series}
+          lang={lang}
+        />
         {news && news.length > 0 && (
           <div className="modal-news">
             <div className="modal-news-title">📰 Son haberler</div>
@@ -3399,9 +3541,10 @@ function App() {
     }
   }, [view, fundFlowsReady])
 
-  // Skor geçmişi (değişim raporu) yalnızca Bugün sayfasında gerekir.
+  // Skor geçmişi: Bugün sayfasında (değişim raporu) ve bir hisse grafiği açılınca
+  // (detaydaki skor geçmişi sparkline'ı) gerekir.
   useEffect(() => {
-    if (view !== 'today' || scoreHistoryReady) return
+    if ((view !== 'today' && !chartSymbol) || scoreHistoryReady) return
     let cancelled = false
     fetchScoreHistory()
       .then((result) => {
@@ -3414,11 +3557,12 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, scoreHistoryReady])
+  }, [view, scoreHistoryReady, chartSymbol])
 
   useEffect(() => {
-    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi)
-    if (view !== 'stockPositions' && view !== 'fundCompare') return
+    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi);
+    // bir BIST hisse grafiği açılınca da (detaydaki "taşıyan fonlar" bloğu).
+    if (view !== 'stockPositions' && view !== 'fundCompare' && !chartSymbol?.endsWith('.IS')) return
     if (stockPositions) return
     let cancelled = false
     setStockPositionsLoading(true)
@@ -3436,7 +3580,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, stockPositions])
+  }, [view, stockPositions, chartSymbol])
 
   // Backtest tek bir dosyada tüm market/timeframe'leri taşır: bir kez yüklenir,
   // market/zaman dilimi değişince yeniden istek atılmaz.
@@ -3533,6 +3677,31 @@ function App() {
     if (!sym) return null
     return news.items.filter((n) => n.symbol === sym)
   }, [chartSymbol, chartFund, news])
+
+  // Açık grafik modalı için hisse kaydı, taşıyan fonlar ve skor geçmişi serisi
+  const chartStock = useMemo(() => {
+    if (!chartSymbol) return null
+    for (const m of activeMarkets) {
+      const found = (overviewCache.daily?.[m.key]?.stocks || []).find((s) => s.symbol === chartSymbol)
+      if (found) return found
+    }
+    return null
+  }, [chartSymbol, overviewCache.daily, activeMarkets])
+
+  const chartPositions = useMemo(() => {
+    if (!chartSymbol) return null
+    return stockPositions?.stocks?.[chartSymbol.replace('.IS', '')] || null
+  }, [chartSymbol, stockPositions])
+
+  const chartScoreSeries = useMemo(() => {
+    if (!chartSymbol || !scoreHistory?.history) return null
+    const out = []
+    for (const date of Object.keys(scoreHistory.history).sort()) {
+      const s = scoreHistory.history[date]?.[chartSymbol]?.s
+      if (s != null) out.push([date, s])
+    }
+    return out.length > 1 ? out : null
+  }, [chartSymbol, scoreHistory])
   const availableEmas = data?.ema_periods || (timeframe === 'monthly' ? [9, 21, 50] : [9, 21, 50, 200])
 
   const isCustom = useMemo(() => {
@@ -4297,6 +4466,9 @@ function App() {
           lang={lang}
           series={stockPrices?.series?.[chartSymbol]}
           seriesLoading={stockPricesLoading}
+          stock={chartStock}
+          positions={chartPositions}
+          scoreSeries={chartScoreSeries}
           onClose={() => setChartSymbol(null)}
         />
       )}
