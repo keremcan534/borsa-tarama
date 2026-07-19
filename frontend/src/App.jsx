@@ -1388,6 +1388,8 @@ function WatchlistView({
   onOpenFund,
   onToggleStock,
   onToggleFund,
+  onCompareStocks,
+  onCompareFunds,
 }) {
   const stockRows = useMemo(() => {
     const bySymbol = new Map()
@@ -1425,7 +1427,14 @@ function WatchlistView({
 
       {watchlist.size > 0 && (
         <section className="watch-section">
-          <h2 className="today-title">{t(lang, 'watchlistStocks')}</h2>
+          <h2 className="today-title">
+            {t(lang, 'watchlistStocks')}
+            {watchlist.size >= 2 && (
+              <button className="link-btn" onClick={() => onCompareStocks([...watchlist])}>
+                {t(lang, 'fundCompareAction')} →
+              </button>
+            )}
+          </h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -1475,7 +1484,14 @@ function WatchlistView({
 
       {fundWatchlist.size > 0 && (
         <section className="watch-section">
-          <h2 className="today-title">{t(lang, 'watchlistFunds')}</h2>
+          <h2 className="today-title">
+            {t(lang, 'watchlistFunds')}
+            {fundWatchlist.size >= 2 && (
+              <button className="link-btn" onClick={() => onCompareFunds([...fundWatchlist])}>
+                {t(lang, 'fundCompareAction')} →
+              </button>
+            )}
+          </h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -4919,6 +4935,14 @@ function App() {
             onOpenFund={setChartFund}
             onToggleStock={toggleWatch}
             onToggleFund={toggleFundWatch}
+            onCompareStocks={(symbols) => {
+              setCompareSeed(symbols)
+              selectView('stockCompare')
+            }}
+            onCompareFunds={(symbols) => {
+              setCompareSeed(symbols)
+              selectView('fundCompare')
+            }}
           />
         </>
       )}
