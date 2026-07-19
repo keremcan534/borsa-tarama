@@ -48,6 +48,7 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
   { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+  { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
   { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
   { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
@@ -3391,6 +3392,244 @@ const THEME_OPTIONS = [
   { key: 'system', i18nKey: 'themeSystem', icon: '◐' },
 ]
 
+// --- Fiyat / skor alarmları (client-side) ---
+const ALERT_STOCK_FIELDS = [
+  { key: 'score', i18nKey: 'colScore', kind: 'num' },
+  { key: 'rsi', label: 'RSI', kind: 'num' },
+  { key: 'close', i18nKey: 'alertPrice', kind: 'price' },
+  { key: 'change', i18nKey: 'alertDailyChange', kind: 'pct' },
+]
+const ALERT_FUND_FIELDS = [
+  { key: 'score', i18nKey: 'colScore', kind: 'num' },
+  { key: 'return_1d', i18nKey: 'alertDailyChange', kind: 'pct' },
+  { key: 'return_1y', label: '1Y %', kind: 'pct' },
+]
+const alertFields = (type) => (type === 'fund' ? ALERT_FUND_FIELDS : ALERT_STOCK_FIELDS)
+const alertFieldLabel = (field, lang) => (field?.i18nKey ? t(lang, field.i18nKey) : field?.label || '')
+
+function loadAlerts() {
+  try {
+    const list = JSON.parse(localStorage.getItem('alerts') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveAlerts(list) {
+  localStorage.setItem('alerts', JSON.stringify(list))
+}
+
+// Alarmın güncel ölçüt değeri (hisse puanı anlık hesaplanır, diğerleri okunur)
+function alertCurrentValue(alert, stockMap, fundMap) {
+  if (alert.type === 'fund') {
+    const f = fundMap.get(alert.symbol)
+    return f ? f[alert.field] ?? null : null
+  }
+  const s = stockMap.get(alert.symbol)
+  if (!s) return null
+  if (alert.field === 'score') {
+    const emaPeriods = [9, 21, 50, 200].filter((p) => s[`ema_${p}`] != null)
+    return technicalScore(s, emaPeriods)
+  }
+  return s[alert.field] ?? null
+}
+
+function alertIsTriggered(value, alert) {
+  if (value == null) return false
+  const cur = alert.kind === 'pct' ? value * 100 : value
+  return alert.op === 'above' ? cur >= alert.value : cur <= alert.value
+}
+
+function formatAlertCurrent(value, kind) {
+  if (value == null) return '—'
+  if (kind === 'pct') return formatPct(value, 2)
+  if (kind === 'price') return formatNum(value, 2)
+  return Number.isInteger(value) ? String(value) : formatNum(value, 1)
+}
+
+function alertCondText(alert, lang) {
+  const field = alertFields(alert.type).find((f) => f.key === alert.field)
+  const opWord = t(lang, alert.op === 'above' ? 'alertAbove' : 'alertBelow')
+  const val = `${alert.value}${alert.kind === 'pct' ? '%' : ''}`
+  return t(lang, 'alertCond', alertFieldLabel(field, lang), opWord, val)
+}
+
+/**
+ * Alarmlar: hisse/fon için eşik alarmı kurma ve durum takibi. Değerler yüklü
+ * tarama/fon verisinden anlık hesaplanır; tetiklenenler tarayıcı bildirimiyle
+ * (App'teki genel efekt) haber verir. Alarmlar yalnızca localStorage'da yaşar.
+ */
+function AlertsView({ evals, stockMap, fundMap, funds, lang, notifyPerm, onEnableNotify, onAdd, onRemove, onOpenStock, onOpenFund }) {
+  const [form, setForm] = useState({ type: 'stock', symbol: '', field: 'score', op: 'below', value: '' })
+  const [err, setErr] = useState(null)
+
+  const fields = alertFields(form.type)
+  const stockCodes = useMemo(
+    () => [...stockMap.keys()].filter((s) => s.endsWith('.IS')).map((s) => s.replace('.IS', '')).sort(),
+    [stockMap],
+  )
+  const fundList = funds?.results || []
+
+  function resolveSymbol() {
+    const raw = form.symbol.trim().toUpperCase()
+    if (!raw) return null
+    if (form.type === 'fund') return fundMap.has(raw) ? raw : null
+    if (stockMap.has(raw)) return raw
+    if (stockMap.has(`${raw}.IS`)) return `${raw}.IS`
+    return null
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    const sym = resolveSymbol()
+    if (!sym) return setErr(t(lang, 'alertErrSymbol'))
+    const val = Number(String(form.value).replace(',', '.'))
+    if (!Number.isFinite(val)) return setErr(t(lang, 'alertErrValue'))
+    const field = fields.find((f) => f.key === form.field) || fields[0]
+    onAdd({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: form.type,
+      symbol: sym,
+      field: field.key,
+      kind: field.kind,
+      op: form.op,
+      value: val,
+    })
+    setForm((f) => ({ ...f, symbol: '', value: '' }))
+    setErr(null)
+  }
+
+  const changeType = (type) =>
+    setForm((f) => ({ ...f, type, field: alertFields(type)[0].key, symbol: '' }))
+
+  const notifyBtn =
+    notifyPerm === 'granted' ? (
+      <span className="alert-notify-on">{t(lang, 'alertNotifyOn')}</span>
+    ) : notifyPerm === 'denied' ? (
+      <span className="alert-notify-blocked">{t(lang, 'alertNotifyBlocked')}</span>
+    ) : notifyPerm === 'unsupported' ? null : (
+      <button className="btn" type="button" onClick={onEnableNotify}>
+        {t(lang, 'alertEnableNotify')}
+      </button>
+    )
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'alertsIntro')}</span>
+        {notifyBtn}
+      </div>
+
+      <form className="alert-form" onSubmit={submit}>
+        <div className="tabs alert-type">
+          <button type="button" className={`tab ${form.type === 'stock' ? 'active' : ''}`} onClick={() => changeType('stock')}>
+            {t(lang, 'alertTypeStock')}
+          </button>
+          <button type="button" className={`tab ${form.type === 'fund' ? 'active' : ''}`} onClick={() => changeType('fund')}>
+            {t(lang, 'alertTypeFund')}
+          </button>
+        </div>
+        <input
+          className="search-input alert-symbol"
+          list="alert-symbol-options"
+          placeholder={t(lang, 'alertSymbol')}
+          value={form.symbol}
+          onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
+        />
+        <datalist id="alert-symbol-options">
+          {form.type === 'fund'
+            ? fundList.map((f) => (
+                <option key={f.symbol} value={f.symbol}>
+                  {f.name}
+                </option>
+              ))
+            : stockCodes.map((c) => <option key={c} value={c} />)}
+        </datalist>
+        <select
+          className="search-input alert-select"
+          value={form.field}
+          onChange={(e) => setForm((f) => ({ ...f, field: e.target.value }))}
+        >
+          {fields.map((f) => (
+            <option key={f.key} value={f.key}>
+              {alertFieldLabel(f, lang)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="search-input alert-select"
+          value={form.op}
+          onChange={(e) => setForm((f) => ({ ...f, op: e.target.value }))}
+        >
+          <option value="below">{t(lang, 'alertBelow')}</option>
+          <option value="above">{t(lang, 'alertAbove')}</option>
+        </select>
+        <input
+          className="search-input alert-value"
+          type="text"
+          inputMode="decimal"
+          placeholder={t(lang, 'alertValue')}
+          value={form.value}
+          onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+        />
+        <button className="btn primary" type="submit">
+          {t(lang, 'alertAdd')}
+        </button>
+      </form>
+      {err && <div className="error-box">{err}</div>}
+
+      {evals.length === 0 ? (
+        <div className="empty-box">{t(lang, 'alertEmpty')}</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="left">{t(lang, 'alertSymbol')}</th>
+                <th className="left">{t(lang, 'alertColCond')}</th>
+                <th>{t(lang, 'alertColCurrent')}</th>
+                <th>{t(lang, 'alertColStatus')}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {evals.map((a) => (
+                <tr key={a.id} className={a.triggered ? 'alert-hit' : ''}>
+                  <td className="symbol-cell">
+                    <button
+                      className="symbol-btn"
+                      type="button"
+                      onClick={() => (a.type === 'fund' ? onOpenFund(fundMap.get(a.symbol)) : onOpenStock(a.symbol))}
+                      disabled={a.type === 'fund' && !fundMap.get(a.symbol)}
+                    >
+                      <TickerLogo symbol={a.symbol} />
+                      {displaySymbol(a.symbol)}
+                    </button>
+                  </td>
+                  <td className="left">{alertCondText(a, lang)}</td>
+                  <td>{a.current == null ? t(lang, 'alertNoData') : formatAlertCurrent(a.current, a.kind)}</td>
+                  <td>
+                    <span className={`badge ${a.triggered ? 'alert-badge-hit' : 'alert-badge-wait'}`}>
+                      {a.triggered ? t(lang, 'alertTriggered') : t(lang, 'alertWaiting')}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="star-btn pf-remove" type="button" title={t(lang, 'alertRemove')} onClick={() => onRemove(a.id)}>
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
 function App() {
   const [lang, setLangState] = useState(getLang)
   // Açılışta ham tablo yerine günün özeti karşılasın
@@ -3441,6 +3680,10 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [theme, setThemeState] = useState(loadTheme)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [alerts, setAlerts] = useState(loadAlerts)
+  const [notifyPerm, setNotifyPerm] = useState(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  )
   const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
   // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
   // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
@@ -3507,6 +3750,81 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Alarm değerlendirmesi için hisse/fon haritaları (yüklü günlük özet + fonlar)
+  const stockMap = useMemo(() => {
+    const m = new Map()
+    for (const mk of activeMarkets) {
+      for (const s of overviewCache.daily?.[mk.key]?.stocks || []) if (!m.has(s.symbol)) m.set(s.symbol, s)
+    }
+    return m
+  }, [overviewCache.daily, activeMarkets])
+
+  const fundMap = useMemo(() => {
+    const m = new Map()
+    for (const f of funds?.results || []) m.set(f.symbol, f)
+    return m
+  }, [funds])
+
+  const alertEvals = useMemo(
+    () =>
+      alerts.map((a) => {
+        const current = alertCurrentValue(a, stockMap, fundMap)
+        return { ...a, current, triggered: alertIsTriggered(current, a) }
+      }),
+    [alerts, stockMap, fundMap],
+  )
+  const alertTriggeredCount = alertEvals.filter((a) => a.triggered).length
+
+  function addAlert(alert) {
+    setAlerts((prev) => {
+      const next = [...prev, alert]
+      saveAlerts(next)
+      return next
+    })
+  }
+
+  function removeAlert(id) {
+    setAlerts((prev) => {
+      const next = prev.filter((a) => a.id !== id)
+      saveAlerts(next)
+      return next
+    })
+  }
+
+  function enableNotify() {
+    if (typeof Notification === 'undefined') return
+    Notification.requestPermission().then((p) => setNotifyPerm(p))
+  }
+
+  // Veri her güncellendiğinde tetiklenen alarmlar için tarayıcı bildirimi.
+  // lastGen ile aynı tarama için tekrar bildirim atılmaz.
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || !alerts.length) return
+    const firstKey = activeMarkets.find((m) => overviewCache.daily?.[m.key])?.key
+    const gen = `${overviewCache.daily?.[firstKey]?.generated_at || ''}|${funds?.generated_at || ''}`
+    if (gen === '|') return
+    let changed = false
+    const next = alerts.map((a) => {
+      const v = alertCurrentValue(a, stockMap, fundMap)
+      if (alertIsTriggered(v, a) && a.lastGen !== gen) {
+        try {
+          new Notification(t(lang, 'alertNotifTitle', displaySymbol(a.symbol)), {
+            body: t(lang, 'alertNotifBody', alertCondText(a, lang), formatAlertCurrent(v, a.kind)),
+          })
+        } catch {
+          /* bildirim atılamadıysa sessiz geç */
+        }
+        changed = true
+        return { ...a, lastGen: gen }
+      }
+      return a
+    })
+    if (changed) {
+      setAlerts(next)
+      saveAlerts(next)
+    }
+  }, [alerts, overviewCache.daily, funds, stockMap, fundMap, activeMarkets, lang])
 
   // Arama paleti açılınca arama dizini için fon + günlük özet verisi hazır olsun
   useEffect(() => {
@@ -3584,7 +3902,8 @@ function App() {
       view !== 'fundCompare' &&
       view !== 'fundLeague' &&
       view !== 'watchlist' &&
-      view !== 'portfolio'
+      view !== 'portfolio' &&
+      view !== 'alerts'
     )
       return
     if (funds) return
@@ -3745,8 +4064,15 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    // İzlediklerim, Hisse Karşılaştır ve Harita sekmeleri de günlük özetten beslenir.
-    if (view !== 'today' && view !== 'watchlist' && view !== 'stockCompare' && view !== 'map') return
+    // İzlediklerim, Hisse Karşılaştır, Harita ve Alarmlar da günlük özetten beslenir.
+    if (
+      view !== 'today' &&
+      view !== 'watchlist' &&
+      view !== 'stockCompare' &&
+      view !== 'map' &&
+      view !== 'alerts'
+    )
+      return
     if (!marketsResolved) return
     const wanted = view === 'today' ? ['daily', todayTimeframe] : ['daily']
     const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
@@ -3976,6 +4302,9 @@ function App() {
                 {item.icon}
               </span>
               {t(lang, item.i18nKey)}
+              {item.key === 'alerts' && alertTriggeredCount > 0 && (
+                <span className="nav-badge">{alertTriggeredCount}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -4335,6 +4664,22 @@ function App() {
           loading={stockPositionsLoading}
           error={stockPositionsError}
           lang={lang}
+        />
+      )}
+
+      {view === 'alerts' && (
+        <AlertsView
+          evals={alertEvals}
+          stockMap={stockMap}
+          fundMap={fundMap}
+          funds={funds}
+          lang={lang}
+          notifyPerm={notifyPerm}
+          onEnableNotify={enableNotify}
+          onAdd={addAlert}
+          onRemove={removeAlert}
+          onOpenStock={setChartSymbol}
+          onOpenFund={setChartFund}
         />
       )}
 
