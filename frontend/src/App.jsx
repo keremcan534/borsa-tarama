@@ -546,7 +546,7 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries }) {
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, onCompare }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -579,6 +579,17 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
         <div className="modal-head">
           <strong>{displaySymbol(symbol)}</strong>
           <div className="modal-actions">
+            {onCompare && isBist && (
+              <button
+                className="btn small"
+                onClick={() => {
+                  onCompare(symbol)
+                  onClose()
+                }}
+              >
+                {t(lang, 'fundCompareAction')}
+              </button>
+            )}
             <a
               className="btn small"
               href={`https://tr.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol(symbol))}`}
@@ -5471,6 +5482,10 @@ function App() {
           stock={chartStock}
           positions={chartPositions}
           scoreSeries={chartScoreSeries}
+          onCompare={(sym) => {
+            setCompareSeed([sym])
+            selectView('stockCompare')
+          }}
           onClose={() => setChartSymbol(null)}
         />
       )}
