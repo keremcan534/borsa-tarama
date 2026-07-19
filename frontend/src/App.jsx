@@ -53,6 +53,7 @@ const NAV_ITEMS = [
   { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
   { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
+  { key: 'fundLeague', i18nKey: 'tabFundLeague', icon: '🏆' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
   { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
   { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
@@ -2811,6 +2812,141 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
   )
 }
 
+// TR fon isimleri regüle olduğundan kategori büyük ölçüde addan çıkarılabilir.
+// Sıra önemli: daha spesifik kalıplar önce denenir (ör. "Para Piyasası Katılım"
+// para piyasasıdır, katılım değil).
+const FUND_CATEGORY_RULES = [
+  { key: 'money', i18nKey: 'catMoney', re: /PARA PİYASASI|LİKİT/ },
+  { key: 'gold', i18nKey: 'catGold', re: /KIYMETLİ MADEN|ALTIN|GÜMÜŞ/ },
+  { key: 'basket', i18nKey: 'catBasket', re: /FON SEPETİ|SEPET FONU/ },
+  { key: 'hedge', i18nKey: 'catHedge', re: /SERBEST/ },
+  { key: 'foreign', i18nKey: 'catForeign', re: /EUROBOND|YABANCI|DÖVİZ|(YABANCI )?BORÇLANMA.*DÖVİZ/ },
+  { key: 'participation', i18nKey: 'catParticipation', re: /KATILIM/ },
+  { key: 'bond', i18nKey: 'catBond', re: /BORÇLANMA ARAÇLARI|TAHVİL|BONO|BORÇLANMA/ },
+  { key: 'index', i18nKey: 'catIndex', re: /ENDEKS/ },
+  { key: 'equity', i18nKey: 'catEquity', re: /HİSSE SENEDİ|HİSSE/ },
+  { key: 'mixed', i18nKey: 'catMixed', re: /KARMA|DEĞİŞKEN/ },
+]
+
+const FUND_CATEGORY_ORDER = [
+  'equity', 'index', 'bond', 'gold', 'money', 'mixed',
+  'participation', 'basket', 'hedge', 'foreign', 'other',
+]
+
+function categorizeFund(name) {
+  const upper = (name || '').toLocaleUpperCase('tr-TR')
+  for (const rule of FUND_CATEGORY_RULES) {
+    if (rule.re.test(upper)) return rule.key
+  }
+  return 'other'
+}
+
+const catI18nKey = (key) => FUND_CATEGORY_RULES.find((r) => r.key === key)?.i18nKey || 'catOther'
+
+function median(values) {
+  const arr = values.filter((v) => v != null).sort((a, b) => a - b)
+  if (!arr.length) return null
+  const mid = Math.floor(arr.length / 2)
+  return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2
+}
+
+const FUND_LEAGUE_METRICS = [
+  { key: 'score', i18nKey: 'flMetricScore' },
+  { key: 'return_1y', i18nKey: 'flMetricReturn' },
+  { key: 'sharpe', i18nKey: 'flMetricSharpe' },
+]
+
+/**
+ * Fon Ligi: fonları addan çıkarılan kategoriye göre gruplar; her ligde seçili
+ * metriğe (puan / 1Y getiri / Sharpe) göre liderleri gösterir. Fonly'deki
+ * kategori sıralamalarının hafif bir karşılığı — tümü mevcut fon verisinden.
+ */
+function FundLeague({ funds, lang, loading, onOpenFund }) {
+  const [metric, setMetric] = useState('score')
+
+  const groups = useMemo(() => {
+    const byCat = new Map()
+    for (const f of funds?.results || []) {
+      const cat = categorizeFund(f.name)
+      if (!byCat.has(cat)) byCat.set(cat, [])
+      byCat.get(cat).push(f)
+    }
+    return FUND_CATEGORY_ORDER.filter((c) => byCat.has(c)).map((cat) => {
+      const list = byCat.get(cat)
+      const sorted = [...list].sort((a, b) => (b[metric] ?? -Infinity) - (a[metric] ?? -Infinity))
+      return {
+        cat,
+        count: list.length,
+        medianReturn: median(list.map((f) => f.return_1y)),
+        top: sorted.slice(0, 5),
+      }
+    })
+  }, [funds, metric])
+
+  if (loading && !funds) return <div className="empty-box">{t(lang, 'fundsLoading')}</div>
+  if (!funds?.results?.length) return <div className="empty-box">{t(lang, 'flEmpty')}</div>
+
+  const metricCell = (f) => {
+    if (metric === 'score') return <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
+    if (metric === 'sharpe') return <span className="fl-metric-num">{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</span>
+    return <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
+  }
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'flIntro')}</span>
+        <div className="fl-sort">
+          <span className="fl-sort-label">{t(lang, 'flSortLabel')}:</span>
+          <div className="tabs">
+            {FUND_LEAGUE_METRICS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={`tab ${metric === m.key ? 'active' : ''}`}
+                onClick={() => setMetric(m.key)}
+              >
+                {t(lang, m.i18nKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="fl-grid">
+        {groups.map((g) => (
+          <section key={g.cat} className="fl-cat">
+            <div className="fl-cat-head">
+              <h3 className="fl-cat-name">{t(lang, catI18nKey(g.cat))}</h3>
+              <span className="fl-cat-meta">
+                {t(lang, 'flCount', g.count)}
+                {g.medianReturn != null && ` · ${t(lang, 'flMedian', formatPct(g.medianReturn))}`}
+              </span>
+            </div>
+            <ol className="fl-list">
+              {g.top.map((f, i) => (
+                <li key={f.symbol}>
+                  <button type="button" className="fl-row" onClick={() => onOpenFund(f)} title={f.name}>
+                    <span className={`fl-rank ${i === 0 ? 'lead' : ''}`}>{i + 1}</span>
+                    <TickerLogo symbol={f.symbol} />
+                    <span className="fl-fund">
+                      <strong>{f.symbol}</strong>
+                      <span className="fund-name">{f.name}</span>
+                    </span>
+                    {metricCell(f)}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {g.count > 5 && <div className="fl-more">{t(lang, 'flMore', g.count - 5)}</div>}
+          </section>
+        ))}
+      </div>
+      <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
+    </>
+  )
+}
+
 /**
  * Squarified treemap yerleşimi: değerleri (value) verilen kutucukları, en-boy
  * oranı 1'e yakın (kare) kalacak şekilde dikdörtgen alana yerleştirir.
@@ -3446,6 +3582,7 @@ function App() {
       view !== 'funds' &&
       view !== 'today' &&
       view !== 'fundCompare' &&
+      view !== 'fundLeague' &&
       view !== 'watchlist' &&
       view !== 'portfolio'
     )
@@ -4163,6 +4300,10 @@ function App() {
 
           <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
         </>
+      )}
+
+      {view === 'fundLeague' && (
+        <FundLeague funds={funds} lang={lang} loading={fundsLoading} onOpenFund={setChartFund} />
       )}
 
       {view === 'fundCompare' && (
