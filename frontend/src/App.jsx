@@ -963,8 +963,17 @@ function FundReturnsChart({ fund, lang }) {
   )
 }
 
-function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading }) {
+function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading, funds }) {
   const series = prices?.series?.[fund.symbol]
+
+  // Kategori (addan) + kategori içi puan sırası: fon "ligindeki" yerini gösterir
+  const catInfo = useMemo(() => {
+    const category = categorizeFund(fund.name)
+    const peers = (funds?.results || []).filter((f) => categorizeFund(f.name) === category)
+    const sorted = [...peers].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+    const rank = sorted.findIndex((f) => f.symbol === fund.symbol) + 1
+    return { category, count: peers.length, rank }
+  }, [fund, funds])
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -1013,6 +1022,10 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
           <div className="modal-fund-score">
             <span className={`badge score-${scoreTone(fund.score)}`}>{fund.score}</span>
             <span className="modal-fund-score-label">{t(lang, 'colScore')}</span>
+            <span className="fund-cat-chip">{t(lang, catI18nKey(catInfo.category))}</span>
+            {catInfo.rank > 0 && catInfo.count > 1 && (
+              <span className="fund-cat-rank">{t(lang, 'fundCategoryRank', catInfo.rank, catInfo.count)}</span>
+            )}
           </div>
           <div className="fund-price-section">
             <div className="fund-section-title">{t(lang, 'fundPriceTitle')}</div>
@@ -5375,6 +5388,7 @@ function App() {
           fund={chartFund}
           news={chartNews}
           lang={lang}
+          funds={funds}
           prices={fundPrices}
           pricesLoading={fundPricesLoading}
           onClose={() => setChartFund(null)}

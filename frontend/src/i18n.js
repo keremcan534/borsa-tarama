@@ -419,6 +419,7 @@ const STRINGS = {
     catHedge: 'Serbest',
     catForeign: 'Yabancı / Eurobond',
     catOther: 'Diğer',
+    fundCategoryRank: (rank, total) => `Kategori içi #${rank}/${total}`,
     // Fiyat / skor alarmları
     tabAlerts: 'Alarmlar',
     alertsIntro:
@@ -869,6 +870,7 @@ const STRINGS = {
     catHedge: 'Hedge',
     catForeign: 'Foreign / Eurobond',
     catOther: 'Other',
+    fundCategoryRank: (rank, total) => `Category rank #${rank}/${total}`,
     // Price / score alerts
     tabAlerts: 'Alerts',
     alertsIntro:
