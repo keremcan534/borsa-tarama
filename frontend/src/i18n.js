@@ -351,6 +351,27 @@ const STRINGS = {
     btPfWhyRange:
       'Neden tek bir rakam değil de aralık? Kapasite dolduğunda sinyallerin çoğu atlanır, yani sonuç hangi sinyali seçtiğine bağlıdır. Aynı strateji 25 kez farklı rastgele seçimlerle koşturuldu; tek bir rakam bu şansı gizlerdi. Güvenilir olan yön: koşuların tamamına yakını endeksi yeniyor — büyüklük ise şansa bağlı.',
     btPfNote: 'Komisyon, slipaj ve vergi yok. Geçmiş veriyle yapılmış varsayımsal bir simülasyondur; yatırım tavsiyesi değildir.',
+    // Global arama paleti (⌘K)
+    cmdkTrigger: 'Ara',
+    cmdkPlaceholder: 'Hisse veya fon ara…',
+    cmdkStocks: 'Hisseler',
+    cmdkFunds: 'Fonlar',
+    cmdkEmpty: (q) => `"${q}" için sonuç yok`,
+    cmdkHintType: 'Aramak için yazmaya başla — hisse kodu veya fon adı',
+    cmdkNav: 'gez',
+    cmdkSelect: 'aç',
+    cmdkClose: 'kapat',
+    cmdkLoading: 'Arama verisi yükleniyor…',
+    // Tema geçişi
+    themeLabel: 'Tema',
+    themeLight: 'Açık',
+    themeDark: 'Koyu',
+    themeSystem: 'Sistem',
+    // Piyasa hareketlileri
+    moversTitle: 'Piyasa hareketlileri',
+    moversHint: 'Son taramada bugün en çok yükselen ve düşen hisseler.',
+    moversGainers: 'Yükselenler',
+    moversLosers: 'Düşenler',
   },
   en: {
     brand: 'Borsa Tarama',
@@ -679,6 +700,27 @@ const STRINGS = {
     btPfWhyRange:
       'Why a range instead of one number? When capacity is full most signals are skipped, so the result depends on which ones you pick. The same strategy was run 25 times with different random picks; a single number would hide that luck. What is reliable is the direction: nearly all runs beat the index — the magnitude is luck.',
     btPfNote: 'No commissions, slippage or taxes. A hypothetical simulation on historical data; not investment advice.',
+    // Global search palette (⌘K)
+    cmdkTrigger: 'Search',
+    cmdkPlaceholder: 'Search stock or fund…',
+    cmdkStocks: 'Stocks',
+    cmdkFunds: 'Funds',
+    cmdkEmpty: (q) => `No results for "${q}"`,
+    cmdkHintType: 'Start typing to search — a stock code or fund name',
+    cmdkNav: 'navigate',
+    cmdkSelect: 'open',
+    cmdkClose: 'close',
+    cmdkLoading: 'Loading search data…',
+    // Theme switch
+    themeLabel: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'System',
+    // Market movers
+    moversTitle: 'Market movers',
+    moversHint: "Today's biggest gainers and losers from the last scan.",
+    moversGainers: 'Gainers',
+    moversLosers: 'Losers',
   },
 }
 

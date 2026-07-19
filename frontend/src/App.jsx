@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   fetchAllNews,
@@ -2300,6 +2300,8 @@ function TodayView({
         )}
       </section>
 
+      <TopMovers overview={overview} allMarkets={allMarkets} lang={lang} onOpenChart={onOpenChart} />
+
       <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
 
       <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
@@ -2666,6 +2668,262 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
   )
 }
 
+/**
+ * Piyasa hareketlileri: taranan tüm hisseleri günlük değişime göre sıralar,
+ * en çok yükselen/düşen 8 hisseyi tek bakışta gösterir. Veri zaten "Bugün"
+ * özetinin içinde (overview[market].stocks); ek istek gerektirmez.
+ */
+function TopMovers({ overview, allMarkets, lang, onOpenChart }) {
+  const [tab, setTab] = useState('gainers')
+  const movers = useMemo(() => {
+    const bySymbol = new Map()
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (s.change == null) continue
+        if (!bySymbol.has(s.symbol)) bySymbol.set(s.symbol, s)
+      }
+    }
+    const all = [...bySymbol.values()]
+    return {
+      gainers: [...all].sort((a, b) => b.change - a.change).slice(0, 8),
+      losers: [...all].sort((a, b) => a.change - b.change).slice(0, 8),
+    }
+  }, [overview, allMarkets])
+
+  // En az birkaç hisse yoksa (ör. ilk tarama öncesi) panel gizlenir
+  if (movers.gainers.length < 2) return null
+  const list = tab === 'gainers' ? movers.gainers : movers.losers
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'moversTitle')}</h2>
+      <p className="today-note">{t(lang, 'moversHint')}</p>
+      <div className="tabs movers-tabs">
+        <button
+          type="button"
+          className={`tab ${tab === 'gainers' ? 'active' : ''}`}
+          onClick={() => setTab('gainers')}
+        >
+          ▲ {t(lang, 'moversGainers')}
+        </button>
+        <button
+          type="button"
+          className={`tab ${tab === 'losers' ? 'active' : ''}`}
+          onClick={() => setTab('losers')}
+        >
+          ▼ {t(lang, 'moversLosers')}
+        </button>
+      </div>
+      <div className="movers-grid">
+        {list.map((s) => (
+          <button key={s.symbol} type="button" className="movers-row" onClick={() => onOpenChart(s.symbol)}>
+            <TickerLogo symbol={s.symbol} />
+            <span className="movers-main">
+              <strong>{displaySymbol(s.symbol)}</strong>
+              <span className="movers-sub">{formatNum(s.close, 2)}</span>
+            </span>
+            <span className={`pct movers-change ${pctTone(s.change)}`}>{formatPct(s.change, 2)}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Global arama paleti (⌘K / Ctrl+K): kullanıcı her sayfadan tek kısayolla tüm
+ * taranan hisseler ve fonlar arasında arayıp grafiğe/fon detayına atlar.
+ * "Her özelliğe kolay erişim" fikrinin merkezi giriş noktası.
+ */
+function CommandPalette({ open, onClose, overview, funds, allMarkets, lang, onOpenStock, onOpenFund }) {
+  const [q, setQ] = useState('')
+  const [active, setActive] = useState(0)
+  const inputRef = useRef(null)
+
+  const index = useMemo(() => {
+    const stocks = []
+    const seen = new Set()
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (seen.has(s.symbol)) continue
+        seen.add(s.symbol)
+        stocks.push({ type: 'stock', symbol: s.symbol, name: displaySymbol(s.symbol), change: s.change })
+      }
+    }
+    const fundItems = (funds?.results || []).map((f) => ({
+      type: 'fund',
+      symbol: f.symbol,
+      name: f.name || f.symbol,
+      fund: f,
+    }))
+    return { stocks, funds: fundItems }
+  }, [overview, funds, allMarkets])
+
+  const results = useMemo(() => {
+    const query = q.trim().toUpperCase()
+    if (!query) return { stocks: [], funds: [] }
+    const match = (it) =>
+      it.symbol.toUpperCase().includes(query) || (it.name || '').toUpperCase().includes(query)
+    return {
+      stocks: index.stocks.filter(match).slice(0, 7),
+      funds: index.funds.filter(match).slice(0, 7),
+    }
+  }, [q, index])
+
+  const flat = useMemo(() => [...results.stocks, ...results.funds], [results])
+
+  useEffect(() => {
+    setActive(0)
+  }, [q])
+
+  useEffect(() => {
+    if (!open) return
+    setQ('')
+    setActive(0)
+    const focusId = setTimeout(() => inputRef.current?.focus(), 30)
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(focusId)
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose])
+
+  if (!open) return null
+
+  const choose = (item) => {
+    if (!item) return
+    if (item.type === 'stock') onOpenStock(item.symbol)
+    else onOpenFund(item.fund)
+    onClose()
+  }
+
+  const onInputKey = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => Math.min(i + 1, flat.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      choose(flat[active])
+    }
+  }
+
+  const dataReady = index.stocks.length > 0 || index.funds.length > 0
+  // idx her render'da yeniden sayılır; düz listeyle (flat) aynı sırayı tutar,
+  // böylece klavye ile seçili satır tıklamayla birebir eşleşir.
+  let idx = -1
+  const row = (item) => {
+    idx += 1
+    const i = idx
+    return (
+      <button
+        key={item.type + item.symbol}
+        type="button"
+        className={`cmdk-row ${i === active ? 'active' : ''}`}
+        onMouseEnter={() => setActive(i)}
+        onClick={() => choose(item)}
+      >
+        <TickerLogo symbol={item.symbol} />
+        <span className="cmdk-row-main">
+          <strong>{displaySymbol(item.symbol)}</strong>
+          {item.type === 'fund' && item.name && <span className="cmdk-row-sub">{item.name}</span>}
+        </span>
+        {item.type === 'stock' && item.change != null && (
+          <span className={`pct ${pctTone(item.change)}`}>{formatPct(item.change, 2)}</span>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="modal-backdrop cmdk-backdrop" onClick={onClose}>
+      <div className="cmdk" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="cmdk-input-row">
+          <span className="cmdk-search-icon" aria-hidden="true">🔍</span>
+          <input
+            ref={inputRef}
+            className="cmdk-input"
+            type="text"
+            placeholder={t(lang, 'cmdkPlaceholder')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onInputKey}
+            aria-label={t(lang, 'cmdkPlaceholder')}
+          />
+          <button className="cmdk-esc" type="button" onClick={onClose}>
+            Esc
+          </button>
+        </div>
+        <div className="cmdk-body">
+          {!dataReady ? (
+            <div className="cmdk-hint">{t(lang, 'cmdkLoading')}</div>
+          ) : !q.trim() ? (
+            <div className="cmdk-hint">{t(lang, 'cmdkHintType')}</div>
+          ) : flat.length === 0 ? (
+            <div className="cmdk-hint">{t(lang, 'cmdkEmpty', q.trim())}</div>
+          ) : (
+            <>
+              {results.stocks.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkStocks')}</div>
+                  {results.stocks.map(row)}
+                </div>
+              )}
+              {results.funds.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkFunds')}</div>
+                  {results.funds.map(row)}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="cmdk-footer">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> {t(lang, 'cmdkNav')}
+          </span>
+          <span>
+            <kbd>↵</kbd> {t(lang, 'cmdkSelect')}
+          </span>
+          <span>
+            <kbd>esc</kbd> {t(lang, 'cmdkClose')}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function loadTheme() {
+  try {
+    const v = localStorage.getItem('theme')
+    return v === 'light' || v === 'dark' ? v : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+// data-theme yoksa sistem tercihi (prefers-color-scheme) geçerli olur.
+function applyTheme(theme) {
+  const root = document.documentElement
+  if (theme === 'system') root.removeAttribute('data-theme')
+  else root.setAttribute('data-theme', theme)
+}
+
+const THEME_OPTIONS = [
+  { key: 'light', i18nKey: 'themeLight', icon: '☀' },
+  { key: 'dark', i18nKey: 'themeDark', icon: '☾' },
+  { key: 'system', i18nKey: 'themeSystem', icon: '◐' },
+]
+
 function App() {
   const [lang, setLangState] = useState(getLang)
   // Açılışta ham tablo yerine günün özeti karşılasın
@@ -2714,6 +2972,8 @@ function App() {
   const [overviewError, setOverviewError] = useState(null)
   const [todayTimeframe, setTodayTimeframe] = useState('daily')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setThemeState] = useState(loadTheme)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
   // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
   // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
@@ -2753,6 +3013,52 @@ function App() {
       setMarket(activeMarkets[0].key)
     }
   }, [activeMarkets, market])
+
+  // Tema seçimi <html> data-theme'ine yansır (data-theme yoksa sistem tercihi)
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
+
+  function changeTheme(next) {
+    try {
+      if (next === 'system') localStorage.removeItem('theme')
+      else localStorage.setItem('theme', next)
+    } catch {
+      /* ignore */
+    }
+    setThemeState(next)
+  }
+
+  // ⌘K / Ctrl+K her yerden arama paletini aç/kapat
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Arama paleti açılınca arama dizini için fon + günlük özet verisi hazır olsun
+  useEffect(() => {
+    if (!paletteOpen || funds || fundsLoading) return
+    loadFunds()
+  }, [paletteOpen, funds, fundsLoading])
+
+  useEffect(() => {
+    if (!paletteOpen || !marketsResolved || overviewCache.daily) return
+    let cancelled = false
+    fetchDailyOverview(activeMarkets.map((m) => m.key), 'daily')
+      .then((result) => {
+        if (!cancelled) setOverviewCache((prev) => (prev.daily ? prev : { ...prev, daily: result }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [paletteOpen, marketsResolved, overviewCache.daily, activeMarkets])
 
   function load(live = false) {
     setLoading(true)
@@ -3179,22 +3485,39 @@ function App() {
           ))}
         </nav>
 
-        <div className="tabs lang-switch" role="group" aria-label="Language">
-          {['tr', 'en'].map((code) => (
-            <button
-              key={code}
-              type="button"
-              className={`tab ${lang === code ? 'active' : ''}`}
-              onClick={() => {
-                if (lang !== code) {
-                  persistLang(code)
-                  setLangState(code)
-                }
-              }}
-            >
-              {code.toUpperCase()}
-            </button>
-          ))}
+        <div className="sidebar-foot">
+          <div className="tabs theme-switch" role="group" aria-label={t(lang, 'themeLabel')}>
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`tab ${theme === opt.key ? 'active' : ''}`}
+                title={t(lang, opt.i18nKey)}
+                aria-pressed={theme === opt.key}
+                onClick={() => changeTheme(opt.key)}
+              >
+                <span aria-hidden="true">{opt.icon}</span>
+                <span className="theme-switch-label">{t(lang, opt.i18nKey)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="tabs lang-switch" role="group" aria-label="Language">
+            {['tr', 'en'].map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={`tab ${lang === code ? 'active' : ''}`}
+                onClick={() => {
+                  if (lang !== code) {
+                    persistLang(code)
+                    setLangState(code)
+                  }
+                }}
+              >
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
       </aside>
 
@@ -3211,6 +3534,16 @@ function App() {
           <p className="tagline">
             {t(lang, 'tagline')} · {lang === 'en' ? activeTimeframe.horizonEn : activeTimeframe.horizon}
           </p>
+          <button
+            className="cmdk-trigger"
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label={t(lang, 'cmdkTrigger')}
+          >
+            <span className="cmdk-trigger-icon" aria-hidden="true">🔍</span>
+            <span className="cmdk-trigger-text">{t(lang, 'cmdkPlaceholder')}</span>
+            <kbd className="cmdk-trigger-kbd">⌘K</kbd>
+          </button>
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
@@ -3265,23 +3598,6 @@ function App() {
               selectView(nextView)
             }}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3300,23 +3616,6 @@ function App() {
             onToggleStock={toggleWatch}
             onToggleFund={toggleFundWatch}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3331,23 +3630,6 @@ function App() {
             onOpenFund={setChartFund}
             onOpenStock={setChartSymbol}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3522,20 +3804,6 @@ function App() {
           )}
 
           <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3593,9 +3861,6 @@ function App() {
             onOpenChart={setChartSymbol}
           />
           <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
         </>
       )}
 
@@ -3811,12 +4076,45 @@ function App() {
       )}
 
       <p className="disclaimer">{t(lang, 'disclaimer')}</p>
-
-      {chartSymbol && (
-        <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-      )}
         </>
       )}
+
+      {/* Grafik/fon modalları ve arama paleti tek yerde: hangi sekmede olursak
+          olalım (arama paletinden dahil) açılabilsinler. */}
+      {chartSymbol && (
+        <ChartModal
+          symbol={chartSymbol}
+          news={chartNews}
+          lang={lang}
+          series={stockPrices?.series?.[chartSymbol]}
+          seriesLoading={stockPricesLoading}
+          onClose={() => setChartSymbol(null)}
+        />
+      )}
+      {chartFund && (
+        <FundModal
+          fund={chartFund}
+          news={chartNews}
+          lang={lang}
+          prices={fundPrices}
+          pricesLoading={fundPricesLoading}
+          onClose={() => setChartFund(null)}
+          onCompare={(symbol) => {
+            setCompareSeed([symbol])
+            selectView('fundCompare')
+          }}
+        />
+      )}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        overview={overviewCache.daily}
+        funds={funds}
+        allMarkets={activeMarkets}
+        lang={lang}
+        onOpenStock={setChartSymbol}
+        onOpenFund={setChartFund}
+      />
       </main>
     </div>
   )

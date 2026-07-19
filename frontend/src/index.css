@@ -21,8 +21,9 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Koyu palet: hem sistem tercihi hem de kullanıcı seçimi (data-theme) ile. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #0f1115;
@@ -35,6 +36,35 @@
     --down: #f87171;
     --row-hover: #1e222b;
   }
+}
+
+/* Kullanıcı sidebar'dan tema seçince sistem tercihi ezilir (iki yönde de). */
+:root[data-theme='dark'] {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #0f1115;
+  --surface: #171a21;
+  --border: #2a2e38;
+  --accent: #a78bfa;
+  --accent-2: #c084fc;
+  --accent-bg: rgba(167, 139, 250, 0.15);
+  --up: #4ade80;
+  --down: #f87171;
+  --row-hover: #1e222b;
+}
+
+:root[data-theme='light'] {
+  --text: #4b5563;
+  --text-h: #0f172a;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --accent: #7c3aed;
+  --accent-2: #a855f7;
+  --accent-bg: rgba(124, 58, 237, 0.1);
+  --up: #16a34a;
+  --down: #dc2626;
+  --row-hover: #f1f5f9;
 }
 
 * {
