@@ -448,6 +448,16 @@ const STRINGS = {
     alertCond: (metric, op, val) => `${metric} ${op} ${val}`,
     alertNotifTitle: (sym) => `🔔 Alarm: ${sym}`,
     alertNotifBody: (cond, cur) => `${cond} · şu an ${cur}`,
+    // Portföy analizi
+    paTitle: 'Portföy analizi',
+    paAllocation: 'Dağılım',
+    paExposure: 'Sektör / kategori dağılımı',
+    paBest: 'En iyi',
+    paWorst: 'En kötü',
+    paPositions: 'Pozisyon',
+    paOther: 'Diğer',
+    // CSV dışa aktarma
+    exportCsv: 'CSV indir',
   },
   en: {
     brand: 'Borsa Tarama',
@@ -873,6 +883,16 @@ const STRINGS = {
     alertCond: (metric, op, val) => `${metric} ${op} ${val}`,
     alertNotifTitle: (sym) => `🔔 Alert: ${sym}`,
     alertNotifBody: (cond, cur) => `${cond} · now ${cur}`,
+    // Portfolio analytics
+    paTitle: 'Portfolio analytics',
+    paAllocation: 'Allocation',
+    paExposure: 'Sector / category exposure',
+    paBest: 'Best',
+    paWorst: 'Worst',
+    paPositions: 'Positions',
+    paOther: 'Other',
+    // CSV export
+    exportCsv: 'Export CSV',
   },
 }
 

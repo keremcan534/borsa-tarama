@@ -1693,7 +1693,160 @@ function PortfolioChart({ lines, lang }) {
  * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
  * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
  */
-function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, onOpenStock }) {
+// Dağılım/analiz grafikleri için ayrık renk paleti
+const PIE_COLORS = [
+  '#7c3aed', '#2563eb', '#16a34a', '#d97706', '#db2777',
+  '#0891b2', '#65a30d', '#dc2626', '#9333ea', '#0d9488',
+]
+
+/** Basit SVG donut: her segment strokeDasharray ile çizilir. */
+function Donut({ segments, size = 168 }) {
+  const total = segments.reduce((s, x) => s + x.value, 0)
+  if (total <= 0) return null
+  const r = size / 2 - 14
+  const c = 2 * Math.PI * r
+  let offset = 0
+  return (
+    <svg className="pa-donut" viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-hidden="true">
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        {segments.map((seg) => {
+          const len = (seg.value / total) * c
+          const node = (
+            <circle
+              key={seg.label}
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="20"
+              strokeDasharray={`${len} ${c - len}`}
+              strokeDashoffset={-offset}
+            />
+          )
+          offset += len
+          return node
+        })}
+      </g>
+    </svg>
+  )
+}
+
+/**
+ * Portföy analizi: özet kartları, holding bazında dağılım donut'u ve
+ * sektör/fon-kategorisi dağılım çubukları. Tümü mevcut pozisyon verisinden;
+ * hisse sektörü günlük özetten, fon kategorisi ad çıkarımından gelir.
+ */
+function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
+  const known = useMemo(() => rows.filter((r) => r.value != null && r.value > 0), [rows])
+
+  const alloc = useMemo(() => {
+    const sorted = [...known].sort((a, b) => b.value - a.value)
+    const top = sorted.slice(0, 8)
+    const rest = sorted.slice(8)
+    const segs = top.map((r, i) => ({
+      label: displaySymbol(r.symbol),
+      value: r.value,
+      color: PIE_COLORS[i % PIE_COLORS.length],
+    }))
+    if (rest.length) {
+      segs.push({ label: t(lang, 'paOther'), value: rest.reduce((s, r) => s + r.value, 0), color: '#94a3b8' })
+    }
+    return segs
+  }, [known, lang])
+
+  const exposure = useMemo(() => {
+    const m = new Map()
+    for (const r of known) {
+      let label
+      if (r.isStock) label = sectorLabel(stockMap?.get(r.symbol)?.sector || t(lang, 'paOther'), lang)
+      else if (r.fund) label = t(lang, catI18nKey(categorizeFund(r.fund.name)))
+      else label = t(lang, 'paOther')
+      m.set(label, (m.get(label) || 0) + r.value)
+    }
+    const tot = [...m.values()].reduce((s, v) => s + v, 0) || 1
+    return [...m.entries()]
+      .map(([label, value], i) => ({ label, value, pct: value / tot, color: PIE_COLORS[i % PIE_COLORS.length] }))
+      .sort((a, b) => b.value - a.value)
+  }, [known, stockMap, lang])
+
+  if (known.length < 1) return null
+  const best = known.reduce((a, b) => ((b.plPct ?? -Infinity) > (a.plPct ?? -Infinity) ? b : a))
+  const worst = known.reduce((a, b) => ((b.plPct ?? Infinity) < (a.plPct ?? Infinity) ? b : a))
+  const totalVal = totals.value || 1
+
+  return (
+    <section className="watch-section pa">
+      <h2 className="today-title">{t(lang, 'paTitle')}</h2>
+      <div className="pa-tiles">
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'pfValue')}</span>
+          <strong className="today-card-value">{formatLira(totals.value, lang)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'pfCost')}</span>
+          <strong className="today-card-value">{formatLira(totals.cost, lang)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">K/Z</span>
+          <strong className={`today-card-value pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paPositions')}</span>
+          <strong className="today-card-value">{rows.length}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paBest')}</span>
+          <strong className="today-card-value pa-tile-mini">
+            <span className="pa-tile-sym">{displaySymbol(best.symbol)}</span>
+            <span className={`pct ${pctTone(best.plPct)}`}>{formatPct(best.plPct)}</span>
+          </strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paWorst')}</span>
+          <strong className="today-card-value pa-tile-mini">
+            <span className="pa-tile-sym">{displaySymbol(worst.symbol)}</span>
+            <span className={`pct ${pctTone(worst.plPct)}`}>{formatPct(worst.plPct)}</span>
+          </strong>
+        </div>
+      </div>
+
+      <div className="pa-charts">
+        <div className="pa-chart-block">
+          <h3 className="pa-sub">{t(lang, 'paAllocation')}</h3>
+          <div className="pa-alloc">
+            <Donut segments={alloc} />
+            <ul className="pa-legend">
+              {alloc.map((s) => (
+                <li key={s.label}>
+                  <span className="pa-dot" style={{ background: s.color }} />
+                  <span className="pa-legend-label">{s.label}</span>
+                  <span className="pa-legend-pct">{formatRate(s.value / totalVal, 0)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className="pa-chart-block">
+          <h3 className="pa-sub">{t(lang, 'paExposure')}</h3>
+          <div className="pa-exposure">
+            {exposure.map((e) => (
+              <div key={e.label} className="pa-exp-row">
+                <span className="pa-exp-label" title={e.label}>{e.label}</span>
+                <div className="pa-exp-bar">
+                  <div className="pa-exp-fill" style={{ width: `${Math.round(e.pct * 100)}%`, background: e.color }} />
+                </div>
+                <span className="pa-exp-pct">{formatRate(e.pct, 0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, onOpenFund, onOpenStock }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -2064,6 +2217,10 @@ function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, 
             </tfoot>
           </table>
         </div>
+      )}
+
+      {positions.length > 0 && (
+        <PortfolioAnalytics rows={rows} totals={totals} stockMap={stockMap} lang={lang} />
       )}
 
       {pfChartLines && (
@@ -4064,13 +4221,14 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    // İzlediklerim, Hisse Karşılaştır, Harita ve Alarmlar da günlük özetten beslenir.
+    // İzlediklerim, Hisse Karşılaştır, Harita, Alarmlar ve Portföy de günlük özetten beslenir.
     if (
       view !== 'today' &&
       view !== 'watchlist' &&
       view !== 'stockCompare' &&
       view !== 'map' &&
-      view !== 'alerts'
+      view !== 'alerts' &&
+      view !== 'portfolio'
     )
       return
     if (!marketsResolved) return
@@ -4449,6 +4607,7 @@ function App() {
             funds={funds}
             prices={fundPrices}
             stockPrices={stockPrices}
+            stockMap={stockMap}
             lang={lang}
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
