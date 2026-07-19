@@ -3577,6 +3577,24 @@ function saveAlerts(list) {
   localStorage.setItem('alerts', JSON.stringify(list))
 }
 
+// Görünen tabloyu CSV olarak indirir. BOM eklenir ki Excel Türkçe karakterleri
+// ve UTF-8'i doğru okusun; alanlar gerektiğinde tırnaklanır.
+function downloadCsv(filename, headerRow, dataRows) {
+  const esc = (v) => {
+    if (v == null) return ''
+    const s = String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const body = [headerRow, ...dataRows].map((r) => r.map(esc).join(',')).join('\n')
+  const blob = new Blob([`﻿${body}`], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // Alarmın güncel ölçüt değeri (hisse puanı anlık hesaplanır, diğerleri okunur)
 function alertCurrentValue(alert, stockMap, fundMap) {
   if (alert.type === 'fund') {
@@ -4402,6 +4420,29 @@ function App() {
     )
   }
 
+  // Görünen (filtrelenmiş/sıralı) tabloları CSV'ye aktar. Yüzdeler okunur olsun
+  // diye 100 ile çarpılır; sembol arayüzdeki gösterim koduyla yazılır.
+  function exportScreenerCsv() {
+    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+    const header = ['Sembol', 'Puan', 'Kapanış', 'Değişim %', 'Piyasa Değeri', 'Göreli Güç %', 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K']
+    const dataRows = rows.map((r) => [
+      displaySymbol(r.symbol), r.score ?? '', r.close ?? '', pct(r.change), r.market_cap ?? '',
+      pct(r.relative_strength), r.rsi ?? '', r.macd_line ?? '', r.stoch_k ?? '', r.stoch_rsi_k ?? '',
+    ])
+    downloadCsv(`tarama-${market}-${timeframe}.csv`, header, dataRows)
+  }
+
+  function exportFundsCsv() {
+    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+    const header = ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Max Düşüş %', 'Büyüklük']
+    const dataRows = fundRows.map((f) => [
+      f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
+      pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
+      pct(f.volatility), f.sharpe ?? '', pct(f.max_drawdown), f.portfolio_size ?? '',
+    ])
+    downloadCsv('fonlar.csv', header, dataRows)
+  }
+
   // Yeni sinyal bilgisi results üzerinde gelir; stocks listesinde göstermek için haritalanır
   const newSymbols = useMemo(
     () => new Set((data?.results || []).filter((r) => r.is_new).map((r) => r.symbol)),
@@ -4653,6 +4694,11 @@ function App() {
                 ⭐ {t(lang, 'favorites')}
                 {fundWatchlist.size ? ` (${fundWatchlist.size})` : ''}
               </button>
+              {fundRows.length > 0 && (
+                <button className="btn" onClick={exportFundsCsv}>
+                  ⬇ {t(lang, 'exportCsv')}
+                </button>
+              )}
               <button
                 className="btn"
                 disabled={fundsLoading}
@@ -4914,6 +4960,11 @@ function App() {
             ⭐ {t(lang, 'favorites')}
             {watchlist.size ? ` (${watchlist.size})` : ''}
           </button>
+          {rows.length > 0 && (
+            <button className="btn" onClick={exportScreenerCsv}>
+              ⬇ {t(lang, 'exportCsv')}
+            </button>
+          )}
           {STATIC_MODE ? (
             <button className="btn" disabled={loading} onClick={() => load(false)}>
               {loading && <span className="spinner" />}
