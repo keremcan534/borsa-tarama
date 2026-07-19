@@ -92,8 +92,10 @@ def analyze_symbol(
     Dönen dict, arayüzde kullanıcı tanımlı eşiklerle yeniden filtrelenebilir.
 
     `benchmark_close` verilirse göreli güç (`relative_strength`) de hesaplanır.
-    `series_sink` verilirse kapanış serisi [[YYYY-MM-DD, close], ...] olarak
-    sink'e yazılır (arayüzdeki fiyat grafiği için; veri zaten elde, ek istek yok).
+    `series_sink` verilirse fiyat serisi [[YYYY-MM-DD, close, open, high, low], ...]
+    olarak sink'e yazılır (arayüzdeki fiyat/mum grafiği için; veri zaten elde, ek
+    istek yok). İkinci alan bilinçli olarak KAPANIŞtır: eski [date, close] formatını
+    okuyan tüm tüketiciler (sparkline, portföy değeri) index 1'i değiştirmeden çalışsın.
     """
     config = TIMEFRAMES[timeframe]
     df = fetcher.fetch_ohlcv(symbol, period=config["period"], interval=config["interval"])
@@ -134,9 +136,16 @@ def analyze_symbol(
     result["relative_strength"] = None if rs is None else round(rs, 4)
 
     if series_sink is not None:
-        closes = df["close"].dropna().tail(270)
+        bars = df[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)
         series_sink[symbol] = [
-            [ts.strftime("%Y-%m-%d"), round(float(px), 4)] for ts, px in closes.items()
+            [
+                ts.strftime("%Y-%m-%d"),
+                round(float(row.close), 4),
+                round(float(row.open), 4),
+                round(float(row.high), 4),
+                round(float(row.low), 4),
+            ]
+            for ts, row in bars.iterrows()
         ]
     return result
 

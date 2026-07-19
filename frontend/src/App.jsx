@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   fetchAllNews,
@@ -48,10 +48,13 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 const NAV_ITEMS = [
   { key: 'today', i18nKey: 'tabToday', icon: '📅' },
   { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+  { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
   { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
   { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
+  { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
   { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
   { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
+  { key: 'fundLeague', i18nKey: 'tabFundLeague', icon: '🏆' },
   { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
   { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
   { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
@@ -85,6 +88,7 @@ const DEFAULT_FILTERS = {
   stochRsiK: 80,
   macdPositive: true,
   emas: { 9: true, 21: true, 50: true, 200: true },
+  sectors: [], // boş = tüm sektörler
 }
 
 // Hazır tarama şablonları: filtre paneli yeni kullanıcı için karmaşık; tek tıkla
@@ -283,7 +287,22 @@ function stockPassesFilters(stock, filters, availableEmas) {
   if (!(stock.rsi < filters.rsi)) return false
   if (!(stock.stoch_k < filters.stochK)) return false
   if (!(stock.stoch_rsi_k < filters.stochRsiK)) return false
+  // Sektör filtresi (boşsa hepsi geçer)
+  if (filters.sectors?.length && !filters.sectors.includes(stock.sector)) return false
   return true
+}
+
+function loadSavedScreens() {
+  try {
+    const list = JSON.parse(localStorage.getItem('saved_screens') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveSavedScreens(list) {
+  localStorage.setItem('saved_screens', JSON.stringify(list))
 }
 
 function Logo() {
@@ -339,13 +358,22 @@ function NewsList({ items, lang, onOpenChart }) {
  * kolayca ABD akışında bırakıyordu.
  */
 function NewsFeed({ news, loading, error, lang, onOpenChart }) {
+  const [query, setQuery] = useState('')
   const groups = useMemo(() => {
-    const items = news?.items || []
+    const q = query.trim().toLocaleLowerCase('tr-TR')
+    let items = news?.items || []
+    if (q) {
+      items = items.filter(
+        (i) =>
+          (i.title || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          displaySymbol(i.symbol || '').toLocaleLowerCase('tr-TR').includes(q),
+      )
+    }
     return {
       bist: items.filter((i) => isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
       global: items.filter((i) => !isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
     }
-  }, [news])
+  }, [news, query])
 
   if (loading) return <div className="empty-box">{t(lang, 'newsLoading')}</div>
   if (error) return <div className="error-box">{error}</div>
@@ -358,6 +386,18 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
 
   return (
     <div className="news-groups">
+      <div className="search-row">
+        <input
+          className="search-input"
+          type="search"
+          placeholder={t(lang, 'newsSearch')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {sections.length === 0 && (
+        <div className="empty-box">{t(lang, 'newsNoMatch', query.trim())}</div>
+      )}
       {sections.map((section) => (
         <section key={section.key} className="news-group">
           <h2 className="news-group-title">
@@ -371,7 +411,142 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading }) {
+/**
+ * Hisse detay istatistikleri: teknik göstergeler, EMA trend hizası, 52 hafta
+ * aralığı, skor geçmişi ve hisseyi taşıyan fonlar. ChartModal içinde grafiğin
+ * altında gösterilir; her blok verisi olmadığında sessizce gizlenir.
+ */
+function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
+  const emaPeriods = stock ? [9, 21, 50, 200].filter((p) => stock[`ema_${p}`] != null) : []
+  const score = stock ? technicalScore(stock, emaPeriods) : null
+
+  // 52 hafta aralığı: hisse serisi ~270 günlük kapanış taşır (≈ 52 hafta)
+  const range = useMemo(() => {
+    const pts = cleanFundPoints(series)
+    if (pts.length < 5) return null
+    const pxs = pts.map((p) => p.px)
+    const hi = Math.max(...pxs)
+    const lo = Math.min(...pxs)
+    const last = pxs[pxs.length - 1]
+    if (!(hi > lo)) return null
+    return { hi, lo, last, fromHigh: last / hi - 1, pos: (last - lo) / (hi - lo) }
+  }, [series])
+
+  // Fonlar: en son ayki ağırlığa göre ilk 6
+  const funds = useMemo(() => {
+    const list = positions?.funds || []
+    const latestWeight = (row) => {
+      const ms = Object.keys(row.positions || {}).sort()
+      for (let i = ms.length - 1; i >= 0; i -= 1) {
+        const w = row.positions[ms[i]]?.weight
+        if (w != null) return w
+      }
+      return null
+    }
+    return list
+      .map((row) => ({ code: row.fund_code, name: row.fund_name, weight: latestWeight(row) }))
+      .filter((r) => r.weight != null)
+      .sort((a, b) => b.weight - a.weight)
+  }, [positions])
+
+  const metric = (label, value, cls = '') =>
+    value == null || value === '—' ? null : (
+      <div className="sd-metric">
+        <span className="sd-metric-label">{label}</span>
+        <span className={`sd-metric-value ${cls}`}>{value}</span>
+      </div>
+    )
+
+  const hasAnything = stock || range || funds.length || (scoreSeries && scoreSeries.length > 1)
+  if (!hasAnything) return null
+
+  return (
+    <div className="sd-stats">
+      {stock && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdStats')}</div>
+          <div className="sd-metrics">
+            {metric(t(lang, 'colScore'), score != null ? <span className={`badge score-${scoreTone(score)}`}>{score}</span> : null)}
+            {metric('RSI', stock.rsi != null ? <span className={`badge rsi-${rsiTone(stock.rsi)}`}>{formatNum(stock.rsi, 1)}</span> : null)}
+            {metric('MACD', stock.macd_line != null ? formatNum(stock.macd_line, 2) : null, stock.macd_line > 0 ? 'pos' : 'neg')}
+            {metric('Stoch %K', stock.stoch_k != null ? formatNum(stock.stoch_k, 1) : null)}
+            {metric('Stoch RSI %K', stock.stoch_rsi_k != null ? formatNum(stock.stoch_rsi_k, 1) : null)}
+            {metric(t(lang, 'colRs'), stock.relative_strength != null ? formatPct(stock.relative_strength, 1) : null, pctTone(stock.relative_strength))}
+          </div>
+        </div>
+      )}
+
+      {emaPeriods.length > 0 && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdTrendTitle')}</div>
+          <div className="sd-ema-row">
+            {emaPeriods.map((p) => {
+              const above = stock.close > stock[`ema_${p}`]
+              return (
+                <span
+                  key={p}
+                  className={`sd-ema ${above ? 'above' : 'below'}`}
+                  title={above ? t(lang, 'sdTrendAbove') : t(lang, 'sdTrendBelow')}
+                >
+                  {above ? '▲' : '▼'} EMA {p}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {range && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sd52wTitle')}</div>
+          <div className="sd-range">
+            <div className="sd-range-bar">
+              <div className="sd-range-fill" style={{ width: `${Math.round(range.pos * 100)}%` }} />
+              <span className="sd-range-dot" style={{ left: `${Math.round(range.pos * 100)}%` }} />
+            </div>
+            <div className="sd-range-labels">
+              <span>{t(lang, 'sd52Low')}: {formatNum(range.lo, 2)}</span>
+              <span className={`pct ${pctTone(range.fromHigh)}`}>{formatPct(range.fromHigh, 1)} {t(lang, 'sdFromHigh')}</span>
+              <span>{t(lang, 'sd52High')}: {formatNum(range.hi, 2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scoreSeries && scoreSeries.length > 1 && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdScoreHistory')}</div>
+          <Sparkline points={scoreSeries} days={40} />
+        </div>
+      )}
+
+      {positions && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdFundsTitle')}</div>
+          {funds.length === 0 ? (
+            <p className="sd-funds-empty">{t(lang, 'sdFundsEmpty')}</p>
+          ) : (
+            <div className="sd-funds">
+              {funds.slice(0, 6).map((f) => (
+                <div key={f.code} className="sd-fund">
+                  <TickerLogo symbol={f.code} />
+                  <span className="sd-fund-code">
+                    <strong>{f.code}</strong>
+                    {f.name && <span className="fund-name">{f.name}</span>}
+                  </span>
+                  <span className="sd-fund-weight">%{formatNum(f.weight, 2)}</span>
+                </div>
+              ))}
+              {funds.length > 6 && <div className="sd-fund-more">{t(lang, 'sdMore', funds.length - 6)}</div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, onCompare }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -400,10 +575,21 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading 
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-stock" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <strong>{displaySymbol(symbol)}</strong>
           <div className="modal-actions">
+            {onCompare && isBist && (
+              <button
+                className="btn small"
+                onClick={() => {
+                  onCompare(symbol)
+                  onClose()
+                }}
+              >
+                {t(lang, 'fundCompareAction')}
+              </button>
+            )}
             <a
               className="btn small"
               href={`https://tr.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol(symbol))}`}
@@ -430,6 +616,13 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading 
         ) : (
           <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
         )}
+        <StockDetailStats
+          stock={stock}
+          positions={positions}
+          scoreSeries={scoreSeries}
+          series={series}
+          lang={lang}
+        />
         {news && news.length > 0 && (
           <div className="modal-news">
             <div className="modal-news-title">📰 Son haberler</div>
@@ -474,8 +667,17 @@ function fundPeriodStartMs(periodKey, lastMs) {
 /** [[YYYY-MM-DD, price], ...] → temiz, sıralı [{t, px}] (tümü). */
 function cleanFundPoints(points) {
   if (!points?.length) return []
+  // Format: [tarih, kapanış] (fonlar) veya [tarih, kapanış, açılış, yüksek, düşük]
+  // (hisseler, mum grafiği için). Index 1 her iki formatta da kapanıştır.
+  const fin = (v) => (Number.isFinite(v) ? v : null)
   return points
-    .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
+    .map(([d, c, o, h, l]) => ({
+      t: Date.parse(d),
+      px: Number(c),
+      o: fin(Number(o)),
+      h: fin(Number(h)),
+      l: fin(Number(l)),
+    }))
     .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
     .sort((a, b) => a.t - b.t)
 }
@@ -581,8 +783,12 @@ function FundPriceChart({ points, lang, showEma = false }) {
   const [period, setPeriod] = useState('3m')
   const [hover, setHover] = useState(null)
   const [emaOn, setEmaOn] = useState(false)
+  const [candleOn, setCandleOn] = useState(false)
   const full = useMemo(() => cleanFundPoints(points), [points])
   const data = useMemo(() => parseFundSeries(points, period), [points, period])
+  // Mum grafiği yalnızca OHLC taşıyan serilerde (hisseler) mümkün; fonlarda kapanış var
+  const hasOhlc = useMemo(() => data.some((d) => d.o != null && d.h != null && d.l != null), [data])
+  const candle = candleOn && hasOhlc
 
   // EMA'lar tam seriden hesaplanıp görünen pencereye kırpılır (aşağıda minT ile)
   const emaLines = useMemo(() => {
@@ -609,6 +815,15 @@ function FundPriceChart({ points, lang, showEma = false }) {
           {lang === 'en' ? p.labelEn : p.label}
         </button>
       ))}
+      {hasOhlc && (
+        <button
+          type="button"
+          className={`fund-price-period ${candle ? 'active' : ''}`}
+          onClick={() => setCandleOn((v) => !v)}
+        >
+          {t(lang, 'chartCandle')}
+        </button>
+      )}
       {showEma && (
         <button
           type="button"
@@ -644,6 +859,8 @@ function FundPriceChart({ points, lang, showEma = false }) {
     .filter((l) => l.pts.length >= 2)
 
   const pxVals = data.map((d) => d.px)
+  // Mum modunda fitil uçları (yüksek/düşük) da ölçeğe girsin, taşmasın
+  if (candle) for (const d of data) if (d.h != null) pxVals.push(d.h, d.l)
   for (const l of emaWindows) for (const p of l.pts) pxVals.push(p.v)
   const minP = Math.min(...pxVals)
   const maxP = Math.max(...pxVals)
@@ -710,8 +927,30 @@ function FundPriceChart({ points, lang, showEma = false }) {
               </text>
             </g>
           ))}
-          <path className={`fund-price-area ${dir}`} d={areaPath} />
-          <path className={`fund-price-line ${dir}`} d={linePath} />
+          {candle ? (
+            <g className="candles">
+              {data.map((d) => {
+                const cx = x(d.t)
+                const w = Math.max(1.5, Math.min(9, (innerW / data.length) * 0.62))
+                const up = d.px >= (d.o ?? d.px)
+                const yo = y(d.o ?? d.px)
+                const yc = y(d.px)
+                const top = Math.min(yo, yc)
+                const bh = Math.max(1, Math.abs(yc - yo))
+                return (
+                  <g key={d.t} className={`candle ${up ? 'up' : 'down'}`}>
+                    <line className="candle-wick" x1={cx} x2={cx} y1={y(d.h ?? d.px)} y2={y(d.l ?? d.px)} />
+                    <rect className="candle-body" x={cx - w / 2} y={top} width={w} height={bh} />
+                  </g>
+                )
+              })}
+            </g>
+          ) : (
+            <>
+              <path className={`fund-price-area ${dir}`} d={areaPath} />
+              <path className={`fund-price-line ${dir}`} d={linePath} />
+            </>
+          )}
           {emaWindows.map((l) => (
             <path
               key={l.n}
@@ -802,8 +1041,17 @@ function FundReturnsChart({ fund, lang }) {
   )
 }
 
-function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading }) {
+function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading, funds }) {
   const series = prices?.series?.[fund.symbol]
+
+  // Kategori (addan) + kategori içi puan sırası: fon "ligindeki" yerini gösterir
+  const catInfo = useMemo(() => {
+    const category = categorizeFund(fund.name)
+    const peers = (funds?.results || []).filter((f) => categorizeFund(f.name) === category)
+    const sorted = [...peers].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+    const rank = sorted.findIndex((f) => f.symbol === fund.symbol) + 1
+    return { category, count: peers.length, rank }
+  }, [fund, funds])
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -852,6 +1100,10 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
           <div className="modal-fund-score">
             <span className={`badge score-${scoreTone(fund.score)}`}>{fund.score}</span>
             <span className="modal-fund-score-label">{t(lang, 'colScore')}</span>
+            <span className="fund-cat-chip">{t(lang, catI18nKey(catInfo.category))}</span>
+            {catInfo.rank > 0 && catInfo.count > 1 && (
+              <span className="fund-cat-rank">{t(lang, 'fundCategoryRank', catInfo.rank, catInfo.count)}</span>
+            )}
           </div>
           <div className="fund-price-section">
             <div className="fund-section-title">{t(lang, 'fundPriceTitle')}</div>
@@ -955,8 +1207,34 @@ function SectorBreakdown({ rows, lang }) {
   )
 }
 
-function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
-  const applyPreset = (preset) => setFilters({ ...preset.filters, emas: { ...preset.filters.emas } })
+function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang, sectors = [] }) {
+  const applyPreset = (preset) => setFilters({ ...preset.filters, emas: { ...preset.filters.emas }, sectors: [] })
+
+  const [screens, setScreens] = useState(loadSavedScreens)
+  const [screenName, setScreenName] = useState('')
+
+  const toggleSector = (sec) => {
+    const cur = filters.sectors || []
+    const next = cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]
+    setFilters({ ...filters, sectors: next })
+  }
+
+  const cloneFilters = (f) => ({ ...f, emas: { ...f.emas }, sectors: [...(f.sectors || [])] })
+
+  const saveScreen = () => {
+    const name = screenName.trim()
+    if (!name) return
+    const next = [...screens, { id: `${Date.now()}`, name, filters: cloneFilters(filters) }]
+    setScreens(next)
+    saveSavedScreens(next)
+    setScreenName('')
+  }
+
+  const deleteScreen = (id) => {
+    const next = screens.filter((s) => s.id !== id)
+    setScreens(next)
+    saveSavedScreens(next)
+  }
 
   const slider = (label, key, value) => (
     <label className="slider-row">
@@ -1028,11 +1306,59 @@ function FilterPanel({ filters, setFilters, availableEmas, isCustom, lang }) {
           </label>
           <button
             className="btn small"
-            onClick={() => setFilters({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })}
+            onClick={() => setFilters({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas }, sectors: [] })}
           >
             {t(lang, 'filterReset')}
           </button>
         </div>
+        {sectors.length > 1 && (
+          <div className="filter-group filter-sectors">
+            <div className="filter-title">{t(lang, 'filterSector')}</div>
+            <div className="sector-chips">
+              {sectors.map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  className={`fc-chip ${filters.sectors?.includes(sec) ? 'active' : ''}`}
+                  onClick={() => toggleSector(sec)}
+                >
+                  {sectorLabel(sec, lang)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="saved-screens">
+        <span className="filter-presets-label">{t(lang, 'screensLabel')}</span>
+        {screens.map((s) => (
+          <span key={s.id} className="screen-chip">
+            <button type="button" className="screen-load" onClick={() => setFilters(cloneFilters(s.filters))}>
+              {s.name}
+            </button>
+            <button
+              type="button"
+              className="screen-del"
+              title={t(lang, 'screenDelete')}
+              onClick={() => deleteScreen(s.id)}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <input
+          className="search-input screen-name"
+          type="text"
+          placeholder={t(lang, 'screenNamePh')}
+          value={screenName}
+          maxLength={28}
+          onChange={(e) => setScreenName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && saveScreen()}
+        />
+        <button type="button" className="btn small" disabled={!screenName.trim()} onClick={saveScreen}>
+          💾 {t(lang, 'screenSave')}
+        </button>
       </div>
     </details>
   )
@@ -1073,6 +1399,8 @@ function WatchlistView({
   onOpenFund,
   onToggleStock,
   onToggleFund,
+  onCompareStocks,
+  onCompareFunds,
 }) {
   const stockRows = useMemo(() => {
     const bySymbol = new Map()
@@ -1110,7 +1438,14 @@ function WatchlistView({
 
       {watchlist.size > 0 && (
         <section className="watch-section">
-          <h2 className="today-title">{t(lang, 'watchlistStocks')}</h2>
+          <h2 className="today-title">
+            {t(lang, 'watchlistStocks')}
+            {watchlist.size >= 2 && (
+              <button className="link-btn" onClick={() => onCompareStocks([...watchlist])}>
+                {t(lang, 'fundCompareAction')} →
+              </button>
+            )}
+          </h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -1160,7 +1495,14 @@ function WatchlistView({
 
       {fundWatchlist.size > 0 && (
         <section className="watch-section">
-          <h2 className="today-title">{t(lang, 'watchlistFunds')}</h2>
+          <h2 className="today-title">
+            {t(lang, 'watchlistFunds')}
+            {fundWatchlist.size >= 2 && (
+              <button className="link-btn" onClick={() => onCompareFunds([...fundWatchlist])}>
+                {t(lang, 'fundCompareAction')} →
+              </button>
+            )}
+          </h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -1548,7 +1890,160 @@ function PortfolioChart({ lines, lang }) {
  * güncel pay değeriyle kâr/zarar takibi. Veriler yalnızca tarayıcıda
  * (localStorage) tutulur; sunucuya hiçbir şey gönderilmez.
  */
-function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, onOpenStock }) {
+// Dağılım/analiz grafikleri için ayrık renk paleti
+const PIE_COLORS = [
+  '#7c3aed', '#2563eb', '#16a34a', '#d97706', '#db2777',
+  '#0891b2', '#65a30d', '#dc2626', '#9333ea', '#0d9488',
+]
+
+/** Basit SVG donut: her segment strokeDasharray ile çizilir. */
+function Donut({ segments, size = 168 }) {
+  const total = segments.reduce((s, x) => s + x.value, 0)
+  if (total <= 0) return null
+  const r = size / 2 - 14
+  const c = 2 * Math.PI * r
+  let offset = 0
+  return (
+    <svg className="pa-donut" viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-hidden="true">
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        {segments.map((seg) => {
+          const len = (seg.value / total) * c
+          const node = (
+            <circle
+              key={seg.label}
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="20"
+              strokeDasharray={`${len} ${c - len}`}
+              strokeDashoffset={-offset}
+            />
+          )
+          offset += len
+          return node
+        })}
+      </g>
+    </svg>
+  )
+}
+
+/**
+ * Portföy analizi: özet kartları, holding bazında dağılım donut'u ve
+ * sektör/fon-kategorisi dağılım çubukları. Tümü mevcut pozisyon verisinden;
+ * hisse sektörü günlük özetten, fon kategorisi ad çıkarımından gelir.
+ */
+function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
+  const known = useMemo(() => rows.filter((r) => r.value != null && r.value > 0), [rows])
+
+  const alloc = useMemo(() => {
+    const sorted = [...known].sort((a, b) => b.value - a.value)
+    const top = sorted.slice(0, 8)
+    const rest = sorted.slice(8)
+    const segs = top.map((r, i) => ({
+      label: displaySymbol(r.symbol),
+      value: r.value,
+      color: PIE_COLORS[i % PIE_COLORS.length],
+    }))
+    if (rest.length) {
+      segs.push({ label: t(lang, 'paOther'), value: rest.reduce((s, r) => s + r.value, 0), color: '#94a3b8' })
+    }
+    return segs
+  }, [known, lang])
+
+  const exposure = useMemo(() => {
+    const m = new Map()
+    for (const r of known) {
+      let label
+      if (r.isStock) label = sectorLabel(stockMap?.get(r.symbol)?.sector || t(lang, 'paOther'), lang)
+      else if (r.fund) label = t(lang, catI18nKey(categorizeFund(r.fund.name)))
+      else label = t(lang, 'paOther')
+      m.set(label, (m.get(label) || 0) + r.value)
+    }
+    const tot = [...m.values()].reduce((s, v) => s + v, 0) || 1
+    return [...m.entries()]
+      .map(([label, value], i) => ({ label, value, pct: value / tot, color: PIE_COLORS[i % PIE_COLORS.length] }))
+      .sort((a, b) => b.value - a.value)
+  }, [known, stockMap, lang])
+
+  if (known.length < 1) return null
+  const best = known.reduce((a, b) => ((b.plPct ?? -Infinity) > (a.plPct ?? -Infinity) ? b : a))
+  const worst = known.reduce((a, b) => ((b.plPct ?? Infinity) < (a.plPct ?? Infinity) ? b : a))
+  const totalVal = totals.value || 1
+
+  return (
+    <section className="watch-section pa">
+      <h2 className="today-title">{t(lang, 'paTitle')}</h2>
+      <div className="pa-tiles">
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'pfValue')}</span>
+          <strong className="today-card-value">{formatLira(totals.value, lang)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'pfCost')}</span>
+          <strong className="today-card-value">{formatLira(totals.cost, lang)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">K/Z</span>
+          <strong className={`today-card-value pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paPositions')}</span>
+          <strong className="today-card-value">{rows.length}</strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paBest')}</span>
+          <strong className="today-card-value pa-tile-mini">
+            <span className="pa-tile-sym">{displaySymbol(best.symbol)}</span>
+            <span className={`pct ${pctTone(best.plPct)}`}>{formatPct(best.plPct)}</span>
+          </strong>
+        </div>
+        <div className="today-card">
+          <span className="today-card-label">{t(lang, 'paWorst')}</span>
+          <strong className="today-card-value pa-tile-mini">
+            <span className="pa-tile-sym">{displaySymbol(worst.symbol)}</span>
+            <span className={`pct ${pctTone(worst.plPct)}`}>{formatPct(worst.plPct)}</span>
+          </strong>
+        </div>
+      </div>
+
+      <div className="pa-charts">
+        <div className="pa-chart-block">
+          <h3 className="pa-sub">{t(lang, 'paAllocation')}</h3>
+          <div className="pa-alloc">
+            <Donut segments={alloc} />
+            <ul className="pa-legend">
+              {alloc.map((s) => (
+                <li key={s.label}>
+                  <span className="pa-dot" style={{ background: s.color }} />
+                  <span className="pa-legend-label">{s.label}</span>
+                  <span className="pa-legend-pct">{formatRate(s.value / totalVal, 0)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className="pa-chart-block">
+          <h3 className="pa-sub">{t(lang, 'paExposure')}</h3>
+          <div className="pa-exposure">
+            {exposure.map((e) => (
+              <div key={e.label} className="pa-exp-row">
+                <span className="pa-exp-label" title={e.label}>{e.label}</span>
+                <div className="pa-exp-bar">
+                  <div className="pa-exp-fill" style={{ width: `${Math.round(e.pct * 100)}%`, background: e.color }} />
+                </div>
+                <span className="pa-exp-pct">{formatRate(e.pct, 0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, onOpenFund, onOpenStock }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -1921,6 +2416,10 @@ function PortfolioView({ funds, prices, stockPrices, lang, loading, onOpenFund, 
         </div>
       )}
 
+      {positions.length > 0 && (
+        <PortfolioAnalytics rows={rows} totals={totals} stockMap={stockMap} lang={lang} />
+      )}
+
       {pfChartLines && (
         <section className="watch-section">
           <div className="pf-chart-head">
@@ -2086,6 +2585,97 @@ function ChangeReport({ scores, lang, onOpenChart }) {
           )}
         </div>
       )}
+    </section>
+  )
+}
+
+// Yarım daire gauge için kutupsal nokta ve yay yolu yardımcıları
+function gaugePolar(cx, cy, r, deg) {
+  const rad = (deg * Math.PI) / 180
+  return [cx + r * Math.cos(rad), cy - r * Math.sin(rad)]
+}
+
+function gaugeArc(cx, cy, r, startDeg, endDeg) {
+  const [x1, y1] = gaugePolar(cx, cy, r, startDeg)
+  const [x2, y2] = gaugePolar(cx, cy, r, endDeg)
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0
+  const sweep = startDeg > endDeg ? 1 : 0
+  return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${large} ${sweep} ${x2.toFixed(1)} ${y2.toFixed(1)}`
+}
+
+/**
+ * Piyasa genişliği: taranan tüm hisselerin bugünkü yükselen/düşen dağılımını
+ * yarım daire göstergeyle özetler. "Piyasa risk iştahı" için tek bakışlık ölçü;
+ * veri zaten tarama çıktısında (stocks[].change).
+ */
+function MarketBreadth({ overview, allMarkets, lang }) {
+  const stats = useMemo(() => {
+    let up = 0
+    let down = 0
+    let flat = 0
+    let sum = 0
+    let n = 0
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (s.change == null) continue
+        n += 1
+        sum += s.change
+        if (s.change > 0.0005) up += 1
+        else if (s.change < -0.0005) down += 1
+        else flat += 1
+      }
+    }
+    return { up, down, flat, avg: n ? sum / n : 0, total: n }
+  }, [overview, allMarkets])
+
+  if (stats.total < 4) return null
+  const advancers = stats.up + stats.down > 0 ? stats.up / (stats.up + stats.down) : 0.5
+  const W = 260
+  const H = 150
+  const cx = W / 2
+  const cy = 132
+  const r = 104
+  const split = 180 - advancers * 180 // yükselen oranı kadar sol taraf yeşil
+  const pct = Math.round(advancers * 100)
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'breadthTitle')}</h2>
+      <p className="today-note">{t(lang, 'breadthHint')}</p>
+      <div className="breadth">
+        <svg className="breadth-gauge" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'breadthTitle')}>
+          <path className="breadth-track" d={gaugeArc(cx, cy, r, 180, 0)} />
+          <path className="breadth-up-arc" d={gaugeArc(cx, cy, r, 180, split)} />
+          <path className="breadth-down-arc" d={gaugeArc(cx, cy, r, split, 0)} />
+          <text className="breadth-pct" x={cx} y={cy - 30} textAnchor="middle">
+            {pct}%
+          </text>
+          <text className="breadth-pct-label" x={cx} y={cy - 12} textAnchor="middle">
+            {t(lang, 'breadthAdvancers')}
+          </text>
+        </svg>
+        <div className="breadth-stats">
+          <div className="breadth-stat">
+            <span className="breadth-dot up" />
+            <span className="breadth-stat-label">{t(lang, 'breadthUp')}</span>
+            <strong className="pos">{stats.up}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-dot flat" />
+            <span className="breadth-stat-label">{t(lang, 'breadthFlat')}</span>
+            <strong>{stats.flat}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-dot down" />
+            <span className="breadth-stat-label">{t(lang, 'breadthDown')}</span>
+            <strong className="neg">{stats.down}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-stat-label">{t(lang, 'breadthAvg')}</span>
+            <strong className={`pct ${pctTone(stats.avg)}`}>{formatPct(stats.avg, 2)}</strong>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }
@@ -2300,7 +2890,11 @@ function TodayView({
         )}
       </section>
 
+      <TopMovers overview={overview} allMarkets={allMarkets} lang={lang} onOpenChart={onOpenChart} />
+
       <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
+
+      <MarketBreadth overview={overview} allMarkets={allMarkets} lang={lang} />
 
       <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
 
@@ -2666,6 +3260,851 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
   )
 }
 
+// TR fon isimleri regüle olduğundan kategori büyük ölçüde addan çıkarılabilir.
+// Sıra önemli: daha spesifik kalıplar önce denenir (ör. "Para Piyasası Katılım"
+// para piyasasıdır, katılım değil).
+const FUND_CATEGORY_RULES = [
+  { key: 'money', i18nKey: 'catMoney', re: /PARA PİYASASI|LİKİT/ },
+  { key: 'gold', i18nKey: 'catGold', re: /KIYMETLİ MADEN|ALTIN|GÜMÜŞ/ },
+  { key: 'basket', i18nKey: 'catBasket', re: /FON SEPETİ|SEPET FONU/ },
+  { key: 'hedge', i18nKey: 'catHedge', re: /SERBEST/ },
+  { key: 'foreign', i18nKey: 'catForeign', re: /EUROBOND|YABANCI|DÖVİZ|(YABANCI )?BORÇLANMA.*DÖVİZ/ },
+  { key: 'participation', i18nKey: 'catParticipation', re: /KATILIM/ },
+  { key: 'bond', i18nKey: 'catBond', re: /BORÇLANMA ARAÇLARI|TAHVİL|BONO|BORÇLANMA/ },
+  { key: 'index', i18nKey: 'catIndex', re: /ENDEKS/ },
+  { key: 'equity', i18nKey: 'catEquity', re: /HİSSE SENEDİ|HİSSE/ },
+  { key: 'mixed', i18nKey: 'catMixed', re: /KARMA|DEĞİŞKEN/ },
+]
+
+const FUND_CATEGORY_ORDER = [
+  'equity', 'index', 'bond', 'gold', 'money', 'mixed',
+  'participation', 'basket', 'hedge', 'foreign', 'other',
+]
+
+function categorizeFund(name) {
+  const upper = (name || '').toLocaleUpperCase('tr-TR')
+  for (const rule of FUND_CATEGORY_RULES) {
+    if (rule.re.test(upper)) return rule.key
+  }
+  return 'other'
+}
+
+const catI18nKey = (key) => FUND_CATEGORY_RULES.find((r) => r.key === key)?.i18nKey || 'catOther'
+
+function median(values) {
+  const arr = values.filter((v) => v != null).sort((a, b) => a - b)
+  if (!arr.length) return null
+  const mid = Math.floor(arr.length / 2)
+  return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2
+}
+
+const FUND_LEAGUE_METRICS = [
+  { key: 'score', i18nKey: 'flMetricScore' },
+  { key: 'return_1y', i18nKey: 'flMetricReturn' },
+  { key: 'sharpe', i18nKey: 'flMetricSharpe' },
+]
+
+/**
+ * Fon Ligi: fonları addan çıkarılan kategoriye göre gruplar; her ligde seçili
+ * metriğe (puan / 1Y getiri / Sharpe) göre liderleri gösterir. Fonly'deki
+ * kategori sıralamalarının hafif bir karşılığı — tümü mevcut fon verisinden.
+ */
+function FundLeague({ funds, lang, loading, onOpenFund }) {
+  const [metric, setMetric] = useState('score')
+
+  const groups = useMemo(() => {
+    const byCat = new Map()
+    for (const f of funds?.results || []) {
+      const cat = categorizeFund(f.name)
+      if (!byCat.has(cat)) byCat.set(cat, [])
+      byCat.get(cat).push(f)
+    }
+    return FUND_CATEGORY_ORDER.filter((c) => byCat.has(c)).map((cat) => {
+      const list = byCat.get(cat)
+      const sorted = [...list].sort((a, b) => (b[metric] ?? -Infinity) - (a[metric] ?? -Infinity))
+      return {
+        cat,
+        count: list.length,
+        medianReturn: median(list.map((f) => f.return_1y)),
+        top: sorted.slice(0, 5),
+      }
+    })
+  }, [funds, metric])
+
+  if (loading && !funds) return <div className="empty-box">{t(lang, 'fundsLoading')}</div>
+  if (!funds?.results?.length) return <div className="empty-box">{t(lang, 'flEmpty')}</div>
+
+  const metricCell = (f) => {
+    if (metric === 'score') return <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
+    if (metric === 'sharpe') return <span className="fl-metric-num">{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</span>
+    return <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
+  }
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'flIntro')}</span>
+        <div className="fl-sort">
+          <span className="fl-sort-label">{t(lang, 'flSortLabel')}:</span>
+          <div className="tabs">
+            {FUND_LEAGUE_METRICS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={`tab ${metric === m.key ? 'active' : ''}`}
+                onClick={() => setMetric(m.key)}
+              >
+                {t(lang, m.i18nKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="fl-grid">
+        {groups.map((g) => (
+          <section key={g.cat} className="fl-cat">
+            <div className="fl-cat-head">
+              <h3 className="fl-cat-name">{t(lang, catI18nKey(g.cat))}</h3>
+              <span className="fl-cat-meta">
+                {t(lang, 'flCount', g.count)}
+                {g.medianReturn != null && ` · ${t(lang, 'flMedian', formatPct(g.medianReturn))}`}
+              </span>
+            </div>
+            <ol className="fl-list">
+              {g.top.map((f, i) => (
+                <li key={f.symbol}>
+                  <button type="button" className="fl-row" onClick={() => onOpenFund(f)} title={f.name}>
+                    <span className={`fl-rank ${i === 0 ? 'lead' : ''}`}>{i + 1}</span>
+                    <TickerLogo symbol={f.symbol} />
+                    <span className="fl-fund">
+                      <strong>{f.symbol}</strong>
+                      <span className="fund-name">{f.name}</span>
+                    </span>
+                    {metricCell(f)}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {g.count > 5 && <div className="fl-more">{t(lang, 'flMore', g.count - 5)}</div>}
+          </section>
+        ))}
+      </div>
+      <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
+    </>
+  )
+}
+
+/**
+ * Squarified treemap yerleşimi: değerleri (value) verilen kutucukları, en-boy
+ * oranı 1'e yakın (kare) kalacak şekilde dikdörtgen alana yerleştirir.
+ * Klasik "squarify" algoritması. Dönen her öğe {x, y, w, h} taşır.
+ */
+function squarifyTreemap(items, x, y, width, height) {
+  const out = []
+  const positive = items.filter((it) => it.value > 0)
+  const total = positive.reduce((s, it) => s + it.value, 0)
+  if (total <= 0 || width <= 0 || height <= 0) return out
+  const norm = (width * height) / total
+  const scaled = positive.map((it) => ({ item: it, area: it.value * norm }))
+
+  const rect = { x, y, w: width, h: height }
+
+  const worst = (row, side) => {
+    const sum = row.reduce((s, r) => s + r.area, 0)
+    const max = Math.max(...row.map((r) => r.area))
+    const min = Math.min(...row.map((r) => r.area))
+    const s2 = sum * sum
+    const side2 = side * side
+    return Math.max((side2 * max) / s2, s2 / (side2 * min))
+  }
+
+  const flush = (row) => {
+    const side = Math.min(rect.w, rect.h)
+    const sum = row.reduce((s, r) => s + r.area, 0)
+    const thickness = sum / side
+    if (rect.w >= rect.h) {
+      let cy = rect.y
+      for (const r of row) {
+        const ih = r.area / thickness
+        out.push({ ...r.item, x: rect.x, y: cy, w: thickness, h: ih })
+        cy += ih
+      }
+      rect.x += thickness
+      rect.w -= thickness
+    } else {
+      let cx = rect.x
+      for (const r of row) {
+        const iw = r.area / thickness
+        out.push({ ...r.item, x: cx, y: rect.y, w: iw, h: thickness })
+        cx += iw
+      }
+      rect.y += thickness
+      rect.h -= thickness
+    }
+  }
+
+  let row = []
+  for (const s of scaled) {
+    const side = Math.min(rect.w, rect.h)
+    if (row.length === 0 || worst([...row, s], side) <= worst(row, side)) {
+      row.push(s)
+    } else {
+      flush(row)
+      row = [s]
+    }
+  }
+  if (row.length) flush(row)
+  return out
+}
+
+// Değişimi (ör. ±%6 bandı) yeşil/kırmızı dolgu rengine çevirir (treemap kutuları).
+function heatFill(change) {
+  if (change == null) return 'rgba(148,163,184,0.35)'
+  const mag = Math.min(Math.abs(change) / 0.06, 1)
+  const alpha = 0.28 + mag * 0.62
+  const rgb = change >= 0 ? '22, 163, 74' : '220, 38, 38'
+  return `rgba(${rgb}, ${alpha})`
+}
+
+/**
+ * Piyasa ısı haritası: seçili marketin taranan hisselerini sektöre göre gruplayıp
+ * piyasa değeriyle orantılı kutulara böler; renk bugünkü değişimi verir (Finviz
+ * tarzı). Veri "Bugün" özetiyle aynı kaynaktan (overview[market].stocks).
+ */
+function MarketMap({ overview, market, lang, onOpenChart }) {
+  const W = 1000
+  const H = 560
+  const layout = useMemo(() => {
+    const stocks = (overview?.[market]?.stocks || []).filter(
+      (s) => s.market_cap > 0 && s.change != null,
+    )
+    if (stocks.length < 2) return null
+
+    // Sektöre göre grupla (sektörsüz → "Diğer")
+    const bySector = new Map()
+    for (const s of stocks) {
+      const key = s.sector || '—'
+      if (!bySector.has(key)) bySector.set(key, [])
+      bySector.get(key).push(s)
+    }
+    const sectors = [...bySector.entries()]
+      .map(([sector, list]) => ({
+        sector,
+        list,
+        value: list.reduce((sum, s) => sum + s.market_cap, 0),
+      }))
+      .sort((a, b) => b.value - a.value)
+
+    // 1. seviye: sektör dikdörtgenleri; 2. seviye: sektör içinde hisseler
+    const sectorRects = squarifyTreemap(sectors, 0, 0, W, H)
+    const tiles = []
+    for (const sr of sectorRects) {
+      const pad = 1
+      const inner = squarifyTreemap(
+        [...sr.list].sort((a, b) => b.market_cap - a.market_cap).map((s) => ({ ...s, value: s.market_cap })),
+        sr.x + pad,
+        sr.y + pad + (sr.w > 90 && sr.h > 34 ? 16 : 0), // sektör başlığına yer
+        sr.w - pad * 2,
+        sr.h - pad * 2 - (sr.w > 90 && sr.h > 34 ? 16 : 0),
+      )
+      tiles.push({ sector: sr, cells: inner })
+    }
+    return { tiles }
+  }, [overview, market])
+
+  if (!layout) return <div className="empty-box">{t(lang, 'mapEmpty')}</div>
+
+  return (
+    <div className="marketmap-wrap">
+      <svg
+        className="marketmap"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={t(lang, 'tabMap')}
+        preserveAspectRatio="none"
+      >
+        {layout.tiles.map(({ sector, cells }) => (
+          <g key={sector.sector}>
+            {sector.w > 90 && sector.h > 34 && (
+              <text className="marketmap-sector" x={sector.x + 6} y={sector.y + 12}>
+                {sectorLabel(sector.sector, lang)}
+              </text>
+            )}
+            {cells.map((c) => {
+              const big = c.w > 46 && c.h > 26
+              const mid = c.w > 30 && c.h > 16
+              return (
+                <g key={c.symbol} className="marketmap-tile" onClick={() => onOpenChart(c.symbol)}>
+                  <rect
+                    x={c.x}
+                    y={c.y}
+                    width={Math.max(c.w - 1, 0)}
+                    height={Math.max(c.h - 1, 0)}
+                    fill={heatFill(c.change)}
+                    rx="2"
+                  >
+                    <title>{`${displaySymbol(c.symbol)} · ${formatPct(c.change, 2)}`}</title>
+                  </rect>
+                  {mid && (
+                    <text
+                      className="marketmap-label"
+                      x={c.x + c.w / 2}
+                      y={c.y + c.h / 2 + (big ? -1 : 3)}
+                      textAnchor="middle"
+                      style={{ fontSize: big ? 12 : 9 }}
+                    >
+                      {displaySymbol(c.symbol)}
+                    </text>
+                  )}
+                  {big && (
+                    <text
+                      className="marketmap-change"
+                      x={c.x + c.w / 2}
+                      y={c.y + c.h / 2 + 12}
+                      textAnchor="middle"
+                    >
+                      {formatPct(c.change, 1)}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+          </g>
+        ))}
+      </svg>
+      <div className="marketmap-legend">
+        <span>{t(lang, 'mapLegendDown')}</span>
+        <span className="marketmap-scale" />
+        <span>{t(lang, 'mapLegendUp')}</span>
+        <span className="marketmap-size-note">{t(lang, 'mapSizeNote')}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Piyasa hareketlileri: taranan tüm hisseleri günlük değişime göre sıralar,
+ * en çok yükselen/düşen 8 hisseyi tek bakışta gösterir. Veri zaten "Bugün"
+ * özetinin içinde (overview[market].stocks); ek istek gerektirmez.
+ */
+function TopMovers({ overview, allMarkets, lang, onOpenChart }) {
+  const [tab, setTab] = useState('gainers')
+  const movers = useMemo(() => {
+    const bySymbol = new Map()
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (s.change == null) continue
+        if (!bySymbol.has(s.symbol)) bySymbol.set(s.symbol, s)
+      }
+    }
+    const all = [...bySymbol.values()]
+    return {
+      gainers: [...all].sort((a, b) => b.change - a.change).slice(0, 8),
+      losers: [...all].sort((a, b) => a.change - b.change).slice(0, 8),
+    }
+  }, [overview, allMarkets])
+
+  // En az birkaç hisse yoksa (ör. ilk tarama öncesi) panel gizlenir
+  if (movers.gainers.length < 2) return null
+  const list = tab === 'gainers' ? movers.gainers : movers.losers
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'moversTitle')}</h2>
+      <p className="today-note">{t(lang, 'moversHint')}</p>
+      <div className="tabs movers-tabs">
+        <button
+          type="button"
+          className={`tab ${tab === 'gainers' ? 'active' : ''}`}
+          onClick={() => setTab('gainers')}
+        >
+          ▲ {t(lang, 'moversGainers')}
+        </button>
+        <button
+          type="button"
+          className={`tab ${tab === 'losers' ? 'active' : ''}`}
+          onClick={() => setTab('losers')}
+        >
+          ▼ {t(lang, 'moversLosers')}
+        </button>
+      </div>
+      <div className="movers-grid">
+        {list.map((s) => (
+          <button key={s.symbol} type="button" className="movers-row" onClick={() => onOpenChart(s.symbol)}>
+            <TickerLogo symbol={s.symbol} />
+            <span className="movers-main">
+              <strong>{displaySymbol(s.symbol)}</strong>
+              <span className="movers-sub">{formatNum(s.close, 2)}</span>
+            </span>
+            <span className={`pct movers-change ${pctTone(s.change)}`}>{formatPct(s.change, 2)}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Global arama paleti (⌘K / Ctrl+K): kullanıcı her sayfadan tek kısayolla tüm
+ * taranan hisseler ve fonlar arasında arayıp grafiğe/fon detayına atlar.
+ * "Her özelliğe kolay erişim" fikrinin merkezi giriş noktası.
+ */
+function CommandPalette({ open, onClose, overview, funds, allMarkets, navItems, lang, onOpenStock, onOpenFund, onNavigate }) {
+  const [q, setQ] = useState('')
+  const [active, setActive] = useState(0)
+  const inputRef = useRef(null)
+
+  const index = useMemo(() => {
+    const stocks = []
+    const seen = new Set()
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (seen.has(s.symbol)) continue
+        seen.add(s.symbol)
+        stocks.push({ type: 'stock', symbol: s.symbol, name: displaySymbol(s.symbol), change: s.change })
+      }
+    }
+    const fundItems = (funds?.results || []).map((f) => ({
+      type: 'fund',
+      symbol: f.symbol,
+      name: f.name || f.symbol,
+      fund: f,
+    }))
+    const pages = (navItems || []).map((it) => ({ type: 'page', key: it.key, name: t(lang, it.i18nKey), icon: it.icon }))
+    return { stocks, funds: fundItems, pages }
+  }, [overview, funds, allMarkets, navItems, lang])
+
+  const results = useMemo(() => {
+    const query = q.trim().toLocaleUpperCase('tr-TR')
+    // Sorgu boşken paleti açar açmaz tüm sayfalar hızlı erişim için listelenir
+    if (!query) return { pages: index.pages, stocks: [], funds: [] }
+    const match = (it) =>
+      (it.symbol || '').toLocaleUpperCase('tr-TR').includes(query) ||
+      (it.name || '').toLocaleUpperCase('tr-TR').includes(query)
+    return {
+      pages: index.pages.filter(match),
+      stocks: index.stocks.filter(match).slice(0, 7),
+      funds: index.funds.filter(match).slice(0, 7),
+    }
+  }, [q, index])
+
+  const flat = useMemo(() => [...results.pages, ...results.stocks, ...results.funds], [results])
+
+  useEffect(() => {
+    setActive(0)
+  }, [q])
+
+  useEffect(() => {
+    if (!open) return
+    setQ('')
+    setActive(0)
+    const focusId = setTimeout(() => inputRef.current?.focus(), 30)
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(focusId)
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose])
+
+  if (!open) return null
+
+  const choose = (item) => {
+    if (!item) return
+    if (item.type === 'page') onNavigate(item.key)
+    else if (item.type === 'stock') onOpenStock(item.symbol)
+    else onOpenFund(item.fund)
+    onClose()
+  }
+
+  const onInputKey = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => Math.min(i + 1, flat.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      choose(flat[active])
+    }
+  }
+
+  // idx her render'da yeniden sayılır; düz listeyle (flat) aynı sırayı tutar,
+  // böylece klavye ile seçili satır tıklamayla birebir eşleşir.
+  let idx = -1
+  const row = (item) => {
+    idx += 1
+    const i = idx
+    return (
+      <button
+        key={item.type + (item.symbol || item.key)}
+        type="button"
+        className={`cmdk-row ${i === active ? 'active' : ''}`}
+        onMouseEnter={() => setActive(i)}
+        onClick={() => choose(item)}
+      >
+        {item.type === 'page' ? (
+          <span className="cmdk-page-icon" aria-hidden="true">{item.icon}</span>
+        ) : (
+          <TickerLogo symbol={item.symbol} />
+        )}
+        <span className="cmdk-row-main">
+          <strong>{item.type === 'page' ? item.name : displaySymbol(item.symbol)}</strong>
+          {item.type === 'fund' && item.name && <span className="cmdk-row-sub">{item.name}</span>}
+        </span>
+        {item.type === 'stock' && item.change != null && (
+          <span className={`pct ${pctTone(item.change)}`}>{formatPct(item.change, 2)}</span>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="modal-backdrop cmdk-backdrop" onClick={onClose}>
+      <div className="cmdk" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="cmdk-input-row">
+          <span className="cmdk-search-icon" aria-hidden="true">🔍</span>
+          <input
+            ref={inputRef}
+            className="cmdk-input"
+            type="text"
+            placeholder={t(lang, 'cmdkPlaceholder')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onInputKey}
+            aria-label={t(lang, 'cmdkPlaceholder')}
+          />
+          <button className="cmdk-esc" type="button" onClick={onClose}>
+            Esc
+          </button>
+        </div>
+        <div className="cmdk-body">
+          {flat.length === 0 ? (
+            <div className="cmdk-hint">{t(lang, 'cmdkEmpty', q.trim())}</div>
+          ) : (
+            <>
+              {results.pages.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkPages')}</div>
+                  {results.pages.map(row)}
+                </div>
+              )}
+              {results.stocks.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkStocks')}</div>
+                  {results.stocks.map(row)}
+                </div>
+              )}
+              {results.funds.length > 0 && (
+                <div className="cmdk-group">
+                  <div className="cmdk-group-title">{t(lang, 'cmdkFunds')}</div>
+                  {results.funds.map(row)}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="cmdk-footer">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> {t(lang, 'cmdkNav')}
+          </span>
+          <span>
+            <kbd>↵</kbd> {t(lang, 'cmdkSelect')}
+          </span>
+          <span>
+            <kbd>esc</kbd> {t(lang, 'cmdkClose')}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function loadTheme() {
+  try {
+    const v = localStorage.getItem('theme')
+    return v === 'light' || v === 'dark' ? v : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+// data-theme yoksa sistem tercihi (prefers-color-scheme) geçerli olur.
+function applyTheme(theme) {
+  const root = document.documentElement
+  if (theme === 'system') root.removeAttribute('data-theme')
+  else root.setAttribute('data-theme', theme)
+}
+
+const THEME_OPTIONS = [
+  { key: 'light', i18nKey: 'themeLight', icon: '☀' },
+  { key: 'dark', i18nKey: 'themeDark', icon: '☾' },
+  { key: 'system', i18nKey: 'themeSystem', icon: '◐' },
+]
+
+// --- Fiyat / skor alarmları (client-side) ---
+const ALERT_STOCK_FIELDS = [
+  { key: 'score', i18nKey: 'colScore', kind: 'num' },
+  { key: 'rsi', label: 'RSI', kind: 'num' },
+  { key: 'close', i18nKey: 'alertPrice', kind: 'price' },
+  { key: 'change', i18nKey: 'alertDailyChange', kind: 'pct' },
+]
+const ALERT_FUND_FIELDS = [
+  { key: 'score', i18nKey: 'colScore', kind: 'num' },
+  { key: 'return_1d', i18nKey: 'alertDailyChange', kind: 'pct' },
+  { key: 'return_1y', label: '1Y %', kind: 'pct' },
+]
+const alertFields = (type) => (type === 'fund' ? ALERT_FUND_FIELDS : ALERT_STOCK_FIELDS)
+const alertFieldLabel = (field, lang) => (field?.i18nKey ? t(lang, field.i18nKey) : field?.label || '')
+
+function loadAlerts() {
+  try {
+    const list = JSON.parse(localStorage.getItem('alerts') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveAlerts(list) {
+  localStorage.setItem('alerts', JSON.stringify(list))
+}
+
+// Görünen tabloyu CSV olarak indirir. BOM eklenir ki Excel Türkçe karakterleri
+// ve UTF-8'i doğru okusun; alanlar gerektiğinde tırnaklanır.
+function downloadCsv(filename, headerRow, dataRows) {
+  const esc = (v) => {
+    if (v == null) return ''
+    const s = String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const body = [headerRow, ...dataRows].map((r) => r.map(esc).join(',')).join('\n')
+  const blob = new Blob([`﻿${body}`], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Alarmın güncel ölçüt değeri (hisse puanı anlık hesaplanır, diğerleri okunur)
+function alertCurrentValue(alert, stockMap, fundMap) {
+  if (alert.type === 'fund') {
+    const f = fundMap.get(alert.symbol)
+    return f ? f[alert.field] ?? null : null
+  }
+  const s = stockMap.get(alert.symbol)
+  if (!s) return null
+  if (alert.field === 'score') {
+    const emaPeriods = [9, 21, 50, 200].filter((p) => s[`ema_${p}`] != null)
+    return technicalScore(s, emaPeriods)
+  }
+  return s[alert.field] ?? null
+}
+
+function alertIsTriggered(value, alert) {
+  if (value == null) return false
+  const cur = alert.kind === 'pct' ? value * 100 : value
+  return alert.op === 'above' ? cur >= alert.value : cur <= alert.value
+}
+
+function formatAlertCurrent(value, kind) {
+  if (value == null) return '—'
+  if (kind === 'pct') return formatPct(value, 2)
+  if (kind === 'price') return formatNum(value, 2)
+  return Number.isInteger(value) ? String(value) : formatNum(value, 1)
+}
+
+function alertCondText(alert, lang) {
+  const field = alertFields(alert.type).find((f) => f.key === alert.field)
+  const opWord = t(lang, alert.op === 'above' ? 'alertAbove' : 'alertBelow')
+  const val = `${alert.value}${alert.kind === 'pct' ? '%' : ''}`
+  return t(lang, 'alertCond', alertFieldLabel(field, lang), opWord, val)
+}
+
+/**
+ * Alarmlar: hisse/fon için eşik alarmı kurma ve durum takibi. Değerler yüklü
+ * tarama/fon verisinden anlık hesaplanır; tetiklenenler tarayıcı bildirimiyle
+ * (App'teki genel efekt) haber verir. Alarmlar yalnızca localStorage'da yaşar.
+ */
+function AlertsView({ evals, stockMap, fundMap, funds, lang, notifyPerm, onEnableNotify, onAdd, onRemove, onOpenStock, onOpenFund }) {
+  const [form, setForm] = useState({ type: 'stock', symbol: '', field: 'score', op: 'below', value: '' })
+  const [err, setErr] = useState(null)
+
+  const fields = alertFields(form.type)
+  const stockCodes = useMemo(
+    () => [...stockMap.keys()].filter((s) => s.endsWith('.IS')).map((s) => s.replace('.IS', '')).sort(),
+    [stockMap],
+  )
+  const fundList = funds?.results || []
+
+  function resolveSymbol() {
+    const raw = form.symbol.trim().toUpperCase()
+    if (!raw) return null
+    if (form.type === 'fund') return fundMap.has(raw) ? raw : null
+    if (stockMap.has(raw)) return raw
+    if (stockMap.has(`${raw}.IS`)) return `${raw}.IS`
+    return null
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    const sym = resolveSymbol()
+    if (!sym) return setErr(t(lang, 'alertErrSymbol'))
+    const val = Number(String(form.value).replace(',', '.'))
+    if (!Number.isFinite(val)) return setErr(t(lang, 'alertErrValue'))
+    const field = fields.find((f) => f.key === form.field) || fields[0]
+    onAdd({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: form.type,
+      symbol: sym,
+      field: field.key,
+      kind: field.kind,
+      op: form.op,
+      value: val,
+    })
+    setForm((f) => ({ ...f, symbol: '', value: '' }))
+    setErr(null)
+  }
+
+  const changeType = (type) =>
+    setForm((f) => ({ ...f, type, field: alertFields(type)[0].key, symbol: '' }))
+
+  const notifyBtn =
+    notifyPerm === 'granted' ? (
+      <span className="alert-notify-on">{t(lang, 'alertNotifyOn')}</span>
+    ) : notifyPerm === 'denied' ? (
+      <span className="alert-notify-blocked">{t(lang, 'alertNotifyBlocked')}</span>
+    ) : notifyPerm === 'unsupported' ? null : (
+      <button className="btn" type="button" onClick={onEnableNotify}>
+        {t(lang, 'alertEnableNotify')}
+      </button>
+    )
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'alertsIntro')}</span>
+        {notifyBtn}
+      </div>
+
+      <form className="alert-form" onSubmit={submit}>
+        <div className="tabs alert-type">
+          <button type="button" className={`tab ${form.type === 'stock' ? 'active' : ''}`} onClick={() => changeType('stock')}>
+            {t(lang, 'alertTypeStock')}
+          </button>
+          <button type="button" className={`tab ${form.type === 'fund' ? 'active' : ''}`} onClick={() => changeType('fund')}>
+            {t(lang, 'alertTypeFund')}
+          </button>
+        </div>
+        <input
+          className="search-input alert-symbol"
+          list="alert-symbol-options"
+          placeholder={t(lang, 'alertSymbol')}
+          value={form.symbol}
+          onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
+        />
+        <datalist id="alert-symbol-options">
+          {form.type === 'fund'
+            ? fundList.map((f) => (
+                <option key={f.symbol} value={f.symbol}>
+                  {f.name}
+                </option>
+              ))
+            : stockCodes.map((c) => <option key={c} value={c} />)}
+        </datalist>
+        <select
+          className="search-input alert-select"
+          value={form.field}
+          onChange={(e) => setForm((f) => ({ ...f, field: e.target.value }))}
+        >
+          {fields.map((f) => (
+            <option key={f.key} value={f.key}>
+              {alertFieldLabel(f, lang)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="search-input alert-select"
+          value={form.op}
+          onChange={(e) => setForm((f) => ({ ...f, op: e.target.value }))}
+        >
+          <option value="below">{t(lang, 'alertBelow')}</option>
+          <option value="above">{t(lang, 'alertAbove')}</option>
+        </select>
+        <input
+          className="search-input alert-value"
+          type="text"
+          inputMode="decimal"
+          placeholder={t(lang, 'alertValue')}
+          value={form.value}
+          onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+        />
+        <button className="btn primary" type="submit">
+          {t(lang, 'alertAdd')}
+        </button>
+      </form>
+      {err && <div className="error-box">{err}</div>}
+
+      {evals.length === 0 ? (
+        <div className="empty-box">{t(lang, 'alertEmpty')}</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="left">{t(lang, 'alertSymbol')}</th>
+                <th className="left">{t(lang, 'alertColCond')}</th>
+                <th>{t(lang, 'alertColCurrent')}</th>
+                <th>{t(lang, 'alertColStatus')}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {evals.map((a) => (
+                <tr key={a.id} className={a.triggered ? 'alert-hit' : ''}>
+                  <td className="symbol-cell">
+                    <button
+                      className="symbol-btn"
+                      type="button"
+                      onClick={() => (a.type === 'fund' ? onOpenFund(fundMap.get(a.symbol)) : onOpenStock(a.symbol))}
+                      disabled={a.type === 'fund' && !fundMap.get(a.symbol)}
+                    >
+                      <TickerLogo symbol={a.symbol} />
+                      {displaySymbol(a.symbol)}
+                    </button>
+                  </td>
+                  <td className="left">{alertCondText(a, lang)}</td>
+                  <td>{a.current == null ? t(lang, 'alertNoData') : formatAlertCurrent(a.current, a.kind)}</td>
+                  <td>
+                    <span className={`badge ${a.triggered ? 'alert-badge-hit' : 'alert-badge-wait'}`}>
+                      {a.triggered ? t(lang, 'alertTriggered') : t(lang, 'alertWaiting')}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="star-btn pf-remove" type="button" title={t(lang, 'alertRemove')} onClick={() => onRemove(a.id)}>
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
 function App() {
   const [lang, setLangState] = useState(getLang)
   // Açılışta ham tablo yerine günün özeti karşılasın
@@ -2714,6 +4153,12 @@ function App() {
   const [overviewError, setOverviewError] = useState(null)
   const [todayTimeframe, setTodayTimeframe] = useState('daily')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setThemeState] = useState(loadTheme)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [alerts, setAlerts] = useState(loadAlerts)
+  const [notifyPerm, setNotifyPerm] = useState(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  )
   const [enabledMarketKeys, setEnabledMarketKeys] = useState(null)
   // Manifest çözülene kadar market listesi bilinmez. Bunu beklemeden veri çekersek
   // kapalı marketlerin dosyalarını isteyip 404 alırız (ve sekmeleri kısa süre gösteririz).
@@ -2753,6 +4198,127 @@ function App() {
       setMarket(activeMarkets[0].key)
     }
   }, [activeMarkets, market])
+
+  // Tema seçimi <html> data-theme'ine yansır (data-theme yoksa sistem tercihi)
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
+
+  function changeTheme(next) {
+    try {
+      if (next === 'system') localStorage.removeItem('theme')
+      else localStorage.setItem('theme', next)
+    } catch {
+      /* ignore */
+    }
+    setThemeState(next)
+  }
+
+  // ⌘K / Ctrl+K her yerden arama paletini aç/kapat
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Alarm değerlendirmesi için hisse/fon haritaları (yüklü günlük özet + fonlar)
+  const stockMap = useMemo(() => {
+    const m = new Map()
+    for (const mk of activeMarkets) {
+      for (const s of overviewCache.daily?.[mk.key]?.stocks || []) if (!m.has(s.symbol)) m.set(s.symbol, s)
+    }
+    return m
+  }, [overviewCache.daily, activeMarkets])
+
+  const fundMap = useMemo(() => {
+    const m = new Map()
+    for (const f of funds?.results || []) m.set(f.symbol, f)
+    return m
+  }, [funds])
+
+  const alertEvals = useMemo(
+    () =>
+      alerts.map((a) => {
+        const current = alertCurrentValue(a, stockMap, fundMap)
+        return { ...a, current, triggered: alertIsTriggered(current, a) }
+      }),
+    [alerts, stockMap, fundMap],
+  )
+  const alertTriggeredCount = alertEvals.filter((a) => a.triggered).length
+
+  function addAlert(alert) {
+    setAlerts((prev) => {
+      const next = [...prev, alert]
+      saveAlerts(next)
+      return next
+    })
+  }
+
+  function removeAlert(id) {
+    setAlerts((prev) => {
+      const next = prev.filter((a) => a.id !== id)
+      saveAlerts(next)
+      return next
+    })
+  }
+
+  function enableNotify() {
+    if (typeof Notification === 'undefined') return
+    Notification.requestPermission().then((p) => setNotifyPerm(p))
+  }
+
+  // Veri her güncellendiğinde tetiklenen alarmlar için tarayıcı bildirimi.
+  // lastGen ile aynı tarama için tekrar bildirim atılmaz.
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || !alerts.length) return
+    const firstKey = activeMarkets.find((m) => overviewCache.daily?.[m.key])?.key
+    const gen = `${overviewCache.daily?.[firstKey]?.generated_at || ''}|${funds?.generated_at || ''}`
+    if (gen === '|') return
+    let changed = false
+    const next = alerts.map((a) => {
+      const v = alertCurrentValue(a, stockMap, fundMap)
+      if (alertIsTriggered(v, a) && a.lastGen !== gen) {
+        try {
+          new Notification(t(lang, 'alertNotifTitle', displaySymbol(a.symbol)), {
+            body: t(lang, 'alertNotifBody', alertCondText(a, lang), formatAlertCurrent(v, a.kind)),
+          })
+        } catch {
+          /* bildirim atılamadıysa sessiz geç */
+        }
+        changed = true
+        return { ...a, lastGen: gen }
+      }
+      return a
+    })
+    if (changed) {
+      setAlerts(next)
+      saveAlerts(next)
+    }
+  }, [alerts, overviewCache.daily, funds, stockMap, fundMap, activeMarkets, lang])
+
+  // Arama paleti açılınca arama dizini için fon + günlük özet verisi hazır olsun
+  useEffect(() => {
+    if (!paletteOpen || funds || fundsLoading) return
+    loadFunds()
+  }, [paletteOpen, funds, fundsLoading])
+
+  useEffect(() => {
+    if (!paletteOpen || !marketsResolved || overviewCache.daily) return
+    let cancelled = false
+    fetchDailyOverview(activeMarkets.map((m) => m.key), 'daily')
+      .then((result) => {
+        if (!cancelled) setOverviewCache((prev) => (prev.daily ? prev : { ...prev, daily: result }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [paletteOpen, marketsResolved, overviewCache.daily, activeMarkets])
 
   function load(live = false) {
     setLoading(true)
@@ -2809,8 +4375,10 @@ function App() {
       view !== 'funds' &&
       view !== 'today' &&
       view !== 'fundCompare' &&
+      view !== 'fundLeague' &&
       view !== 'watchlist' &&
-      view !== 'portfolio'
+      view !== 'portfolio' &&
+      view !== 'alerts'
     )
       return
     if (funds) return
@@ -2904,9 +4472,10 @@ function App() {
     }
   }, [view, fundFlowsReady])
 
-  // Skor geçmişi (değişim raporu) yalnızca Bugün sayfasında gerekir.
+  // Skor geçmişi: Bugün sayfasında (değişim raporu) ve bir hisse grafiği açılınca
+  // (detaydaki skor geçmişi sparkline'ı) gerekir.
   useEffect(() => {
-    if (view !== 'today' || scoreHistoryReady) return
+    if ((view !== 'today' && !chartSymbol) || scoreHistoryReady) return
     let cancelled = false
     fetchScoreHistory()
       .then((result) => {
@@ -2919,11 +4488,12 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, scoreHistoryReady])
+  }, [view, scoreHistoryReady, chartSymbol])
 
   useEffect(() => {
-    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi)
-    if (view !== 'stockPositions' && view !== 'fundCompare') return
+    // Karşılaştır sekmesi de KAP verisini kullanır (portföy örtüşme analizi);
+    // bir BIST hisse grafiği açılınca da (detaydaki "taşıyan fonlar" bloğu).
+    if (view !== 'stockPositions' && view !== 'fundCompare' && !chartSymbol?.endsWith('.IS')) return
     if (stockPositions) return
     let cancelled = false
     setStockPositionsLoading(true)
@@ -2941,7 +4511,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [view, stockPositions])
+  }, [view, stockPositions, chartSymbol])
 
   // Backtest tek bir dosyada tüm market/timeframe'leri taşır: bir kez yüklenir,
   // market/zaman dilimi değişince yeniden istek atılmaz.
@@ -2969,8 +4539,16 @@ function App() {
   // "Bugün" özeti: nabız/öne çıkan sinyaller için günlük her zaman; market kartları
   // için seçilen dilim (günlük/haftalık/aylık). Cache'lenen dilimler tekrar çekilmez.
   useEffect(() => {
-    // İzlediklerim ve Hisse Karşılaştır sekmeleri de günlük özetten beslenir.
-    if (view !== 'today' && view !== 'watchlist' && view !== 'stockCompare') return
+    // İzlediklerim, Hisse Karşılaştır, Harita, Alarmlar ve Portföy de günlük özetten beslenir.
+    if (
+      view !== 'today' &&
+      view !== 'watchlist' &&
+      view !== 'stockCompare' &&
+      view !== 'map' &&
+      view !== 'alerts' &&
+      view !== 'portfolio'
+    )
+      return
     if (!marketsResolved) return
     const wanted = view === 'today' ? ['daily', todayTimeframe] : ['daily']
     const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
@@ -3038,6 +4616,31 @@ function App() {
     if (!sym) return null
     return news.items.filter((n) => n.symbol === sym)
   }, [chartSymbol, chartFund, news])
+
+  // Açık grafik modalı için hisse kaydı, taşıyan fonlar ve skor geçmişi serisi
+  const chartStock = useMemo(() => {
+    if (!chartSymbol) return null
+    for (const m of activeMarkets) {
+      const found = (overviewCache.daily?.[m.key]?.stocks || []).find((s) => s.symbol === chartSymbol)
+      if (found) return found
+    }
+    return null
+  }, [chartSymbol, overviewCache.daily, activeMarkets])
+
+  const chartPositions = useMemo(() => {
+    if (!chartSymbol) return null
+    return stockPositions?.stocks?.[chartSymbol.replace('.IS', '')] || null
+  }, [chartSymbol, stockPositions])
+
+  const chartScoreSeries = useMemo(() => {
+    if (!chartSymbol || !scoreHistory?.history) return null
+    const out = []
+    for (const date of Object.keys(scoreHistory.history).sort()) {
+      const s = scoreHistory.history[date]?.[chartSymbol]?.s
+      if (s != null) out.push([date, s])
+    }
+    return out.length > 1 ? out : null
+  }, [chartSymbol, scoreHistory])
   const availableEmas = data?.ema_periods || (timeframe === 'monthly' ? [9, 21, 50] : [9, 21, 50, 200])
 
   const isCustom = useMemo(() => {
@@ -3045,11 +4648,19 @@ function App() {
       filters.rsi !== DEFAULT_FILTERS.rsi ||
       filters.stochK !== DEFAULT_FILTERS.stochK ||
       filters.stochRsiK !== DEFAULT_FILTERS.stochRsiK ||
-      filters.macdPositive !== DEFAULT_FILTERS.macdPositive
+      filters.macdPositive !== DEFAULT_FILTERS.macdPositive ||
+      filters.sectors?.length
     )
       return true
     return availableEmas.some((p) => !filters.emas[p])
   }, [filters, availableEmas])
+
+  // Filtre panelindeki sektör seçimi için taramadaki mevcut sektörler
+  const availableSectors = useMemo(() => {
+    const set = new Set()
+    for (const s of data?.stocks || []) if (s.sector) set.add(s.sector)
+    return [...set].sort((a, b) => sectorLabel(a, lang).localeCompare(sectorLabel(b, lang), lang))
+  }, [data, lang])
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -3117,6 +4728,29 @@ function App() {
     )
   }
 
+  // Görünen (filtrelenmiş/sıralı) tabloları CSV'ye aktar. Yüzdeler okunur olsun
+  // diye 100 ile çarpılır; sembol arayüzdeki gösterim koduyla yazılır.
+  function exportScreenerCsv() {
+    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+    const header = ['Sembol', 'Puan', 'Kapanış', 'Değişim %', 'Piyasa Değeri', 'Göreli Güç %', 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K']
+    const dataRows = rows.map((r) => [
+      displaySymbol(r.symbol), r.score ?? '', r.close ?? '', pct(r.change), r.market_cap ?? '',
+      pct(r.relative_strength), r.rsi ?? '', r.macd_line ?? '', r.stoch_k ?? '', r.stoch_rsi_k ?? '',
+    ])
+    downloadCsv(`tarama-${market}-${timeframe}.csv`, header, dataRows)
+  }
+
+  function exportFundsCsv() {
+    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+    const header = ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Max Düşüş %', 'Büyüklük']
+    const dataRows = fundRows.map((f) => [
+      f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
+      pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
+      pct(f.volatility), f.sharpe ?? '', pct(f.max_drawdown), f.portfolio_size ?? '',
+    ])
+    downloadCsv('fonlar.csv', header, dataRows)
+  }
+
   // Yeni sinyal bilgisi results üzerinde gelir; stocks listesinde göstermek için haritalanır
   const newSymbols = useMemo(
     () => new Set((data?.results || []).filter((r) => r.is_new).map((r) => r.symbol)),
@@ -3175,26 +4809,46 @@ function App() {
                 {item.icon}
               </span>
               {t(lang, item.i18nKey)}
+              {item.key === 'alerts' && alertTriggeredCount > 0 && (
+                <span className="nav-badge">{alertTriggeredCount}</span>
+              )}
             </button>
           ))}
         </nav>
 
-        <div className="tabs lang-switch" role="group" aria-label="Language">
-          {['tr', 'en'].map((code) => (
-            <button
-              key={code}
-              type="button"
-              className={`tab ${lang === code ? 'active' : ''}`}
-              onClick={() => {
-                if (lang !== code) {
-                  persistLang(code)
-                  setLangState(code)
-                }
-              }}
-            >
-              {code.toUpperCase()}
-            </button>
-          ))}
+        <div className="sidebar-foot">
+          <div className="tabs theme-switch" role="group" aria-label={t(lang, 'themeLabel')}>
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`tab ${theme === opt.key ? 'active' : ''}`}
+                title={t(lang, opt.i18nKey)}
+                aria-pressed={theme === opt.key}
+                onClick={() => changeTheme(opt.key)}
+              >
+                <span aria-hidden="true">{opt.icon}</span>
+                <span className="theme-switch-label">{t(lang, opt.i18nKey)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="tabs lang-switch" role="group" aria-label="Language">
+            {['tr', 'en'].map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={`tab ${lang === code ? 'active' : ''}`}
+                onClick={() => {
+                  if (lang !== code) {
+                    persistLang(code)
+                    setLangState(code)
+                  }
+                }}
+              >
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
       </aside>
 
@@ -3211,10 +4865,20 @@ function App() {
           <p className="tagline">
             {t(lang, 'tagline')} · {lang === 'en' ? activeTimeframe.horizonEn : activeTimeframe.horizon}
           </p>
+          <button
+            className="cmdk-trigger"
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label={t(lang, 'cmdkTrigger')}
+          >
+            <span className="cmdk-trigger-icon" aria-hidden="true">🔍</span>
+            <span className="cmdk-trigger-text">{t(lang, 'cmdkPlaceholder')}</span>
+            <kbd className="cmdk-trigger-kbd">⌘K</kbd>
+          </button>
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
-            {(view === 'screener' || view === 'backtest') && marketsResolved && (
+            {(view === 'screener' || view === 'backtest' || view === 'map') && marketsResolved && (
               <div className="tabs">
                 {activeMarkets.map((m) => (
                   <button
@@ -3265,23 +4929,6 @@ function App() {
               selectView(nextView)
             }}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3299,24 +4946,15 @@ function App() {
             onOpenFund={setChartFund}
             onToggleStock={toggleWatch}
             onToggleFund={toggleFundWatch}
+            onCompareStocks={(symbols) => {
+              setCompareSeed(symbols)
+              selectView('stockCompare')
+            }}
+            onCompareFunds={(symbols) => {
+              setCompareSeed(symbols)
+              selectView('fundCompare')
+            }}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3326,28 +4964,12 @@ function App() {
             funds={funds}
             prices={fundPrices}
             stockPrices={stockPrices}
+            stockMap={stockMap}
             lang={lang}
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
             onOpenStock={setChartSymbol}
           />
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
       )}
 
@@ -3388,6 +5010,11 @@ function App() {
                 ⭐ {t(lang, 'favorites')}
                 {fundWatchlist.size ? ` (${fundWatchlist.size})` : ''}
               </button>
+              {fundRows.length > 0 && (
+                <button className="btn" onClick={exportFundsCsv}>
+                  ⬇ {t(lang, 'exportCsv')}
+                </button>
+              )}
               <button
                 className="btn"
                 disabled={fundsLoading}
@@ -3522,21 +5149,11 @@ function App() {
           )}
 
           <p className="disclaimer">{t(lang, 'fundDisclaimer')}</p>
-          {chartFund && (
-            <FundModal
-              fund={chartFund}
-              news={chartNews}
-              lang={lang}
-              prices={fundPrices}
-              pricesLoading={fundPricesLoading}
-              onClose={() => setChartFund(null)}
-              onCompare={(symbol) => {
-                setCompareSeed([symbol])
-                selectView('fundCompare')
-              }}
-            />
-          )}
         </>
+      )}
+
+      {view === 'fundLeague' && (
+        <FundLeague funds={funds} lang={lang} loading={fundsLoading} onOpenFund={setChartFund} />
       )}
 
       {view === 'fundCompare' && (
@@ -3571,6 +5188,42 @@ function App() {
         />
       )}
 
+      {view === 'alerts' && (
+        <AlertsView
+          evals={alertEvals}
+          stockMap={stockMap}
+          fundMap={fundMap}
+          funds={funds}
+          lang={lang}
+          notifyPerm={notifyPerm}
+          onEnableNotify={enableNotify}
+          onAdd={addAlert}
+          onRemove={removeAlert}
+          onOpenStock={setChartSymbol}
+          onOpenFund={setChartFund}
+        />
+      )}
+
+      {view === 'map' && (
+        <>
+          <div className="status-bar">
+            <span>{t(lang, 'mapIntro')}</span>
+          </div>
+          {overviewLoading && !overviewCache.daily ? (
+            <div className="empty-box">{t(lang, 'loading')}</div>
+          ) : overviewError && !overviewCache.daily ? (
+            <div className="error-box">{overviewError}</div>
+          ) : (
+            <MarketMap
+              overview={overviewCache.daily}
+              market={market}
+              lang={lang}
+              onOpenChart={setChartSymbol}
+            />
+          )}
+        </>
+      )}
+
       {view === 'news' && (
         <>
           <div className="status-bar">
@@ -3593,9 +5246,6 @@ function App() {
             onOpenChart={setChartSymbol}
           />
           <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
-          {chartSymbol && (
-            <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-          )}
         </>
       )}
 
@@ -3626,6 +5276,11 @@ function App() {
             ⭐ {t(lang, 'favorites')}
             {watchlist.size ? ` (${watchlist.size})` : ''}
           </button>
+          {rows.length > 0 && (
+            <button className="btn" onClick={exportScreenerCsv}>
+              ⬇ {t(lang, 'exportCsv')}
+            </button>
+          )}
           {STATIC_MODE ? (
             <button className="btn" disabled={loading} onClick={() => load(false)}>
               {loading && <span className="spinner" />}
@@ -3652,6 +5307,7 @@ function App() {
           availableEmas={availableEmas}
           isCustom={isCustom}
           lang={lang}
+          sectors={availableSectors}
         />
       )}
 
@@ -3811,12 +5467,55 @@ function App() {
       )}
 
       <p className="disclaimer">{t(lang, 'disclaimer')}</p>
-
-      {chartSymbol && (
-        <ChartModal symbol={chartSymbol} news={chartNews} lang={lang} series={stockPrices?.series?.[chartSymbol]} seriesLoading={stockPricesLoading} onClose={() => setChartSymbol(null)} />
-      )}
         </>
       )}
+
+      {/* Grafik/fon modalları ve arama paleti tek yerde: hangi sekmede olursak
+          olalım (arama paletinden dahil) açılabilsinler. */}
+      {chartSymbol && (
+        <ChartModal
+          symbol={chartSymbol}
+          news={chartNews}
+          lang={lang}
+          series={stockPrices?.series?.[chartSymbol]}
+          seriesLoading={stockPricesLoading}
+          stock={chartStock}
+          positions={chartPositions}
+          scoreSeries={chartScoreSeries}
+          onCompare={(sym) => {
+            setCompareSeed([sym])
+            selectView('stockCompare')
+          }}
+          onClose={() => setChartSymbol(null)}
+        />
+      )}
+      {chartFund && (
+        <FundModal
+          fund={chartFund}
+          news={chartNews}
+          lang={lang}
+          funds={funds}
+          prices={fundPrices}
+          pricesLoading={fundPricesLoading}
+          onClose={() => setChartFund(null)}
+          onCompare={(symbol) => {
+            setCompareSeed([symbol])
+            selectView('fundCompare')
+          }}
+        />
+      )}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        overview={overviewCache.daily}
+        funds={funds}
+        allMarkets={activeMarkets}
+        navItems={NAV_ITEMS}
+        lang={lang}
+        onOpenStock={setChartSymbol}
+        onOpenFund={setChartFund}
+        onNavigate={selectView}
+      />
       </main>
     </div>
   )
