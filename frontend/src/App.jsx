@@ -635,8 +635,17 @@ function fundPeriodStartMs(periodKey, lastMs) {
 /** [[YYYY-MM-DD, price], ...] → temiz, sıralı [{t, px}] (tümü). */
 function cleanFundPoints(points) {
   if (!points?.length) return []
+  // Format: [tarih, kapanış] (fonlar) veya [tarih, kapanış, açılış, yüksek, düşük]
+  // (hisseler, mum grafiği için). Index 1 her iki formatta da kapanıştır.
+  const fin = (v) => (Number.isFinite(v) ? v : null)
   return points
-    .map(([d, p]) => ({ t: Date.parse(d), px: Number(p) }))
+    .map(([d, c, o, h, l]) => ({
+      t: Date.parse(d),
+      px: Number(c),
+      o: fin(Number(o)),
+      h: fin(Number(h)),
+      l: fin(Number(l)),
+    }))
     .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.px) && x.px > 0)
     .sort((a, b) => a.t - b.t)
 }
@@ -742,8 +751,12 @@ function FundPriceChart({ points, lang, showEma = false }) {
   const [period, setPeriod] = useState('3m')
   const [hover, setHover] = useState(null)
   const [emaOn, setEmaOn] = useState(false)
+  const [candleOn, setCandleOn] = useState(false)
   const full = useMemo(() => cleanFundPoints(points), [points])
   const data = useMemo(() => parseFundSeries(points, period), [points, period])
+  // Mum grafiği yalnızca OHLC taşıyan serilerde (hisseler) mümkün; fonlarda kapanış var
+  const hasOhlc = useMemo(() => data.some((d) => d.o != null && d.h != null && d.l != null), [data])
+  const candle = candleOn && hasOhlc
 
   // EMA'lar tam seriden hesaplanıp görünen pencereye kırpılır (aşağıda minT ile)
   const emaLines = useMemo(() => {
@@ -770,6 +783,15 @@ function FundPriceChart({ points, lang, showEma = false }) {
           {lang === 'en' ? p.labelEn : p.label}
         </button>
       ))}
+      {hasOhlc && (
+        <button
+          type="button"
+          className={`fund-price-period ${candle ? 'active' : ''}`}
+          onClick={() => setCandleOn((v) => !v)}
+        >
+          {t(lang, 'chartCandle')}
+        </button>
+      )}
       {showEma && (
         <button
           type="button"
@@ -805,6 +827,8 @@ function FundPriceChart({ points, lang, showEma = false }) {
     .filter((l) => l.pts.length >= 2)
 
   const pxVals = data.map((d) => d.px)
+  // Mum modunda fitil uçları (yüksek/düşük) da ölçeğe girsin, taşmasın
+  if (candle) for (const d of data) if (d.h != null) pxVals.push(d.h, d.l)
   for (const l of emaWindows) for (const p of l.pts) pxVals.push(p.v)
   const minP = Math.min(...pxVals)
   const maxP = Math.max(...pxVals)
@@ -871,8 +895,30 @@ function FundPriceChart({ points, lang, showEma = false }) {
               </text>
             </g>
           ))}
-          <path className={`fund-price-area ${dir}`} d={areaPath} />
-          <path className={`fund-price-line ${dir}`} d={linePath} />
+          {candle ? (
+            <g className="candles">
+              {data.map((d) => {
+                const cx = x(d.t)
+                const w = Math.max(1.5, Math.min(9, (innerW / data.length) * 0.62))
+                const up = d.px >= (d.o ?? d.px)
+                const yo = y(d.o ?? d.px)
+                const yc = y(d.px)
+                const top = Math.min(yo, yc)
+                const bh = Math.max(1, Math.abs(yc - yo))
+                return (
+                  <g key={d.t} className={`candle ${up ? 'up' : 'down'}`}>
+                    <line className="candle-wick" x1={cx} x2={cx} y1={y(d.h ?? d.px)} y2={y(d.l ?? d.px)} />
+                    <rect className="candle-body" x={cx - w / 2} y={top} width={w} height={bh} />
+                  </g>
+                )
+              })}
+            </g>
+          ) : (
+            <>
+              <path className={`fund-price-area ${dir}`} d={areaPath} />
+              <path className={`fund-price-line ${dir}`} d={linePath} />
+            </>
+          )}
           {emaWindows.map((l) => (
             <path
               key={l.n}

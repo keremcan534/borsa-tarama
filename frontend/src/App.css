@@ -3334,3 +3334,25 @@ tr.alert-hit td {
   color: var(--text);
   opacity: 0.85;
 }
+
+/* ---------- mum (candlestick) grafik ---------- */
+
+.candle-wick {
+  stroke-width: 1;
+}
+
+.candle.up .candle-wick {
+  stroke: var(--up);
+}
+
+.candle.down .candle-wick {
+  stroke: var(--down);
+}
+
+.candle.up .candle-body {
+  fill: var(--up);
+}
+
+.candle.down .candle-body {
+  fill: var(--down);
+}
