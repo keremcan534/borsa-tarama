@@ -458,6 +458,14 @@ const STRINGS = {
     paOther: 'Diğer',
     // CSV dışa aktarma
     exportCsv: 'CSV indir',
+    // Piyasa genişliği
+    breadthTitle: 'Piyasa genişliği',
+    breadthHint: 'Taranan hisselerin bugün yükselen / düşen dağılımı.',
+    breadthUp: 'Yükselen',
+    breadthDown: 'Düşen',
+    breadthFlat: 'Yatay',
+    breadthAdvancers: 'yükselen',
+    breadthAvg: 'Ort. değişim',
     // Sektör filtresi + kayıtlı taramalar
     filterSector: 'Sektör',
     screensLabel: 'Kayıtlı taramalar:',
@@ -899,6 +907,14 @@ const STRINGS = {
     paOther: 'Other',
     // CSV export
     exportCsv: 'Export CSV',
+    // Market breadth
+    breadthTitle: 'Market breadth',
+    breadthHint: "Advancers vs decliners among scanned stocks today.",
+    breadthUp: 'Advancing',
+    breadthDown: 'Declining',
+    breadthFlat: 'Flat',
+    breadthAdvancers: 'advancing',
+    breadthAvg: 'Avg change',
     // Sector filter + saved screens
     filterSector: 'Sector',
     screensLabel: 'Saved screens:',

@@ -3213,3 +3213,101 @@ tr.alert-hit td {
   padding: 6px 10px;
   font-size: 13px;
 }
+
+/* ---------- piyasa genişliği (gauge) ---------- */
+
+.breadth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+}
+
+.breadth-gauge {
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.breadth-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.breadth-up-arc {
+  fill: none;
+  stroke: var(--up);
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.breadth-down-arc {
+  fill: none;
+  stroke: var(--down);
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.breadth-pct {
+  fill: var(--text-h);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.breadth-pct-label {
+  fill: var(--text);
+  font-size: 11px;
+}
+
+.breadth-stats {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 10px 26px;
+}
+
+.breadth-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.breadth-stat-label {
+  color: var(--text);
+  min-width: 68px;
+}
+
+.breadth-stat strong {
+  font-size: 16px;
+  color: var(--text-h);
+}
+
+.breadth-stat strong.pos {
+  color: var(--up);
+}
+
+.breadth-stat strong.neg {
+  color: var(--down);
+}
+
+.breadth-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.breadth-dot.up {
+  background: var(--up);
+}
+
+.breadth-dot.down {
+  background: var(--down);
+}
+
+.breadth-dot.flat {
+  background: var(--border);
+}

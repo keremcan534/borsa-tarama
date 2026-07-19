@@ -2482,6 +2482,97 @@ function ChangeReport({ scores, lang, onOpenChart }) {
   )
 }
 
+// Yarım daire gauge için kutupsal nokta ve yay yolu yardımcıları
+function gaugePolar(cx, cy, r, deg) {
+  const rad = (deg * Math.PI) / 180
+  return [cx + r * Math.cos(rad), cy - r * Math.sin(rad)]
+}
+
+function gaugeArc(cx, cy, r, startDeg, endDeg) {
+  const [x1, y1] = gaugePolar(cx, cy, r, startDeg)
+  const [x2, y2] = gaugePolar(cx, cy, r, endDeg)
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0
+  const sweep = startDeg > endDeg ? 1 : 0
+  return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${large} ${sweep} ${x2.toFixed(1)} ${y2.toFixed(1)}`
+}
+
+/**
+ * Piyasa genişliği: taranan tüm hisselerin bugünkü yükselen/düşen dağılımını
+ * yarım daire göstergeyle özetler. "Piyasa risk iştahı" için tek bakışlık ölçü;
+ * veri zaten tarama çıktısında (stocks[].change).
+ */
+function MarketBreadth({ overview, allMarkets, lang }) {
+  const stats = useMemo(() => {
+    let up = 0
+    let down = 0
+    let flat = 0
+    let sum = 0
+    let n = 0
+    for (const m of allMarkets) {
+      for (const s of overview?.[m.key]?.stocks || []) {
+        if (s.change == null) continue
+        n += 1
+        sum += s.change
+        if (s.change > 0.0005) up += 1
+        else if (s.change < -0.0005) down += 1
+        else flat += 1
+      }
+    }
+    return { up, down, flat, avg: n ? sum / n : 0, total: n }
+  }, [overview, allMarkets])
+
+  if (stats.total < 4) return null
+  const advancers = stats.up + stats.down > 0 ? stats.up / (stats.up + stats.down) : 0.5
+  const W = 260
+  const H = 150
+  const cx = W / 2
+  const cy = 132
+  const r = 104
+  const split = 180 - advancers * 180 // yükselen oranı kadar sol taraf yeşil
+  const pct = Math.round(advancers * 100)
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'breadthTitle')}</h2>
+      <p className="today-note">{t(lang, 'breadthHint')}</p>
+      <div className="breadth">
+        <svg className="breadth-gauge" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'breadthTitle')}>
+          <path className="breadth-track" d={gaugeArc(cx, cy, r, 180, 0)} />
+          <path className="breadth-up-arc" d={gaugeArc(cx, cy, r, 180, split)} />
+          <path className="breadth-down-arc" d={gaugeArc(cx, cy, r, split, 0)} />
+          <text className="breadth-pct" x={cx} y={cy - 30} textAnchor="middle">
+            {pct}%
+          </text>
+          <text className="breadth-pct-label" x={cx} y={cy - 12} textAnchor="middle">
+            {t(lang, 'breadthAdvancers')}
+          </text>
+        </svg>
+        <div className="breadth-stats">
+          <div className="breadth-stat">
+            <span className="breadth-dot up" />
+            <span className="breadth-stat-label">{t(lang, 'breadthUp')}</span>
+            <strong className="pos">{stats.up}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-dot flat" />
+            <span className="breadth-stat-label">{t(lang, 'breadthFlat')}</span>
+            <strong>{stats.flat}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-dot down" />
+            <span className="breadth-stat-label">{t(lang, 'breadthDown')}</span>
+            <strong className="neg">{stats.down}</strong>
+          </div>
+          <div className="breadth-stat">
+            <span className="breadth-stat-label">{t(lang, 'breadthAvg')}</span>
+            <strong className={`pct ${pctTone(stats.avg)}`}>{formatPct(stats.avg, 2)}</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 /**
  * Sektör ısı haritası: taranan tüm hisseleri sektöre göre gruplar, günlük
  * değişim ortalamasına göre yeşil/kırmızı tonlar. "Bugün para hangi sektörde"
@@ -2695,6 +2786,8 @@ function TodayView({
       <TopMovers overview={overview} allMarkets={allMarkets} lang={lang} onOpenChart={onOpenChart} />
 
       <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
+
+      <MarketBreadth overview={overview} allMarkets={allMarkets} lang={lang} />
 
       <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
 
