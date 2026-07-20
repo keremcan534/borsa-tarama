@@ -5051,6 +5051,10 @@ function App() {
 
   return (
     <div className="layout">
+      {/* Ambient aurora arka plan: içeriğin arkasında yavaşça süzülen bulanık
+          renk lekeleri (mesh gradient). Kartların gerisinde kalır, okunabilirliği
+          bozmaz. */}
+      <div className="aurora" aria-hidden="true" />
       {/* Mobilde menü açıkken arkaya tıklamak kapatır */}
       {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
 
