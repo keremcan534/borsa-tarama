@@ -45,21 +45,49 @@ const TODAY_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key !== 'quarterly')
 const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.key === 'weekly')
 
 // Sol menü sırası. İkonlar emoji: harici ikon kütüphanesi bağımlılığı getirmiyor.
-const NAV_ITEMS = [
-  { key: 'today', i18nKey: 'tabToday', icon: '📅' },
-  { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
-  { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
-  { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
-  { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
-  { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
-  { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
-  { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
-  { key: 'fundLeague', i18nKey: 'tabFundLeague', icon: '🏆' },
-  { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
-  { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
-  { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
-  { key: 'news', i18nKey: 'tabNews', icon: '📰' },
+// Sıralama bilinçli: en çok tıklanma potansiyeli olan sekmeler üstte
+// (açılış özeti → günlük rutinler → fonlar → kişisel → derin analiz).
+const NAV_SECTIONS = [
+  {
+    titleKey: null, // açılış — başlıksız
+    items: [{ key: 'today', i18nKey: 'tabToday', icon: '📅' }],
+  },
+  {
+    titleKey: 'navSecMarket',
+    items: [
+      { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
+      { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
+      { key: 'news', i18nKey: 'tabNews', icon: '📰' },
+    ],
+  },
+  {
+    titleKey: 'navSecFunds',
+    items: [
+      { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
+      { key: 'fundLeague', i18nKey: 'tabFundLeague', icon: '🏆' },
+      { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
+    ],
+  },
+  {
+    titleKey: 'navSecMine',
+    items: [
+      { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+      { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
+      { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
+    ],
+  },
+  {
+    titleKey: 'navSecAnalysis',
+    items: [
+      { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
+      { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
+      { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
+    ],
+  },
 ]
+
+// Düz liste (komut paleti "Sayfalar" grubu vb. için) aynı sırayı paylaşır
+const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items)
 
 const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
 const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
@@ -3827,6 +3855,51 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, navItems, 
   )
 }
 
+/** "?" ile açılan klavye kısayolları penceresi. */
+function ShortcutHelp({ open, onClose, lang }) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  const rows = [
+    [['⌘', 'K'], t(lang, 'helpSearch')],
+    [['↑', '↓', '↵'], t(lang, 'helpNavigate')],
+    [['esc'], t(lang, 'helpClose')],
+    [['?'], t(lang, 'helpHelp')],
+  ]
+
+  return (
+    <div className="modal-backdrop cmdk-backdrop" onClick={onClose}>
+      <div className="cmdk help-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="cmdk-input-row">
+          <strong className="help-title">{t(lang, 'helpTitle')}</strong>
+          <button className="cmdk-esc" type="button" onClick={onClose}>
+            Esc
+          </button>
+        </div>
+        <div className="cmdk-body help-body">
+          {rows.map(([keys, label]) => (
+            <div key={label} className="help-row">
+              <span className="help-keys">
+                {keys.map((k) => (
+                  <kbd key={k}>{k}</kbd>
+                ))}
+              </span>
+              <span className="help-label">{label}</span>
+            </div>
+          ))}
+          <p className="help-hint">{t(lang, 'helpHint')}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function loadTheme() {
   try {
     const v = localStorage.getItem('theme')
@@ -4155,6 +4228,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [theme, setThemeState] = useState(loadTheme)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [alerts, setAlerts] = useState(loadAlerts)
   const [notifyPerm, setNotifyPerm] = useState(() =>
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
@@ -4165,11 +4239,11 @@ function App() {
   const [marketsResolved, setMarketsResolved] = useState(false)
 
   // Etkin marketler backend'den gelir (markets.json); manifest okunamazsa config
-  // varsayılanıyla aynı liste kullanılır (sp500/etf kapalı).
+  // varsayılanıyla aynı liste kullanılır (etf kapalı).
   const activeMarkets = useMemo(
     () =>
       MARKETS.filter((m) =>
-        (enabledMarketKeys || ['bist100', 'commodity']).includes(m.key),
+        (enabledMarketKeys || ['bist100', 'sp500', 'commodity']).includes(m.key),
       ),
     [enabledMarketKeys],
   )
@@ -4214,12 +4288,20 @@ function App() {
     setThemeState(next)
   }
 
-  // ⌘K / Ctrl+K her yerden arama paletini aç/kapat
+  // ⌘K / Ctrl+K her yerden arama paletini aç/kapat; "?" kısayol yardımını açar
+  // (bir inputta yazarken değil — soru işareti orada metindir).
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
         setPaletteOpen((v) => !v)
+        return
+      }
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+        const tag = e.target?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return
+        e.preventDefault()
+        setHelpOpen((v) => !v)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -4798,21 +4880,28 @@ function App() {
         </div>
 
         <nav className="nav" aria-label={t(lang, 'navLabel')}>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              className={`nav-item ${view === item.key ? 'active' : ''}`}
-              aria-current={view === item.key ? 'page' : undefined}
-              onClick={() => selectView(item.key)}
-            >
-              <span className="nav-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              {t(lang, item.i18nKey)}
-              {item.key === 'alerts' && alertTriggeredCount > 0 && (
-                <span className="nav-badge">{alertTriggeredCount}</span>
+          {NAV_SECTIONS.map((section, si) => (
+            <div key={section.titleKey || si} className="nav-section">
+              {section.titleKey && (
+                <div className="nav-section-title">{t(lang, section.titleKey)}</div>
               )}
-            </button>
+              {section.items.map((item) => (
+                <button
+                  key={item.key}
+                  className={`nav-item ${view === item.key ? 'active' : ''}`}
+                  aria-current={view === item.key ? 'page' : undefined}
+                  onClick={() => selectView(item.key)}
+                >
+                  <span className="nav-icon" aria-hidden="true">
+                    {item.icon}
+                  </span>
+                  {t(lang, item.i18nKey)}
+                  {item.key === 'alerts' && alertTriggeredCount > 0 && (
+                    <span className="nav-badge">{alertTriggeredCount}</span>
+                  )}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -5516,6 +5605,7 @@ function App() {
         onOpenFund={setChartFund}
         onNavigate={selectView}
       />
+      <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} lang={lang} />
       </main>
     </div>
   )

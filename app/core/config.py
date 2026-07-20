@@ -5,12 +5,11 @@ class Settings(BaseSettings):
     app_name: str = "Borsa Tarama Servisi"
     cors_origins: list[str] = ["http://localhost:5173"]  # Vite dev sunucusu
 
-    # Taranacak marketler. S&P 500 kapalı: 503 sembol x 4 zaman dilimi = tüm
-    # taramanın ~%76'sı ve bu her deploy'u ~23 dakikaya çıkarıyordu. ETF de
-    # kapalı: vizyon hisse + emtia/kripto + TEFAS fonlarına odaklanıyor; kod ve
-    # sembol listeleri duruyor — geri açmak için listeye "sp500" / "etf" eklemek
-    # yeterli.
-    enabled_markets: list[str] = ["bist100", "commodity"]
+    # Taranacak marketler. S&P 500 açık: 503 sembol taramayı belirgin uzatır
+    # (~20 dk), ama zamanlanmış tarama ABD kapanışından sonra da çalıştığı için
+    # US hisseleri de kapsansın diye açıldı. ETF hâlâ kapalı (kod + sembol
+    # listesi duruyor; açmak için listeye "etf" eklemek yeterli).
+    enabled_markets: list[str] = ["bist100", "sp500", "commodity"]
 
     # Likidite tabanı: son 20 mumun ortalama günlük cirosu (hacim x kapanış)
     # bu eşiğin altındaysa hisse listeye giremez. Birim markete göre yerel
