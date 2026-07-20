@@ -86,4 +86,49 @@ h1, h2, h3 {
   margin: 0 auto;
   min-height: 100svh;
   padding: 24px 20px 60px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ambient aurora: içeriğin arkasında sabit, bulanık renk lekeleri; yavaş süzülür.
+   z-index:-1 ile html'in düz --bg zemininin üstünde ama tüm içeriğin arkasında. */
+.aurora {
+  position: fixed;
+  inset: -12%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(32% 42% at 14% 12%, rgba(124, 58, 237, 0.16), transparent 70%),
+    radial-gradient(36% 40% at 86% 10%, rgba(168, 85, 247, 0.14), transparent 70%),
+    radial-gradient(44% 48% at 80% 88%, rgba(99, 102, 241, 0.13), transparent 72%),
+    radial-gradient(38% 44% at 8% 84%, rgba(217, 70, 239, 0.11), transparent 72%);
+  filter: blur(36px) saturate(1.15);
+  animation: auroraDrift 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes auroraDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(-3%, 2.5%, 0) scale(1.09);
+  }
+}
+
+/* Koyu temada lekeler biraz daha canlı parlar */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .aurora {
+    filter: blur(40px) saturate(1.3) brightness(1.15);
+  }
+}
+
+:root[data-theme='dark'] .aurora {
+  filter: blur(40px) saturate(1.3) brightness(1.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora {
+    animation: none;
+  }
 }
