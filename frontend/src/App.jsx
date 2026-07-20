@@ -4165,11 +4165,11 @@ function App() {
   const [marketsResolved, setMarketsResolved] = useState(false)
 
   // Etkin marketler backend'den gelir (markets.json); manifest okunamazsa config
-  // varsayılanıyla aynı liste kullanılır (sp500/etf kapalı).
+  // varsayılanıyla aynı liste kullanılır (etf kapalı).
   const activeMarkets = useMemo(
     () =>
       MARKETS.filter((m) =>
-        (enabledMarketKeys || ['bist100', 'commodity']).includes(m.key),
+        (enabledMarketKeys || ['bist100', 'sp500', 'commodity']).includes(m.key),
       ),
     [enabledMarketKeys],
   )
