@@ -57,6 +57,7 @@ const NAV_SECTIONS = [
     items: [
       { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
       { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
+      { key: 'bubbles', i18nKey: 'tabBubbles', icon: '🫧' },
       { key: 'news', i18nKey: 'tabNews', icon: '📰' },
     ],
   },
@@ -3611,6 +3612,185 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
   )
 }
 
+// Değişimi (±%6 bandı) canlı bir yeşil/kırmızı balon rengine çevirir.
+function bubbleColor(change) {
+  const mag = Math.min(Math.abs(change) / 0.06, 1)
+  if (change >= 0) {
+    const g = Math.round(120 + mag * 90)
+    return { fill: `rgba(22, ${g}, 74, 0.92)`, glow: 'rgba(34,197,94,0.55)' }
+  }
+  const r = Math.round(200 + mag * 55)
+  return { fill: `rgba(${r}, 38, 38, 0.92)`, glow: 'rgba(239,68,68,0.55)' }
+}
+
+/**
+ * Piyasa Baloncukları: her hisse fiziksel bir balon — yarıçapı piyasa değeri,
+ * rengi günlük değişim. Yükselenler yukarı süzülür, düşenler dibe iner; hafif
+ * çarpışma + salınımla canlı durur. Kanvas + requestAnimationFrame. Veri "Bugün"
+ * özetinden (overview[market].stocks), ek istek yok. Bir balona tık → grafik.
+ */
+function MarketBubbles({ overview, market, lang, onOpenChart }) {
+  const wrapRef = useRef(null)
+  const canvasRef = useRef(null)
+
+  const stocks = useMemo(
+    () =>
+      (overview?.[market]?.stocks || [])
+        .filter((s) => s.market_cap > 0 && s.change != null)
+        .sort((a, b) => b.market_cap - a.market_cap)
+        .slice(0, 48),
+    [overview, market],
+  )
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const wrap = wrapRef.current
+    if (!canvas || !wrap || stocks.length < 2) return
+
+    let W = wrap.clientWidth || 800
+    let H = Math.max(420, Math.min(640, Math.round(W * 0.6)))
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const ctx = canvas.getContext('2d')
+
+    const caps = stocks.map((s) => s.market_cap)
+    const sMin = Math.sqrt(Math.min(...caps))
+    const sMax = Math.sqrt(Math.max(...caps))
+    const maxAbs = Math.max(...stocks.map((s) => Math.abs(s.change)), 0.01)
+
+    let bubbles = []
+    const build = () => {
+      const rMin = Math.max(15, W / 46)
+      const rMax = Math.min(70, W / 9)
+      bubbles = stocks.map((s) => {
+        const tt = (Math.sqrt(s.market_cap) - sMin) / (sMax - sMin || 1)
+        const r = rMin + tt * (rMax - rMin)
+        return {
+          s,
+          r,
+          x: r + Math.random() * (W - 2 * r),
+          y: r + Math.random() * (H - 2 * r),
+          vx: (Math.random() - 0.5) * 0.6,
+          vy: (Math.random() - 0.5) * 0.6,
+          ...bubbleColor(s.change),
+        }
+      })
+    }
+
+    const resize = () => {
+      W = wrap.clientWidth || 800
+      H = Math.max(420, Math.min(640, Math.round(W * 0.6)))
+      canvas.width = W * dpr
+      canvas.height = H * dpr
+      canvas.style.width = `${W}px`
+      canvas.style.height = `${H}px`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      build()
+    }
+    resize()
+
+    let raf
+    const step = () => {
+      const pad = 26
+      // Dikey hedef: yükselen yukarı, düşen aşağı (değişim → y konumu)
+      for (const b of bubbles) {
+        const norm = Math.max(-1, Math.min(1, b.s.change / maxAbs))
+        const yTarget = pad + b.r + (1 - (norm + 1) / 2) * (H - 2 * (pad + b.r))
+        b.vy += (yTarget - b.y) * 0.012
+        b.vx += (W / 2 - b.x) * 0.0006 // hafif merkeze çekim
+        b.vx += (Math.random() - 0.5) * 0.15 // canlı salınım
+        b.vy += (Math.random() - 0.5) * 0.15
+      }
+      // Çarpışma: birbirini yumuşakça iter
+      for (let i = 0; i < bubbles.length; i += 1) {
+        for (let j = i + 1; j < bubbles.length; j += 1) {
+          const a = bubbles[i]
+          const c = bubbles[j]
+          let dx = c.x - a.x
+          let dy = c.y - a.y
+          let dist = Math.hypot(dx, dy) || 0.01
+          const min = a.r + c.r + 2
+          if (dist < min) {
+            const push = (min - dist) / dist / 2
+            dx *= push
+            dy *= push
+            a.x -= dx
+            a.y -= dy
+            c.x += dx
+            c.y += dy
+          }
+        }
+      }
+      ctx.clearRect(0, 0, W, H)
+      for (const b of bubbles) {
+        b.vx *= 0.86
+        b.vy *= 0.86
+        b.x += b.vx
+        b.y += b.vy
+        if (b.x < b.r) { b.x = b.r; b.vx *= -0.5 }
+        if (b.x > W - b.r) { b.x = W - b.r; b.vx *= -0.5 }
+        if (b.y < b.r) { b.y = b.r; b.vy *= -0.5 }
+        if (b.y > H - b.r) { b.y = H - b.r; b.vy *= -0.5 }
+
+        // Balon: parıltı + gövde
+        const grd = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.1, b.x, b.y, b.r)
+        grd.addColorStop(0, b.glow)
+        grd.addColorStop(1, b.fill)
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2)
+        ctx.fillStyle = grd
+        ctx.fill()
+
+        if (b.r > 20) {
+          ctx.fillStyle = 'rgba(255,255,255,0.96)'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.font = `700 ${Math.min(15, b.r * 0.42)}px system-ui, sans-serif`
+          ctx.fillText(displaySymbol(b.s.symbol), b.x, b.y - (b.r > 30 ? 6 : 0))
+          if (b.r > 30) {
+            ctx.font = `600 ${Math.min(12, b.r * 0.3)}px system-ui, sans-serif`
+            ctx.fillText(`${b.s.change >= 0 ? '+' : ''}${(b.s.change * 100).toFixed(1)}%`, b.x, b.y + 9)
+          }
+        }
+      }
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+
+    const hit = (e) => {
+      const rect = canvas.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      return bubbles.find((b) => Math.hypot(b.x - mx, b.y - my) <= b.r)
+    }
+    const onClick = (e) => {
+      const b = hit(e)
+      if (b) onOpenChart(b.s.symbol)
+    }
+    const onMove = (e) => {
+      canvas.style.cursor = hit(e) ? 'pointer' : 'default'
+    }
+    canvas.addEventListener('click', onClick)
+    canvas.addEventListener('mousemove', onMove)
+    window.addEventListener('resize', resize)
+    return () => {
+      cancelAnimationFrame(raf)
+      canvas.removeEventListener('click', onClick)
+      canvas.removeEventListener('mousemove', onMove)
+      window.removeEventListener('resize', resize)
+    }
+  }, [stocks, onOpenChart, lang])
+
+  if (stocks.length < 2) return <div className="empty-box">{t(lang, 'bubblesEmpty')}</div>
+
+  return (
+    <div className="bubbles-wrap" ref={wrapRef}>
+      <span className="bubbles-axis top">▲ {t(lang, 'bubblesUp')}</span>
+      <span className="bubbles-axis bottom">▼ {t(lang, 'bubblesDown')}</span>
+      <canvas ref={canvasRef} className="bubbles-canvas" />
+    </div>
+  )
+}
+
 /**
  * Piyasa hareketlileri: taranan tüm hisseleri günlük değişime göre sıralar,
  * en çok yükselen/düşen 8 hisseyi tek bakışta gösterir. Veri zaten "Bugün"
@@ -4627,6 +4807,7 @@ function App() {
       view !== 'watchlist' &&
       view !== 'stockCompare' &&
       view !== 'map' &&
+      view !== 'bubbles' &&
       view !== 'alerts' &&
       view !== 'portfolio'
     )
@@ -4967,7 +5148,7 @@ function App() {
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
-            {(view === 'screener' || view === 'backtest' || view === 'map') && marketsResolved && (
+            {(view === 'screener' || view === 'backtest' || view === 'map' || view === 'bubbles') && marketsResolved && (
               <div className="tabs">
                 {activeMarkets.map((m) => (
                   <button
@@ -5304,6 +5485,26 @@ function App() {
             <div className="error-box">{overviewError}</div>
           ) : (
             <MarketMap
+              overview={overviewCache.daily}
+              market={market}
+              lang={lang}
+              onOpenChart={setChartSymbol}
+            />
+          )}
+        </>
+      )}
+
+      {view === 'bubbles' && (
+        <>
+          <div className="status-bar">
+            <span>{t(lang, 'bubblesIntro')}</span>
+          </div>
+          {overviewLoading && !overviewCache.daily ? (
+            <div className="empty-box">{t(lang, 'loading')}</div>
+          ) : overviewError && !overviewCache.daily ? (
+            <div className="error-box">{overviewError}</div>
+          ) : (
+            <MarketBubbles
               overview={overviewCache.daily}
               market={market}
               lang={lang}
