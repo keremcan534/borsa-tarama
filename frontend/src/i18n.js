@@ -453,6 +453,18 @@ const STRINGS = {
     alertCond: (metric, op, val) => `${metric} ${op} ${val}`,
     alertNotifTitle: (sym) => `🔔 Alarm: ${sym}`,
     alertNotifBody: (cond, cur) => `${cond} · şu an ${cur}`,
+    // Sol menü bölüm başlıkları
+    navSecMarket: 'Piyasa',
+    navSecFunds: 'Fonlar',
+    navSecMine: 'Bana Özel',
+    navSecAnalysis: 'Analiz',
+    // Klavye kısayolları yardımı (?)
+    helpTitle: 'Klavye kısayolları',
+    helpSearch: 'Arama paletini aç (hisse, fon, sayfa)',
+    helpHelp: 'Bu yardım penceresi',
+    helpClose: 'Açık pencereyi kapat',
+    helpNavigate: 'Palette gezin / seç',
+    helpHint: 'İpucu: arama paleti boşken tüm sayfaları listeler — en hızlı gezinme yolu.',
     // Portföy analizi
     paTitle: 'Portföy analizi',
     paAllocation: 'Dağılım',
@@ -907,6 +919,18 @@ const STRINGS = {
     alertCond: (metric, op, val) => `${metric} ${op} ${val}`,
     alertNotifTitle: (sym) => `🔔 Alert: ${sym}`,
     alertNotifBody: (cond, cur) => `${cond} · now ${cur}`,
+    // Sidebar section titles
+    navSecMarket: 'Markets',
+    navSecFunds: 'Funds',
+    navSecMine: 'My Space',
+    navSecAnalysis: 'Analysis',
+    // Keyboard shortcuts help (?)
+    helpTitle: 'Keyboard shortcuts',
+    helpSearch: 'Open the search palette (stocks, funds, pages)',
+    helpHelp: 'This help window',
+    helpClose: 'Close the open window',
+    helpNavigate: 'Navigate / select in the palette',
+    helpHint: 'Tip: with an empty query the palette lists every page — the fastest way to get around.',
     // Portfolio analytics
     paTitle: 'Portfolio analytics',
     paAllocation: 'Allocation',
