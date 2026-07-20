@@ -384,6 +384,13 @@ const STRINGS = {
     mapLegendDown: 'Düşüş',
     mapLegendUp: 'Yükseliş',
     mapSizeNote: 'Kutu alanı ∝ piyasa değeri',
+    // Piyasa baloncukları
+    tabBubbles: 'Baloncuklar',
+    bubblesIntro:
+      'Piyasa baloncukları: her hisse bir balon — büyüklük piyasa değeri, renk günlük değişim. Yükselenler yukarı süzülür, düşenler dibe iner. Bir balona tıkla, grafiği açılsın.',
+    bubblesEmpty: 'Baloncuklar için yeterli veri yok. Önce tarama çalışmalı.',
+    bubblesUp: 'Yükselenler',
+    bubblesDown: 'Düşenler',
     // Zenginleştirilmiş hisse detayı
     sdStats: 'Teknik görünüm',
     sdTrendTitle: 'Trend hizası (EMA)',
@@ -850,6 +857,13 @@ const STRINGS = {
     mapLegendDown: 'Down',
     mapLegendUp: 'Up',
     mapSizeNote: 'Box area ∝ market cap',
+    // Market bubbles
+    tabBubbles: 'Bubbles',
+    bubblesIntro:
+      'Market bubbles: each stock is a bubble — size is market cap, colour is today’s change. Gainers float up, losers sink. Click a bubble to open its chart.',
+    bubblesEmpty: 'Not enough data for bubbles. Run a scan first.',
+    bubblesUp: 'Gainers',
+    bubblesDown: 'Losers',
     // Enriched stock detail
     sdStats: 'Technical snapshot',
     sdTrendTitle: 'Trend alignment (EMA)',
