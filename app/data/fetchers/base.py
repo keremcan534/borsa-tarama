@@ -20,3 +20,12 @@ class BaseFetcher(ABC):
     def fetch_market_cap(self, symbol: str) -> float | None:
         """Piyasa değerini döner (büyükten küçüğe sıralama için)."""
         ...
+
+    def fetch_fundamentals(self, symbol: str) -> dict:
+        """Temel oranlar: {"pe", "pb", "dividend_yield", "roe"} (bilinmeyen alan None).
+
+        Bilinçli olarak SOYUT DEĞİL: temel veri her kaynakta bulunmaz. Varsayılan
+        boş sözlüktür, böylece yalnızca teknik veri sağlayan bir fetcher bu metodu
+        yazmadan çalışmaya devam eder (arayüz de eksik alanı '—' gösterir).
+        """
+        return {}

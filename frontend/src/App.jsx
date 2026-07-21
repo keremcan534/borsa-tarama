@@ -202,6 +202,211 @@ function convertSeries(points, currency, fx, symbol) {
   return out
 }
 
+/* ---------- Paylaşılabilir sinyal kartı ----------
+ * Hisseyi tek bakışta özetleyen bir PNG üretir (sohbette/sosyalde paylaşmak için).
+ * Tamamen istemci tarafında canvas ile çizilir: harici servis, font ya da istek yok.
+ * "Yatırım tavsiyesi değildir" ibaresi karta gömülüdür — görsel siteden koparak
+ * dolaştığında uyarının onunla birlikte gitmesi gerekir. */
+
+const SHARE_CARD_W = 1080
+const SHARE_CARD_H = 1080
+
+function drawShareCard(canvas, { symbol, stock, score, lang }) {
+  const ctx = canvas.getContext('2d')
+  canvas.width = SHARE_CARD_W
+  canvas.height = SHARE_CARD_H
+
+  const name = displaySymbol(symbol)
+  const change = stock?.change
+  const up = (change ?? 0) >= 0
+
+  // Arka plan: koyu, hafif degrade (açık/koyu temadan bağımsız sabit görsel kimlik)
+  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_W, SHARE_CARD_H)
+  bg.addColorStop(0, '#12141a')
+  bg.addColorStop(1, '#1c2030')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, SHARE_CARD_W, SHARE_CARD_H)
+
+  // Üstte ince vurgu şeridi
+  const accent = ctx.createLinearGradient(0, 0, SHARE_CARD_W, 0)
+  accent.addColorStop(0, '#7c3aed')
+  accent.addColorStop(1, '#a855f7')
+  ctx.fillStyle = accent
+  ctx.fillRect(0, 0, SHARE_CARD_W, 10)
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.font = '600 30px system-ui, sans-serif'
+  ctx.fillText(t(lang, 'brand').toUpperCase(), 80, 110)
+
+  // Sembol
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '800 140px system-ui, sans-serif'
+  ctx.fillText(name, 80, 270)
+
+  // Günlük değişim (kartın ana rakamı)
+  ctx.fillStyle = up ? '#4ade80' : '#f87171'
+  ctx.font = '800 110px system-ui, sans-serif'
+  ctx.fillText(change == null ? '—' : `${up ? '+' : ''}${(change * 100).toFixed(2)}%`, 80, 410)
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'
+  ctx.font = '400 32px system-ui, sans-serif'
+  ctx.fillText(t(lang, 'shareChangeLabel'), 80, 460)
+
+  // Metrik kutuları
+  const metrics = [
+    [t(lang, 'colScore'), score == null ? '—' : String(score)],
+    [t(lang, 'colClose'), stock?.close == null ? '—' : formatNum(stock.close, 2)],
+    ['RSI', stock?.rsi == null ? '—' : formatNum(stock.rsi, 1)],
+    [t(lang, 'colPe'), stock?.pe == null ? '—' : formatNum(stock.pe, 1)],
+  ]
+  let y = 540
+  for (const [label, value] of metrics) {
+    ctx.fillStyle = 'rgba(255,255,255,0.06)'
+    ctx.fillRect(80, y, SHARE_CARD_W - 160, 96)
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'
+    ctx.font = '500 34px system-ui, sans-serif'
+    ctx.fillText(label, 110, y + 60)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '700 40px system-ui, sans-serif'
+    ctx.fillText(value, SHARE_CARD_W - 110, y + 60)
+    ctx.textAlign = 'left'
+    y += 112
+  }
+
+  // Tarih + zorunlu uyarı (görselden koparılamaz)
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'
+  ctx.font = '400 28px system-ui, sans-serif'
+  ctx.fillText(new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR'), 80, SHARE_CARD_H - 120)
+
+  ctx.fillStyle = 'rgba(255,255,255,0.38)'
+  ctx.font = '400 24px system-ui, sans-serif'
+  ctx.fillText(t(lang, 'shareDisclaimer'), 80, SHARE_CARD_H - 70)
+}
+
+/** Kartı PNG olarak indirir. */
+function downloadShareCard(opts) {
+  const canvas = document.createElement('canvas')
+  drawShareCard(canvas, opts)
+  canvas.toBlob((blob) => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${displaySymbol(opts.symbol)}-${new Date().toISOString().slice(0, 10)}.png`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, 'image/png')
+}
+
+/* ---------- Portföy çeşitliliği (korelasyon + sektör yoğunluğu) ----------
+ * Backtest'in "en fazla 10 pozisyon" kuralı örtük olarak ÇEŞİTLİLİK varsayar.
+ * 10 pozisyonun hepsi aynı sektörde ve birlikte hareket ediyorsa bu 10 ayrı bahis
+ * değil, tek bir bahsin 10 katıdır — ve düşüşte hepsi birlikte düşer. */
+
+/** Fiyat serisinden günlük getiri dizisi (tarih → getiri) üretir. */
+function returnsByDate(points) {
+  const map = new Map()
+  if (!points?.length) return map
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1][1]
+    const cur = points[i][1]
+    if (prev > 0 && cur > 0) map.set(points[i][0], cur / prev - 1)
+  }
+  return map
+}
+
+/** İki getiri serisinin ORTAK tarihlerdeki Pearson korelasyonu. */
+function correlation(aMap, bMap) {
+  const xs = []
+  const ys = []
+  for (const [date, av] of aMap) {
+    const bv = bMap.get(date)
+    if (bv != null) {
+      xs.push(av)
+      ys.push(bv)
+    }
+  }
+  // 30 ortak günden azsa korelasyon gürültüdür; hesaplamak yerine "bilinmiyor" de
+  if (xs.length < 30) return null
+  const n = xs.length
+  const mx = xs.reduce((s, v) => s + v, 0) / n
+  const my = ys.reduce((s, v) => s + v, 0) / n
+  let num = 0
+  let dx = 0
+  let dy = 0
+  for (let i = 0; i < n; i += 1) {
+    const a = xs[i] - mx
+    const b = ys[i] - my
+    num += a * b
+    dx += a * a
+    dy += b * b
+  }
+  const den = Math.sqrt(dx * dy)
+  return den > 0 ? num / den : null
+}
+
+/**
+ * Pozisyonların ortalama ikili korelasyonu ve en yoğun sektör payı.
+ * Dönen `level`: 'ok' | 'warn' | 'risk' — arayüzdeki uyarının şiddeti.
+ */
+function diversificationOf(symbols, seriesOf, sectorOf) {
+  if (symbols.length < 2) return null
+
+  const maps = symbols.map((s) => returnsByDate(seriesOf(s)))
+  const pairs = []
+  for (let i = 0; i < symbols.length; i += 1) {
+    for (let j = i + 1; j < symbols.length; j += 1) {
+      const c = correlation(maps[i], maps[j])
+      if (c != null) pairs.push(c)
+    }
+  }
+  const avgCorr = pairs.length ? pairs.reduce((s, v) => s + v, 0) / pairs.length : null
+
+  const counts = new Map()
+  for (const s of symbols) {
+    const sec = sectorOf(s)
+    if (sec) counts.set(sec, (counts.get(sec) || 0) + 1)
+  }
+  let topSector = null
+  let topCount = 0
+  for (const [sec, n] of counts) {
+    if (n > topCount) {
+      topSector = sec
+      topCount = n
+    }
+  }
+  const sectorShare = symbols.length ? topCount / symbols.length : 0
+
+  const level =
+    (avgCorr != null && avgCorr >= 0.7) || sectorShare >= 0.6
+      ? 'risk'
+      : (avgCorr != null && avgCorr >= 0.5) || sectorShare >= 0.4
+        ? 'warn'
+        : 'ok'
+
+  return { avgCorr, topSector, topCount, sectorShare, level, pairCount: pairs.length }
+}
+
+/**
+ * Tablo sıralama karşılaştırıcısı. Veri OLMAYAN satırlar yönden bağımsız olarak
+ * hep sona gider: "F/K'ya artan sırala" diyen kullanıcı en ucuz hisseyi arıyordur,
+ * verisi olmayan satır yığınını değil.
+ */
+function compareRows(a, b, key, dir) {
+  if (key === 'symbol') {
+    return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
+  }
+  const av = a[key]
+  const bv = b[key]
+  const aMissing = av == null || Number.isNaN(av)
+  const bMissing = bv == null || Number.isNaN(bv)
+  if (aMissing || bMissing) return aMissing && bMissing ? 0 : aMissing ? 1 : -1
+  return dir === 'asc' ? av - bv : bv - av
+}
+
 /** Seçili para biriminde dönem getirisi: (son / ilk - 1). Kıyas için tek rakam. */
 function seriesReturn(points) {
   if (!points || points.length < 2) return null
@@ -354,6 +559,11 @@ const COLUMNS = [
   { key: 'change', label: 'Değişim', i18nKey: 'colChange' },
   { key: 'market_cap', label: 'Piyasa Değeri', i18nKey: 'colMcap' },
   { key: 'relative_strength', label: 'Göreli Güç', i18nKey: 'colRs' },
+  // Temel oranlar: "teknik güçlü ama pahalı mı?" sorusuna cevap. Kaynak (yfinance)
+  // BIST'te bayat/tutarsız olabildiğinden tabloda ayrı bir uyarı notu var.
+  { key: 'pe', label: 'F/K', i18nKey: 'colPe' },
+  { key: 'pb', label: 'PD/DD', i18nKey: 'colPb' },
+  { key: 'dividend_yield', label: 'Temettü %', i18nKey: 'colDiv' },
   { key: 'rsi', label: 'RSI' },
   { key: 'macd_line', label: 'MACD' },
   { key: 'stoch_k', label: 'Stoch %K' },
@@ -758,6 +968,21 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
                 {t(lang, 'fundCompareAction')}
               </button>
             )}
+            <button
+              className="btn small"
+              type="button"
+              title={t(lang, 'shareCardHint')}
+              onClick={() =>
+                downloadShareCard({
+                  symbol,
+                  stock,
+                  score: stock ? technicalScore(stock, [9, 21, 50, 200].filter((p) => stock[`ema_${p}`] != null)) : null,
+                  lang,
+                })
+              }
+            >
+              🖼 {t(lang, 'shareCard')}
+            </button>
             <a
               className="btn small"
               href={`https://tr.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol(symbol))}`}
@@ -4900,7 +5125,16 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
  * takip gerektiriyordu (hangi pozisyon kaç hafta doldu, slot boş mu, yeni sinyal var mı).
  * Bu sekme onu üstlenir. Pozisyonlar yalnızca localStorage'da — sunucuya gitmez.
  */
-function StrategyTracker({ signals, signalsLoading, lang, notifyPerm, onEnableNotify, onOpenChart }) {
+function StrategyTracker({
+  signals,
+  signalsLoading,
+  lang,
+  notifyPerm,
+  stockPrices,
+  stockMap,
+  onEnableNotify,
+  onOpenChart,
+}) {
   const [positions, setPositions] = useState(loadStrategyPositions)
   const [settings, setSettings] = useState(loadStrategySettings)
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -4951,6 +5185,18 @@ function StrategyTracker({ signals, signalsLoading, lang, notifyPerm, onEnableNo
 
   const dueCount = rows.filter((r) => r.status === 'due').length
   const freeSlots = Math.max(0, settings.maxPositions - positions.length)
+
+  // Çeşitlilik: 10 pozisyon kuralı ancak pozisyonlar farklı şeylere bahis oynuyorsa
+  // risk dağıtır; hepsi birlikte hareket ediyorsa tek bahsin 10 katıdır.
+  const diversification = useMemo(
+    () =>
+      diversificationOf(
+        positions.map((p) => p.symbol),
+        (s) => stockPrices?.series?.[s],
+        (s) => stockMap?.get(s)?.sector,
+      ),
+    [positions, stockPrices, stockMap],
+  )
 
   // Taze haftalık sinyaller: henüz portföyde olmayanlar (slot doldurma önerisi)
   const freshAvailable = useMemo(
@@ -5012,6 +5258,38 @@ function StrategyTracker({ signals, signalsLoading, lang, notifyPerm, onEnableNo
           <span className="strat-stat-sub">{t(lang, 'stratDueSub')}</span>
         </div>
       </div>
+
+      {/* Çeşitlilik uyarısı: pozisyonlar aynı bahsin kopyasıysa 10 slot risk dağıtmaz */}
+      {diversification && (
+        <div className={`div-panel div-${diversification.level}`}>
+          <div className="div-head">
+            <strong>{t(lang, 'divTitle')}</strong>
+            <span className={`badge div-badge-${diversification.level}`}>
+              {t(lang, `divLevel_${diversification.level}`)}
+            </span>
+          </div>
+          <div className="div-metrics">
+            <span>
+              {t(lang, 'divAvgCorr')}:{' '}
+              <strong>
+                {diversification.avgCorr == null
+                  ? t(lang, 'divNoData')
+                  : diversification.avgCorr.toFixed(2)}
+              </strong>
+            </span>
+            {diversification.topSector && (
+              <span>
+                {t(lang, 'divTopSector')}:{' '}
+                <strong>
+                  {sectorLabel(diversification.topSector, lang)} ({diversification.topCount}/
+                  {positions.length})
+                </strong>
+              </span>
+            )}
+          </div>
+          <p className="div-note">{t(lang, `divNote_${diversification.level}`)}</p>
+        </div>
+      )}
 
       {/* Açık pozisyonlar */}
       {rows.length === 0 ? (
@@ -5471,7 +5749,8 @@ function App() {
       view === 'screener' ||
       view === 'watchlist' ||
       view === 'portfolio' ||
-      view === 'stockCompare'
+      view === 'stockCompare' ||
+      view === 'strategy' // çeşitlilik paneli korelasyonu fiyat serilerinden hesaplar
     if (!wantsPrices || stockPricesReady) return
     let cancelled = false
     setStockPricesLoading(true)
@@ -5624,7 +5903,8 @@ function App() {
       view !== 'alerts' &&
       view !== 'portfolio' &&
       view !== 'scorecard' && // karne, güncel fiyatı stockMap'ten okur
-      view !== 'rotation'
+      view !== 'rotation' &&
+      view !== 'strategy' // çeşitlilik paneli sektörü stockMap'ten okur
     )
       return
     if (!marketsResolved) return
@@ -5825,14 +6105,7 @@ function App() {
     // Her satıra teknik puanı ekle (sıralama ve gösterim için)
     list = list.map((s) => ({ ...s, score: technicalScore(s, availableEmas) }))
     const { key, dir } = sort
-    list.sort((a, b) => {
-      if (key === 'symbol') {
-        return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
-      }
-      const av = a[key] ?? -Infinity
-      const bv = b[key] ?? -Infinity
-      return dir === 'asc' ? av - bv : bv - av
-    })
+    list.sort((a, b) => compareRows(a, b, key, dir))
     return list
   }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks])
 
@@ -5849,14 +6122,7 @@ function App() {
       )
     }
     const { key, dir } = fundSort
-    list.sort((a, b) => {
-      if (key === 'symbol') {
-        return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
-      }
-      const av = a[key] ?? -Infinity
-      const bv = b[key] ?? -Infinity
-      return dir === 'asc' ? av - bv : bv - av
-    })
+    list.sort((a, b) => compareRows(a, b, key, dir))
     return list
   }, [funds, fundSearch, fundSort, onlyFundWatchlist, fundWatchlist])
 
@@ -6385,6 +6651,8 @@ function App() {
           signalsLoading={weeklySignalsLoading}
           lang={lang}
           notifyPerm={notifyPerm}
+          stockPrices={stockPrices}
+          stockMap={stockMap}
           onEnableNotify={enableNotify}
           onOpenChart={setChartSymbol}
         />
@@ -6581,11 +6849,14 @@ function App() {
             ['glossStoch', 'glossStochBody'],
             ['glossScore', 'glossScoreBody'],
             ['glossRs', 'glossRsBody'],
+            ['glossFundamentals', 'glossFundamentalsBody'],
           ].map(([lead, body]) => (
             <p key={lead}>
               <strong>{t(lang, lead)}</strong> {t(lang, body)}
             </p>
           ))}
+          {/* Temel veri kalitesi uyarısı: rakamlar ham gösteriliyor, kırpılmıyor */}
+          <p className="gloss-warning">{t(lang, 'glossFundamentalsWarning')}</p>
           <p className="muted">{t(lang, 'glossFooter')}</p>
         </div>
       </details>
@@ -6679,6 +6950,9 @@ function App() {
                   >
                     {formatPct(r.relative_strength, 1)}
                   </td>
+                  <td>{formatNum(r.pe, 1)}</td>
+                  <td>{formatNum(r.pb, 2)}</td>
+                  <td>{formatRate(r.dividend_yield, 1)}</td>
                   <td>
                     <span className={`badge rsi-${rsiTone(r.rsi ?? 0)}`}>
                       {r.rsi == null ? '—' : formatNum(r.rsi, 1)}

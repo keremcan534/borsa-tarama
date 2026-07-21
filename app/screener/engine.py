@@ -154,6 +154,10 @@ def analyze_symbol(
     # Sinyal bu (son kapanmış) mumda mı açıldı? "YENİ" etiketi bundan üretilir.
     result["signal_fresh"] = signal_fresh(df, ema_periods)
 
+    # Temel oranlar (F/K, PD/DD, temettü): tarama saf teknikti, "güçlü ama pahalı mı?"
+    # sorusuna cevabı yoktu. Kaynak temel veri sağlamıyorsa alanlar hiç eklenmez.
+    result.update(fetcher.fetch_fundamentals(symbol))
+
     if series_sink is not None:
         bars = df[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)
         series_sink[symbol] = [

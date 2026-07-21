@@ -20,6 +20,13 @@ class Settings(BaseSettings):
         "etf": 5_000_000.0,  # 5M USD (ETF'ler genelde çok likit)
     }
 
+    # Temel oranlar (F/K, PD/DD, temettü) taranan her sembol için ayrı bir yfinance
+    # `.info` isteği gerektirir: ölçülen maliyet sembol başına ~0,43 sn, yani
+    # BIST100+S&P500'de taramaya ~4 dk ekler. yfinance resmi bir API olmadığından
+    # rate-limit'e takılırsa bu ayar False yapılarak kod değiştirmeden kapatılabilir
+    # (arayüz kolonları o durumda '—' gösterir, tarama çalışmaya devam eder).
+    fundamentals_enabled: bool = True
+
     class Config:
         env_file = ".env"
 

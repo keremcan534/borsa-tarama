@@ -146,6 +146,33 @@ def test_signal_fresh_false_when_last_bar_not_signal():
     assert signal_fresh(df, DEFAULT_EMA_PERIODS) is False
 
 
+def test_analyze_symbol_without_fundamentals_support():
+    # Temel veri sağlamayan bir fetcher (BaseFetcher varsayılanı {}) taramayı bozmamalı
+    from app.screener.engine import analyze_symbol
+
+    stock = analyze_symbol("XYZ", FakeFetcher(_uptrend_ohlcv()))
+    assert stock is not None
+    assert "pe" not in stock  # alan hiç eklenmez, arayüz '—' gösterir
+
+
+def test_analyze_symbol_merges_fundamentals_when_available():
+    from app.screener.engine import analyze_symbol
+
+    class FundamentalFetcher(FakeFetcher):
+        def fetch_fundamentals(self, symbol: str) -> dict:
+            return {"pe": 12.5, "pb": 1.8, "dividend_yield": 0.031, "roe": 0.22}
+
+    stock = analyze_symbol("XYZ", FundamentalFetcher(_uptrend_ohlcv()))
+    assert stock["pe"] == 12.5
+    assert stock["dividend_yield"] == 0.031
+    # Teknik alanlar temel veriyle ezilmemeli
+    assert "rsi" in stock and "ema_200" in stock
+
+
+def test_base_fetcher_fundamentals_default_is_empty():
+    assert FakeFetcher(_flat_ohlcv(400)).fetch_fundamentals("XYZ") == {}
+
+
 def test_analyze_symbol_includes_signal_fresh_field():
     from app.screener.engine import analyze_symbol
 

@@ -223,6 +223,14 @@ const STRINGS = {
     glossRs: 'Endeks Farkı (3a):',
     glossRsBody:
       'Hisse son 3 ayda endeksten ne kadar iyi gitti? Örnek: hisse %30, BIST 100 %20 kazandırdıysa fark +%10 olur. Neden önemli: yükselen bir piyasada zaten her şey yükselir, asıl soru hissenin piyasayı geçip geçmediğidir. Momentum filtresini geçen bir hisse bile endeksin gerisinde kalabilir — bu kolon onu görünür kılar. Eksi değer hissenin düştüğü anlamına GELMEZ; yükselmiş ama endeksten az yükselmiş olabilir.',
+    glossFundamentals: 'F/K, PD/DD, Temettü:',
+    glossFundamentalsBody:
+      'Temel (fiyat dışı) oranlar. F/K = fiyat ÷ hisse başına kâr: kabaca "şirketin kaç yıllık kârı kadar ödüyorsun". PD/DD = piyasa değeri ÷ defter değeri. Temettü, son bir yılda dağıtılan kârın fiyata oranı. Bu kolonlar teknik göstergeleri tamamlar: bir hisse teknik olarak güçlü ama temelde pahalı olabilir.',
+    glossFundamentalsWarning:
+      '⚠️ Temel veriler yfinance kaynaklıdır ve BIST hisselerinde bayat ya da tutarsız olabilir (tek çeyrek zararı olan bir şirkette F/K üç haneli çıkabilir). Rakamlar olduğu gibi gösterilir, "makul" aralığa kırpılmaz — karar vermeden önce KAP/şirket bilançosundan doğrula.',
+    colPe: 'F/K',
+    colPb: 'PD/DD',
+    colDiv: 'Temettü',
     glossFooter:
       'Bu göstergeler geçmiş fiyat hareketine dayanır; geleceği garanti etmez. Teknik analiz olasılık üzerine kuruludur, kesinlik üzerine değil.',
     filterTitle: 'Filtre Ayarları',
@@ -293,6 +301,10 @@ const STRINGS = {
     scColNow: 'Şu an',
     scColReturn: 'Getiri',
     scDaysN: (n) => `${n} gün`,
+    shareCard: 'Kart indir',
+    shareCardHint: 'Bu hisseyi özetleyen paylaşılabilir bir görsel (PNG) indir',
+    shareChangeLabel: 'Son kapanışa göre günlük değişim',
+    shareDisclaimer: 'Yatırım tavsiyesi değildir · Teknik göstergelere dayalı veri',
     curLabel: 'Para birimi',
     curNative: '₺ TL',
     curUsd: '$ Dolar',
@@ -331,6 +343,19 @@ const STRINGS = {
     stratNoSlot: 'Slot dolu — önce bir pozisyon sat',
     stratFullNote: 'Tüm slotlar dolu: stratejiye göre yeni sinyaller bir slot boşalana kadar atlanır.',
     stratNotifTitle: (n) => `🎯 ${n} yeni haftalık sinyal`,
+    divTitle: 'Çeşitlilik',
+    divAvgCorr: 'Ort. korelasyon',
+    divTopSector: 'En yoğun sektör',
+    divNoData: 'yetersiz veri',
+    divLevel_ok: 'Dağınık',
+    divLevel_warn: 'Yoğunlaşıyor',
+    divLevel_risk: 'Riskli',
+    divNote_ok:
+      'Pozisyonların farklı şeylere bahis oynuyor gibi görünüyor. 10 pozisyon kuralı riski ancak böyle dağıtır.',
+    divNote_warn:
+      'Pozisyonların birbirine benzemeye başlamış. Aynı yönde hareket eden hisseler düşüşte de birlikte düşer; yeni pozisyonları farklı sektörlerden seçmek dengeyi geri getirir.',
+    divNote_risk:
+      'Pozisyonların büyük ölçüde aynı bahsin kopyası: birlikte hareket ediyorlar ve/veya tek bir sektörde yoğunlaşmışlar. Bu durumda 10 pozisyon, 10 ayrı risk değil tek riskin 10 katıdır — sert bir düşüşte hepsi birden zarar eder.',
     tabPortfolio: 'Portföyüm',
     pfIntro:
       'Fon ve BIST hissesi alımlarını gir, güncel fiyatla kâr/zararını takip et. Veriler yalnızca bu tarayıcıda saklanır.',
@@ -791,6 +816,14 @@ const STRINGS = {
     glossRs: 'vs Index (3m):',
     glossRsBody:
       'How much better than the index over the last 3 months? Example: the stock gained 30% while the BIST 100 gained 20% → +10%. Why it matters: in a rising market everything rises; the real question is whether the stock beat the market. Even a stock passing the momentum filter can lag the index — this column makes that visible. A negative value does NOT mean the stock fell; it may have risen, just less than the index.',
+    glossFundamentals: 'P/E, P/B, Dividend:',
+    glossFundamentalsBody:
+      'Fundamental (non-price) ratios. P/E = price ÷ earnings per share: roughly "how many years of profit you are paying for". P/B = market value ÷ book value. Dividend is last year’s payout as a share of price. These complement the technical indicators: a stock can look technically strong yet be fundamentally expensive.',
+    glossFundamentalsWarning:
+      '⚠️ Fundamentals come from yfinance and can be stale or inconsistent for BIST stocks (a company with one loss-making quarter can show a three-digit P/E). Values are shown as-is and never clipped to a "sensible" range — verify against official filings before acting.',
+    colPe: 'P/E',
+    colPb: 'P/B',
+    colDiv: 'Dividend',
     glossFooter:
       'These indicators are based on past price action and guarantee nothing about the future. Technical analysis is built on probability, not certainty.',
     filterTitle: 'Filter settings',
@@ -861,6 +894,10 @@ const STRINGS = {
     scColNow: 'Now',
     scColReturn: 'Return',
     scDaysN: (n) => `${n}d`,
+    shareCard: 'Save card',
+    shareCardHint: 'Download a shareable image (PNG) summarising this stock',
+    shareChangeLabel: 'Daily change vs previous close',
+    shareDisclaimer: 'Not investment advice · Data based on technical indicators',
     curLabel: 'Currency',
     curNative: '₺ TRY',
     curUsd: '$ USD',
@@ -899,6 +936,19 @@ const STRINGS = {
     stratNoSlot: 'Slots full — sell a position first',
     stratFullNote: 'All slots full: per the strategy, new signals are skipped until a slot frees up.',
     stratNotifTitle: (n) => `🎯 ${n} new weekly signal${n === 1 ? '' : 's'}`,
+    divTitle: 'Diversification',
+    divAvgCorr: 'Avg correlation',
+    divTopSector: 'Most concentrated sector',
+    divNoData: 'not enough data',
+    divLevel_ok: 'Spread out',
+    divLevel_warn: 'Concentrating',
+    divLevel_risk: 'Risky',
+    divNote_ok:
+      'Your positions look like bets on different things. That is the only way the 10-position rule actually spreads risk.',
+    divNote_warn:
+      'Your positions are starting to resemble each other. Stocks that move together also fall together; picking new positions from other sectors restores the balance.',
+    divNote_risk:
+      'Your positions are largely copies of the same bet: they move together and/or cluster in one sector. Then 10 positions are not 10 separate risks but one risk ten times over — a sharp drop hits all of them at once.',
     tabPortfolio: 'Portfolio',
     pfIntro:
       'Enter your fund and BIST stock purchases and track profit/loss against the latest price. Data is stored only in this browser.',
