@@ -19,6 +19,9 @@ const STRINGS = {
     favorites: 'Favoriler',
     showAllStocks: (n) => `Tüm hisseler (${n})`,
     showAllStocksHint: 'Filtreleri yok say, taranan tüm hisseleri listele',
+    onlyNew: (n) => `Sadece yeniler (${n})`,
+    onlyNewHint:
+      'Yalnızca bu mumda sinyal veren hisseler. Sinyal listesi günlerce aynı kalabilir; strateji için önemli olan yeni girenlerdir.',
     refresh: 'Yenile',
     refreshCache: "Cache'ten Yenile",
     liveScan: 'Canlı Tara',
@@ -146,6 +149,9 @@ const STRINGS = {
     todayLastScan: (when) => `Son tarama: ${when}`,
     todayIntro:
       'Günün özeti: endeksler, yeni sinyaller ve öne çıkanlar. Detay için ilgili sekmeye geç.',
+    todayScopeLabel: 'Piyasa',
+    todayScopeBist: '🇹🇷 BIST',
+    todayScopeGlobal: '🇺🇸 ABD & Global',
     newsBist: 'BIST Haberleri',
     newsGlobal: 'Global Haberler',
     newsTabAll: 'Tümü',
@@ -290,7 +296,11 @@ const STRINGS = {
     scEmpty:
       'Bu zaman diliminde henüz kayıtlı sinyal yok. Kayıt her taramayla birikiyor; yeni sinyaller çıktıkça burada görünecekler.',
     scCount: 'Sinyal',
-    scCountSub: 'kayıtlı sinyal',
+    scCountSub: 'olgunlaşmış sinyal',
+    scAllPending: (n) =>
+      `Bu zaman diliminde ${n} sinyal bugün kaydedildi. Sinyal, mumun kapanış fiyatıyla mühürlenir; aynı gün içinde getiri zorunlu olarak %0 olacağından istatistik hesaplanmaz. Yarınki taramadan itibaren burada gerçek rakamlar görünecek.`,
+    scPendingNote: (n) =>
+      `${n} sinyal bugün kaydedildi ve henüz olgunlaşmadı; aşağıdaki tabloda görünüyorlar ama getiri zorunlu olarak %0 olacağından istatistiklere katılmadılar.`,
     scWinRate: 'Artıda',
     scWinRateSub: 'sinyalin oranı',
     scAvg: 'Ort. getiri',
@@ -320,6 +330,11 @@ const STRINGS = {
       'Backtest bu kuralı test etti: haftalık grafikte filtreyi YENİ geçen (taze) sinyaller alınır, en fazla belirtilen sayıda pozisyon tutulur, her pozisyon giriş tarihinden itibaren belirlenen hafta kadar tutulup satılır. Doluyken gelen sinyaller atlanır.',
     stratHowBody2:
       'Aşağıya girişlerini kaydet; her pozisyon için kaç hafta dolduğunu ve satış zamanının gelip gelmediğini gösterir. Boş slot varsa taze haftalık sinyalleri tek tıkla ekleyebilirsin. Bu bir yatırım tavsiyesi değildir.',
+    stratScopeLabel: 'Piyasa',
+    stratScopeBist: 'BIST',
+    stratScopeGlobal: 'ABD & Global',
+    stratHowBody3:
+      'BIST ve ABD ayrı stratejiler olarak takip edilir: farklı para birimi, farklı seans ve farklı dinamikleri vardır. Pozisyon kapasitesi (slot) ve çeşitlilik ölçüsü her piyasa için ayrı hesaplanır — 10 BIST + 10 ABD pozisyonunu tek havuzda saymak ikisini de yanlış gösterirdi.',
     stratMaxPositions: 'Maks pozisyon',
     stratHoldWeeks: 'Tutma (hafta)',
     stratSlots: 'Dolu slot',
@@ -389,11 +404,22 @@ const STRINGS = {
       `Aynı tutarları aynı tarihlerde ${label} almak için kullansaydın portföyün bugün ne ederdi?`,
     bkTitle: 'Yedekleme',
     bkHint:
-      'Favoriler ve portföy yalnızca bu tarayıcıda durur. Başka cihaza taşımak için dışa aktarıp orada içe aktar; içe aktarma mevcut verinin üzerine yazmaz, birleştirir.',
+      'Favoriler, portföy, strateji pozisyonları, alarmlar ve kayıtlı taramalar yalnızca bu tarayıcıda durur. Başka cihaza taşımak için dışa aktarıp orada içe aktar; içe aktarma mevcut verinin üzerine yazmaz, birleştirir.',
     bkExport: 'Dışa aktar (JSON)',
     bkImport: 'İçe aktar',
     bkExported: 'Yedek dosyası indirildi.',
     bkImportErr: 'Dosya okunamadı: geçerli bir Borsa Tarama yedeği değil.',
+    bkCodeTitle: 'Kod ile taşı',
+    bkCodeHint:
+      'Dosya indirmeden taşımanın yolu: kodu kopyala, diğer cihazda bu kutuya yapıştır. Kod, verine açılan bir şifre değil, verinin kendisidir — bu yüzden sunucuda hesabın tutulmaz ve kimse kod tahmin ederek verine ulaşamaz.',
+    bkCopyCode: 'Kodu kopyala',
+    bkCodePlaceholder: 'Kodu buraya yapıştır (BT1. ile başlar)',
+    bkApplyCode: 'Koddan yükle',
+    bkCopied: (n) => `Kod panoya kopyalandı (${n} karakter). Diğer cihazda yapıştırman yeterli.`,
+    bkCopyErr: 'Kod kopyalanamadı. Tarayıcı pano iznini engellemiş olabilir.',
+    bkCodeErr: 'Kod okunamadı: eksik ya da bozuk olabilir. Tamamını kopyaladığından emin ol.',
+    bkCodeWarning:
+      'Kodu kimseyle paylaşma: içinde portföyün ve pozisyonların var. Kodu alan kişi bunları görebilir.',
     flowTitle: 'Fon akışı — yatırımcı sayısı değişimi',
     flowGainers: 'En çok yatırımcı kazanan',
     flowLosers: 'En çok yatırımcı kaybeden',
@@ -626,6 +652,9 @@ const STRINGS = {
     favorites: 'Watchlist',
     showAllStocks: (n) => `All stocks (${n})`,
     showAllStocksHint: 'Ignore filters and list every scanned stock',
+    onlyNew: (n) => `Fresh only (${n})`,
+    onlyNewHint:
+      'Only stocks that signalled on this candle. A signal list can stay unchanged for days; what matters for the strategy is the new entries.',
     refresh: 'Refresh',
     refreshCache: 'Refresh cache',
     liveScan: 'Live scan',
@@ -752,6 +781,9 @@ const STRINGS = {
     todayLastScan: (when) => `Last scan: ${when}`,
     todayIntro:
       "Today at a glance: indices, new signals and standouts. Switch to a tab for the detail.",
+    todayScopeLabel: 'Market',
+    todayScopeBist: '🇹🇷 BIST',
+    todayScopeGlobal: '🇺🇸 US & Global',
     newsBist: 'BIST news',
     newsGlobal: 'Global news',
     newsTabAll: 'All',
@@ -883,7 +915,11 @@ const STRINGS = {
     scEmpty:
       'No recorded signals in this timeframe yet. The record grows with every scan; new signals will show up here.',
     scCount: 'Signals',
-    scCountSub: 'recorded signals',
+    scCountSub: 'matured signals',
+    scAllPending: (n) =>
+      `${n} signals in this timeframe were recorded today. A signal is sealed at the candle's closing price, so within the same day the return is necessarily 0% and no statistics are computed. Real numbers will appear here from tomorrow's scan onwards.`,
+    scPendingNote: (n) =>
+      `${n} signals were recorded today and have not matured yet; they appear in the table below but are excluded from the statistics because their return is necessarily 0%.`,
     scWinRate: 'In profit',
     scWinRateSub: 'share of signals',
     scAvg: 'Avg return',
@@ -913,6 +949,11 @@ const STRINGS = {
       'The backtest tested this rule: buy stocks that FRESHLY cross the filter on the weekly chart, hold up to the set number of positions, and sell each after the set number of weeks from entry. Signals arriving while full are skipped.',
     stratHowBody2:
       'Record your entries below; each position shows how many weeks it has been held and whether it is due to sell. When a slot is free you can add fresh weekly signals with one click. This is not investment advice.',
+    stratScopeLabel: 'Market',
+    stratScopeBist: 'BIST',
+    stratScopeGlobal: 'US & Global',
+    stratHowBody3:
+      'BIST and US are tracked as separate strategies: they have different currencies, sessions and dynamics. Position capacity (slots) and the diversification measure are computed per market — counting 10 BIST + 10 US positions in one pool would misrepresent both.',
     stratMaxPositions: 'Max positions',
     stratHoldWeeks: 'Hold (weeks)',
     stratSlots: 'Slots used',
@@ -982,11 +1023,22 @@ const STRINGS = {
       `What would your portfolio be worth today if the same amounts had bought ${label} on the same dates?`,
     bkTitle: 'Backup',
     bkHint:
-      'Watchlist and portfolio live only in this browser. Export a file and import it on another device to move them; importing merges with existing data, it does not overwrite.',
+      'Watchlist, portfolio, strategy positions, alerts and saved screens live only in this browser. Export a file and import it on another device to move them; importing merges with existing data, it does not overwrite.',
     bkExport: 'Export (JSON)',
     bkImport: 'Import',
     bkExported: 'Backup file downloaded.',
     bkImportErr: 'Could not read the file: not a valid Borsa Tarama backup.',
+    bkCodeTitle: 'Move with a code',
+    bkCodeHint:
+      'Transfer without downloading a file: copy the code and paste it into this box on the other device. The code is not a password to your data — it IS the data, so no account is stored on a server and nobody can reach your data by guessing a code.',
+    bkCopyCode: 'Copy code',
+    bkCodePlaceholder: 'Paste the code here (starts with BT1.)',
+    bkApplyCode: 'Load from code',
+    bkCopied: (n) => `Code copied to clipboard (${n} characters). Just paste it on the other device.`,
+    bkCopyErr: 'Could not copy the code. Your browser may have blocked clipboard access.',
+    bkCodeErr: 'Could not read the code: it may be incomplete or corrupted. Make sure you copied all of it.',
+    bkCodeWarning:
+      'Do not share this code: it contains your portfolio and positions. Anyone who has it can see them.',
     flowTitle: 'Fund flows — investor count change',
     flowGainers: 'Most investors gained',
     flowLosers: 'Most investors lost',

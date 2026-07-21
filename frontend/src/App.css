@@ -318,11 +318,24 @@
 }
 
 .table-wrap {
-  overflow-x: auto;
+  /* Yükseklik sınırı şart: tablo 99 satır × 15 kolon olabiliyor ve yatay kaydırma
+     çubuğu sarmalayıcının DİBİNDE oluşur. Sınırsız yükseklikte çubuğa ulaşmak için
+     binlerce piksel aşağı inmek gerekiyordu — "sağa gidemiyorum" şikayetinin sebebi
+     buydu. Sınırlı yükseklikte her iki kaydırma çubuğu da her zaman erişilebilir. */
+  overflow: auto;
+  max-height: calc(100vh - 150px);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   animation: rise 0.25s ease-out;
+}
+
+/* Başlık satırı sabitlenir: yatay/dikey kayarken hangi kolona baktığın kaybolmasın */
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
 }
 
 @keyframes rise {
@@ -1795,6 +1808,12 @@ button.today-card.fund-card:hover {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* Menü 17 sekmeyle ekrandan uzun olabiliyor; sticky olduğu için taşan kısım
+     sayfayı kaydırınca da erişilemiyordu. Kendi içinde kaydırılabilir olmalı. */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  /* Kaydırma çubuğu içeriğe yapışmasın */
+  padding-right: 4px;
 }
 
 .sidebar .brand {
@@ -3558,6 +3577,68 @@ tr.alert-hit td {
   font-size: 12px;
   color: var(--text);
   opacity: 0.85;
+}
+
+.sc-pending-note {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Karne sekmelerindeki kayıt sayısı rozeti */
+.sc-tab-count {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Bugün" piyasa seçimi: sayfanın tamamını filtreler, o yüzden en üstte ve belirgin */
+.today-scope-tabs {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.today-scope-tabs .tab {
+  font-size: 14px;
+  padding: 8px 16px;
+}
+
+/* ---------- Kod ile yedek taşıma ---------- */
+.bk-code {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.bk-code-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.bk-code-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.bk-code-row .search-input {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.bk-code-warning {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--down);
 }
 
 /* ---------- Çeşitlilik paneli (Strateji Takip) ---------- */

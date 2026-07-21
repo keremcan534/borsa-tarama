@@ -2029,6 +2029,114 @@ function saveStrategySettings(s) {
   localStorage.setItem('strategy_settings', JSON.stringify(s))
 }
 
+/* ---------- Yedekleme (dosya + kod) ----------
+ * Tüm kişisel veri yalnızca localStorage'da yaşar; sunucu yoktur. Cihaz değiştirmenin
+ * tek yolu bu yedek. Kod biçimi bilinçli bir tercihtir: kod, sunucudaki veriye açılan
+ * bir ANAHTAR değil, verinin KENDİSİDİR. Böylece kimse başkasının kodunu tahmin edip
+ * verisine ulaşamaz — ortada ulaşılacak bir sunucu yoktur. */
+
+// Yedeğe girecek localStorage anahtarları ve birleştirme biçimleri.
+// Yeni bir kişisel veri anahtarı eklendiğinde BURAYA da eklenmelidir.
+const BACKUP_KEYS = [
+  { key: 'watchlist', kind: 'set' },
+  { key: 'watchlist_funds', kind: 'set' },
+  { key: 'portfolio_funds', kind: 'list' },
+  { key: 'strategy_positions', kind: 'list' },
+  { key: 'alerts', kind: 'list' },
+  { key: 'saved_screens', kind: 'list' },
+  { key: 'strategy_settings', kind: 'object' },
+]
+
+const BACKUP_CODE_PREFIX = 'BT1.'
+
+function buildBackupPayload() {
+  const data = {}
+  for (const { key } of BACKUP_KEYS) {
+    const raw = localStorage.getItem(key)
+    if (raw == null) continue
+    try {
+      data[key] = JSON.parse(raw)
+    } catch {
+      /* bozuk kayıt yedeğe alınmaz */
+    }
+  }
+  return { app: 'borsa-tarama', exported_at: new Date().toISOString(), ...data }
+}
+
+/**
+ * Yedeği localStorage'a uygular. ÜZERİNE YAZMAZ, birleştirir: yanlış kod/dosya
+ * yapıştırıldığında mevcut veri kaybolmasın. Liste öğeleri id ile tekilleştirilir.
+ */
+function applyBackupPayload(data) {
+  if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
+  for (const { key, kind } of BACKUP_KEYS) {
+    const incoming = data[key]
+    if (incoming == null) continue
+
+    if (kind === 'set') {
+      const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+      for (const s of incoming) if (typeof s === 'string') cur.add(s)
+      localStorage.setItem(key, JSON.stringify([...cur]))
+    } else if (kind === 'list') {
+      let cur = []
+      try {
+        cur = JSON.parse(localStorage.getItem(key) || '[]')
+      } catch {
+        cur = []
+      }
+      if (!Array.isArray(cur)) cur = []
+      const ids = new Set(cur.map((x) => x?.id).filter(Boolean))
+      for (const item of Array.isArray(incoming) ? incoming : []) {
+        if (!item || typeof item !== 'object') continue
+        if (item.id && ids.has(item.id)) continue
+        cur.push(item)
+      }
+      localStorage.setItem(key, JSON.stringify(cur))
+    } else if (kind === 'object') {
+      // Ayarlarda birleştirme anlamsız: gelen değer geçerliyse olduğu gibi alınır
+      if (incoming && typeof incoming === 'object') {
+        localStorage.setItem(key, JSON.stringify(incoming))
+      }
+    }
+  }
+}
+
+const bytesToBase64 = (bytes) => {
+  let bin = ''
+  // Parça parça: büyük dizilerde String.fromCharCode(...) yığın taşmasına yol açar
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(bin)
+}
+
+const base64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+
+/** Yedeği tek satırlık koda çevirir (varsa gzip ile sıkıştırarak). */
+async function encodeBackupCode(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
+  if (typeof CompressionStream === 'undefined') {
+    return `${BACKUP_CODE_PREFIX}0.${bytesToBase64(bytes)}`
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))
+  const gz = new Uint8Array(await new Response(stream).arrayBuffer())
+  return `${BACKUP_CODE_PREFIX}1.${bytesToBase64(gz)}`
+}
+
+async function decodeBackupCode(code) {
+  const trimmed = (code || '').trim().replace(/\s+/g, '')
+  if (!trimmed.startsWith(BACKUP_CODE_PREFIX)) throw new Error('bad prefix')
+  const rest = trimmed.slice(BACKUP_CODE_PREFIX.length)
+  const sep = rest.indexOf('.')
+  const compressed = rest.slice(0, sep) === '1'
+  let bytes = base64ToBytes(rest.slice(sep + 1))
+  if (compressed) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+  }
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 // Girişten bu yana geçen tam hafta sayısı (yerel saat, gün farkından)
 function weeksSince(dateStr) {
   const start = new Date(`${dateStr}T00:00:00`)
@@ -2635,24 +2743,13 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
   }
 
   const [backupMsg, setBackupMsg] = useState(null)
+  const [codeInput, setCodeInput] = useState('')
 
-  // Favoriler + portföy localStorage'da yaşar; cihaz değişiminde tek taşıma
-  // yolu bu dosya. Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
+  // Tüm kişisel veri (favoriler, portföy, strateji pozisyonları, alarmlar, kayıtlı
+  // taramalar) localStorage'da yaşar; cihaz değişiminde tek taşıma yolu bu yedek.
+  // Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
   function exportBackup() {
-    const read = (key) => {
-      try {
-        return JSON.parse(localStorage.getItem(key) || '[]')
-      } catch {
-        return []
-      }
-    }
-    const payload = {
-      app: 'borsa-tarama',
-      exported_at: new Date().toISOString(),
-      watchlist: read('watchlist'),
-      watchlist_funds: read('watchlist_funds'),
-      portfolio_funds: read('portfolio_funds'),
-    }
+    const payload = buildBackupPayload()
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -2670,40 +2767,35 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result)
-        if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
-        // Mevcut verinin ÜZERİNE yazmaz, birleştirir: yanlış dosya seçiminde kayıp olmasın
-        const mergeSet = (key) => {
-          const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
-          for (const s of data[key] || []) if (typeof s === 'string') cur.add(s)
-          localStorage.setItem(key, JSON.stringify([...cur]))
-        }
-        mergeSet('watchlist')
-        mergeSet('watchlist_funds')
-        const cur = loadPortfolio()
-        const ids = new Set(cur.map((p) => p.id))
-        for (const p of data.portfolio_funds || []) {
-          if (!p || typeof p.symbol !== 'string' || typeof p.date !== 'string') continue
-          const price = Number(p.price)
-          const qty = Number(p.qty)
-          if (!(price > 0) || !(qty > 0)) continue
-          if (p.id && ids.has(p.id)) continue
-          cur.push({
-            id: p.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            symbol: p.symbol.toUpperCase(),
-            date: p.date,
-            price,
-            qty,
-          })
-        }
-        savePortfolio(cur)
-        // Favori set'leri App state'inde: en güvenilir senkron tam yeniden yükleme
+        applyBackupPayload(JSON.parse(reader.result))
+        // Veriler App state'inde de tutuluyor: en güvenilir senkron tam yeniden yükleme
         window.location.reload()
       } catch {
         setBackupMsg(t(lang, 'bkImportErr'))
       }
     }
     reader.readAsText(file)
+  }
+
+  // Kod ile taşıma: dosya indirip taşımak mobilde zahmetli. Kod, verinin kendisidir
+  // (sunucudaki bir kayda açılan anahtar değil), bu yüzden paylaşılmadıkça risk yok.
+  async function copyBackupCode() {
+    try {
+      const code = await encodeBackupCode(buildBackupPayload())
+      await navigator.clipboard.writeText(code)
+      setBackupMsg(t(lang, 'bkCopied', code.length))
+    } catch {
+      setBackupMsg(t(lang, 'bkCopyErr'))
+    }
+  }
+
+  async function applyBackupCode() {
+    try {
+      applyBackupPayload(await decodeBackupCode(codeInput))
+      window.location.reload()
+    } catch {
+      setBackupMsg(t(lang, 'bkCodeErr'))
+    }
   }
 
   return (
@@ -2926,6 +3018,31 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
             <input type="file" accept="application/json,.json" hidden onChange={importBackup} />
           </label>
         </div>
+
+        {/* Kod ile taşıma: dosya indirmeden, kopyala-yapıştır ile */}
+        <div className="bk-code">
+          <h3 className="bk-code-title">{t(lang, 'bkCodeTitle')}</h3>
+          <p className="fc-overlap-hint">{t(lang, 'bkCodeHint')}</p>
+          <div className="actions">
+            <button className="btn primary" type="button" onClick={copyBackupCode}>
+              📋 {t(lang, 'bkCopyCode')}
+            </button>
+          </div>
+          <div className="bk-code-row">
+            <input
+              className="search-input"
+              type="text"
+              placeholder={t(lang, 'bkCodePlaceholder')}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+            />
+            <button className="btn" type="button" disabled={!codeInput.trim()} onClick={applyBackupCode}>
+              {t(lang, 'bkApplyCode')}
+            </button>
+          </div>
+          <p className="bk-code-warning">{t(lang, 'bkCodeWarning')}</p>
+        </div>
+
         {backupMsg && <p className="fc-overlap-note">{backupMsg}</p>}
       </section>
 
@@ -2959,7 +3076,9 @@ function sectorLabel(sector, lang) {
  * karşılaştırır. Skoru en çok yükselen/düşen hisseler ve sinyale yeni
  * giren/çıkanlar. Arşiv iki gün birikene kadar panel görünmez.
  */
-function ChangeReport({ scores, lang, onOpenChart }) {
+/** `scope`: 'bist' | 'global' | undefined (hepsi). Dize olarak alınır ki her
+ *  render'da yeni bir fonksiyon referansı useMemo'yu boşuna geçersiz kılmasın. */
+function ChangeReport({ scores, lang, scope, onOpenChart }) {
   const computed = useMemo(() => {
     const history = scores?.history || {}
     const days = Object.keys(history).sort()
@@ -2970,6 +3089,8 @@ function ChangeReport({ scores, lang, onOpenChart }) {
     const entered = []
     const dropped = []
     for (const [sym, cur] of Object.entries(today)) {
+      // Seçili piyasa dışındaki semboller rapora girmez (BIST/ABD ayrımı)
+      if (scope && (scope === 'bist') !== isBistSymbol(sym)) continue
       const before = prev[sym]
       if (before) {
         const delta = (cur.s ?? 0) - (before.s ?? 0)
@@ -2984,7 +3105,7 @@ function ChangeReport({ scores, lang, onOpenChart }) {
     const fallers = [...moves].filter((m) => m.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5)
     if (!risers.length && !fallers.length && !entered.length && !dropped.length) return null
     return { risers, fallers, entered, dropped, from: days[days.length - 2], to: days[days.length - 1] }
-  }, [scores])
+  }, [scores, scope])
 
   if (!computed) return null
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
@@ -3213,10 +3334,30 @@ function TodayView({
   onOpenFund,
   onNavigate,
 }) {
+  // BIST / ABD ayrımı: iki piyasanın seansı, para birimi ve gündemi ayrı. Tek sayfada
+  // harmanlandığında "bugün ne oldu" sorusunun cevabı bulanıklaşıyordu (ör. nabız
+  // kartında BIST yükselirken S&P düşüyor, hareketliler listesi ikisinden karışık).
+  // allMarkets'ı kapsama göre filtrelemek ayrımı tüm alt bölümlere birden yayar.
+  // Seçim hatırlanır: "Bugün" açılış sayfası, ABD takip eden biri her ziyarette
+  // sekme değiştirmek zorunda kalmamalı.
+  const [scope, setScopeState] = useState(() => {
+    const saved = localStorage.getItem('today_scope')
+    return saved === 'global' || saved === 'bist' ? saved : 'bist'
+  })
+  const setScope = (next) => {
+    setScopeState(next)
+    localStorage.setItem('today_scope', next)
+  }
+  const isBistMarket = (key) => key === 'bist100'
+  const scopedMarkets = useMemo(
+    () => allMarkets.filter((m) => (scope === 'bist' ? isBistMarket(m.key) : !isBistMarket(m.key))),
+    [allMarkets, scope],
+  )
+
   // Market kartları seçilen zaman dilimine göre; öne çıkan sinyaller / nabız günlük kalır.
   const markets = useMemo(
-    () => (marketOverview ? allMarkets.filter((m) => marketOverview[m.key]) : []),
-    [marketOverview, allMarkets],
+    () => (marketOverview ? scopedMarkets.filter((m) => marketOverview[m.key]) : []),
+    [marketOverview, scopedMarkets],
   )
 
   // Tüm marketlerin sinyalleri, teknik puana göre. Önceden yalnızca "yeni" sinyaller
@@ -3225,7 +3366,7 @@ function TodayView({
   const signals = useMemo(() => {
     if (!overview) return []
     const out = []
-    for (const m of allMarkets) {
+    for (const m of scopedMarkets) {
       const payload = overview[m.key]
       const emaPeriods = payload?.ema_periods || [9, 21, 50, 200]
       for (const s of payload?.results || []) {
@@ -3235,24 +3376,24 @@ function TodayView({
     // Yeniler önce, sonra puan: yeni sinyal günün asıl haberi
     out.sort((a, b) => Number(b.is_new || false) - Number(a.is_new || false) || b.score - a.score)
     return out.slice(0, 12)
-  }, [overview, allMarkets])
+  }, [overview, scopedMarkets])
 
   // Sayım, rozetlerle AYNI alandan (is_new) türetilir. Payload'daki new_count'u
   // kullanmak, ikisinin ayrışıp "1 yeni sinyal" yazarken hiç rozet göstermemesine
   // yol açabiliyordu.
   const newSignalCount = useMemo(() => {
     if (!overview) return 0
-    return allMarkets.reduce(
+    return scopedMarkets.reduce(
       (n, m) => n + (overview[m.key]?.results || []).filter((s) => s.is_new).length,
       0,
     )
-  }, [overview, allMarkets])
+  }, [overview, scopedMarkets])
 
   const indexes = useMemo(() => {
     if (!overview) return []
     const seen = new Set()
     const out = []
-    for (const m of allMarkets) {
+    for (const m of scopedMarkets) {
       const b = overview[m.key]?.benchmark
       // Endeksin adı marketin adından gelmez: S&P nabzı, sp500 kapalıyken ETF
       // marketi üzerinden geliyor ve kart yine "S&P 500" demeli.
@@ -3261,7 +3402,7 @@ function TodayView({
       out.push({ ...b, label: b.name || mLabel(m, lang) })
     }
     return out
-  }, [overview, allMarkets, lang])
+  }, [overview, scopedMarkets, lang])
 
   // Popülerliğe (yatırımcı sayısı) göre — puana göre sıralamak, 1-18 yatırımcılı
   // niş fonları "öne çıkan" diye tepeye taşıyordu. Puan yine kartta duruyor.
@@ -3274,19 +3415,20 @@ function TodayView({
     [funds],
   )
 
+  // Haberler de seçili piyasadan: BIST sekmesinde ABD haberi göstermek sayfanın
+  // "bugün burada ne oldu" vaadini bozardı.
   const topNews = useMemo(() => {
     const items = news?.items || []
-    return [
-      ...items.filter((i) => isBistSymbol(i.symbol)).slice(0, 4),
-      ...items.filter((i) => !isBistSymbol(i.symbol)).slice(0, 3),
-    ]
-  }, [news])
+    return items
+      .filter((i) => (scope === 'bist' ? isBistSymbol(i.symbol) : !isBistSymbol(i.symbol)))
+      .slice(0, 6)
+  }, [news, scope])
 
   if (loading && !overview) return <div className="empty-box">{t(lang, 'todayLoading')}</div>
   if (error && !overview) return <div className="error-box">{error}</div>
   if (!overview) return null
 
-  const firstMarketKey = allMarkets.find((m) => overview[m.key])?.key
+  const firstMarketKey = scopedMarkets.find((m) => overview[m.key])?.key
   const generatedAt = firstMarketKey ? overview[firstMarketKey]?.generated_at : null
 
   return (
@@ -3298,6 +3440,24 @@ function TodayView({
             {t(lang, 'todayLastScan', new Date(generatedAt).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'))}
           </span>
         )}
+      </div>
+
+      {/* Piyasa seçimi: sayfanın tamamı (nabız, sinyaller, hareketliler, genişlik,
+          sektör ısı haritası, haberler) seçili piyasaya göre filtrelenir. */}
+      <div className="tabs today-scope-tabs" role="group" aria-label={t(lang, 'todayScopeLabel')}>
+        {[
+          { key: 'bist', i18nKey: 'todayScopeBist' },
+          { key: 'global', i18nKey: 'todayScopeGlobal' },
+        ].map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={`tab ${scope === s.key ? 'active' : ''}`}
+            onClick={() => setScope(s.key)}
+          >
+            {t(lang, s.i18nKey)}
+          </button>
+        ))}
       </div>
 
       {indexes.length > 0 && (
@@ -3350,13 +3510,13 @@ function TodayView({
         )}
       </section>
 
-      <TopMovers overview={overview} allMarkets={allMarkets} lang={lang} onOpenChart={onOpenChart} />
+      <TopMovers overview={overview} allMarkets={scopedMarkets} lang={lang} onOpenChart={onOpenChart} />
 
-      <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
+      <ChangeReport scores={scores} lang={lang} scope={scope} onOpenChart={onOpenChart} />
 
-      <MarketBreadth overview={overview} allMarkets={allMarkets} lang={lang} />
+      <MarketBreadth overview={overview} allMarkets={scopedMarkets} lang={lang} />
 
-      <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
+      <SectorHeatmap overview={overview} allMarkets={scopedMarkets} lang={lang} />
 
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'todayMarkets')}</h2>
@@ -3399,7 +3559,8 @@ function TodayView({
         ) : null}
       </section>
 
-      {popularFunds.length > 0 && (
+      {/* TEFAS fonları yalnızca Türkiye piyasasına ait; ABD sekmesinde gösterilmez */}
+      {scope === 'bist' && popularFunds.length > 0 && (
         <section className="today-section">
           <h2 className="today-title">
             {t(lang, 'todayFunds')}
@@ -4986,14 +5147,39 @@ function SectorRotation({ overviews, market, lang, loading, onNavigate }) {
  * (signal_log.json), burada yalnızca o mühürlü kayıt okunur. Kayıt ileriye doğru
  * dolduğundan geçmişe dönük değiştirilemez.
  */
+/** Karne tablosunun sıralanabilir kolonları. */
+const SCORECARD_COLUMNS = [
+  { key: 'symbol', i18nKey: 'colSymbol', align: 'left' },
+  { key: 'day', i18nKey: 'scColDate', align: 'left' },
+  { key: 'daysHeld', i18nKey: 'scColElapsed' },
+  { key: 'entry', i18nKey: 'scColEntry' },
+  { key: 'current', i18nKey: 'scColNow' },
+  { key: 'ret', i18nKey: 'scColReturn' },
+]
+
 function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
   const [tf, setTf] = useState('weekly')
+  const [sort, setSort] = useState({ key: 'day', dir: 'desc' })
+
+  const toggleSort = (key) =>
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'symbol' || key === 'day' ? 'asc' : 'desc' },
+    )
 
   // Mühürlü kayıtları bugünkü fiyatla karşılaştır
-  const { rows, stats, firstDay, dayCount } = useMemo(() => {
+  const { rows, stats, firstDay, dayCount, counts } = useMemo(() => {
     const history = log?.history || {}
     const days = Object.keys(history).sort()
     const out = []
+    // Sekme rozetleri: her zaman diliminde kaç kayıt var (boş sekmeye tıklamayı önler)
+    const perTf = {}
+    for (const day of days) {
+      for (const e of history[day] || []) {
+        perTf[e.tf] = (perTf[e.tf] || 0) + 1
+      }
+    }
     for (const day of days) {
       for (const e of history[day] || []) {
         if (e.tf !== tf) continue
@@ -5003,13 +5189,37 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         // "0 getiri" saymak isabet oranını sessizce şişirirdi.
         if (!(entry > 0) || !(current > 0)) continue
         const ret = current / entry - 1
-        const daysHeld = Math.max(0, Math.round((Date.now() - new Date(`${day}T00:00:00`)) / 86400000))
-        out.push({ ...e, day, entry, current, ret, daysHeld })
+        // floor: bugün kaydedilen sinyal "0 gün"dür. round kullanıldığında aradan
+        // 18 saat geçmiş bir kayıt "1 gün" sayılıp olgunlaşmış gibi görünüyordu.
+        const daysHeld = Math.max(
+          0,
+          Math.floor((Date.now() - Date.parse(`${day}T00:00:00Z`)) / 86400000),
+        )
+        out.push({ ...e, symbol: e.s, day, entry, current, ret, daysHeld })
       }
     }
-    out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
+    // Sıralama: metin kolonları (sembol, tarih) sözlük sırasına, sayısal olanlar
+    // büyüklüğe göre. Eksik değer compareRows'daki gibi yönden bağımsız sona gider.
+    const { key, dir } = sort
+    out.sort((a, b) => {
+      const av = a[key]
+      const bv = b[key]
+      if (typeof av === 'string' || typeof bv === 'string') {
+        const cmp = String(av ?? '').localeCompare(String(bv ?? ''))
+        return dir === 'asc' ? cmp : -cmp
+      }
+      return compareRows(a, b, key, dir)
+    })
 
-    const rets = out.map((r) => r.ret)
+    // İstatistikler yalnızca üzerinden en az bir gün geçmiş kayıtlardan hesaplanır.
+    // Sinyal, mumun kapanışıyla mühürlenir; aynı gün içinde güncel fiyat da o kapanış
+    // olduğundan getiri zorunlu olarak 0'dır. Bunları katmak isabet oranını sıfıra
+    // çekip "strateji hiç kazandırmadı" gibi okunuyordu — oysa henüz zaman geçmemiştir.
+    // Olgunluk takvim gününe göre: kayıt günü bugünden ÖNCEyse olgunlaşmıştır.
+    // (Tarama günü UTC yazıldığından karşılaştırma da UTC tarih dizesiyle yapılır.)
+    const todayUtc = new Date().toISOString().slice(0, 10)
+    const matured = out.filter((r) => r.day < todayUtc)
+    const rets = matured.map((r) => r.ret)
     const wins = rets.filter((r) => r > 0).length
     const avg = rets.length ? rets.reduce((s, r) => s + r, 0) / rets.length : null
     const sorted = [...rets].sort((a, b) => a - b)
@@ -5020,11 +5230,18 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
       : null
     return {
       rows: out,
-      stats: { count: rets.length, winRate: rets.length ? wins / rets.length : null, avg, med },
+      stats: {
+        count: rets.length,
+        pending: out.length - matured.length, // henüz olgunlaşmamış (aynı gün) kayıtlar
+        winRate: rets.length ? wins / rets.length : null,
+        avg,
+        med,
+      },
       firstDay: days[0] || null,
       dayCount: days.length,
+      counts: perTf,
     }
-  }, [log, stockMap, tf])
+  }, [log, stockMap, tf, sort])
 
   if (loading) return <div className="empty-box">{t(lang, 'loading')}</div>
 
@@ -5043,15 +5260,17 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         </div>
       </details>
 
+      {/* Kayıt dört zaman dilimini birden tutar; hepsi görüntülenebilmeli */}
       <div className="tabs" role="group" aria-label={t(lang, 'scTfLabel')}>
-        {['daily', 'weekly'].map((k) => (
+        {TIMEFRAMES.map((x) => (
           <button
-            key={k}
+            key={x.key}
             type="button"
-            className={`tab ${tf === k ? 'active' : ''}`}
-            onClick={() => setTf(k)}
+            className={`tab ${tf === x.key ? 'active' : ''}`}
+            onClick={() => setTf(x.key)}
           >
-            {tfLabel(TIMEFRAMES.find((x) => x.key === k), lang)}
+            {tfLabel(x, lang)}
+            {counts[x.key] > 0 && <span className="sc-tab-count">{counts[x.key]}</span>}
           </button>
         ))}
       </div>
@@ -5060,6 +5279,15 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         <div className="empty-box">{t(lang, 'scEmpty')}</div>
       ) : (
         <>
+          {/* Tüm kayıtlar bugünden ise istatistik yoktur: getiri zorunlu olarak 0 olurdu */}
+          {stats.count === 0 ? (
+            <div className="empty-box">{t(lang, 'scAllPending', stats.pending)}</div>
+          ) : (
+            stats.pending > 0 && (
+              <p className="sc-pending-note">{t(lang, 'scPendingNote', stats.pending)}</p>
+            )
+          )}
+          {stats.count > 0 && (
           <div className="strat-summary">
             <div className="strat-stat">
               <span className="strat-stat-label">{t(lang, 'scCount')}</span>
@@ -5079,17 +5307,25 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
               <span className="strat-stat-sub">{t(lang, 'scMedian', formatPct(stats.med, 1))}</span>
             </div>
           </div>
+          )}
 
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th className="left">{t(lang, 'colSymbol')}</th>
-                  <th className="left">{t(lang, 'scColDate')}</th>
-                  <th>{t(lang, 'scColElapsed')}</th>
-                  <th>{t(lang, 'scColEntry')}</th>
-                  <th>{t(lang, 'scColNow')}</th>
-                  <th>{t(lang, 'scColReturn')}</th>
+                  {SCORECARD_COLUMNS.map((c) => (
+                    <th
+                      key={c.key}
+                      className={`sortable ${c.align === 'left' ? 'left' : ''} ${sort.key === c.key ? 'sorted' : ''}`}
+                      onClick={() => toggleSort(c.key)}
+                      title={t(lang, 'sortHint')}
+                    >
+                      {t(lang, c.i18nKey)}
+                      <span className="sort-arrow">
+                        {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -5135,9 +5371,19 @@ function StrategyTracker({
   onEnableNotify,
   onOpenChart,
 }) {
-  const [positions, setPositions] = useState(loadStrategyPositions)
+  const [allPositions, setAllPositions] = useState(loadStrategyPositions)
   const [settings, setSettings] = useState(loadStrategySettings)
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
+  // BIST ve ABD ayrı stratejilerdir: farklı para birimi, farklı seans, farklı
+  // dinamik. Slot bütçesi ve çeşitlilik ölçüsü de bu yüzden market başına tutulur —
+  // 10 BIST + 10 ABD pozisyonunu tek havuzda saymak ikisini de yanlış gösterirdi.
+  const [scope, setScope] = useState('bist')
+
+  const inScope = (symbol) => (scope === 'bist' ? isBistSymbol(symbol) : !isBistSymbol(symbol))
+  const positions = useMemo(
+    () => allPositions.filter((p) => inScope(p.symbol)),
+    [allPositions, scope],
+  )
 
   const notifyBtn =
     notifyPerm === 'granted' ? (
@@ -5150,9 +5396,11 @@ function StrategyTracker({
       </button>
     )
 
-  const update = (next) => {
-    setPositions(next)
-    saveStrategyPositions(next)
+  // Kayıt her zaman TÜM pozisyonlar üzerinden yapılır; ekranda yalnızca seçili
+  // marketinkiler görünse de diğer marketin pozisyonları silinmemelidir.
+  const update = (nextAll) => {
+    setAllPositions(nextAll)
+    saveStrategyPositions(nextAll)
   }
   const patchSettings = (patch) => {
     const next = { ...settings, ...patch }
@@ -5160,16 +5408,16 @@ function StrategyTracker({
     saveStrategySettings(next)
   }
 
-  const held = new Set(positions.map((p) => p.symbol))
+  const held = new Set(allPositions.map((p) => p.symbol))
 
   const addPosition = (symbol, market) => {
     if (held.has(symbol)) return
     update([
-      ...positions,
+      ...allPositions,
       { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, symbol, market, entryDate },
     ])
   }
-  const removePosition = (id) => update(positions.filter((p) => p.id !== id))
+  const removePosition = (id) => update(allPositions.filter((p) => p.id !== id))
 
   // Her pozisyon için: kaç hafta doldu, kaç hafta kaldı, durumu
   const rows = useMemo(() => {
@@ -5198,10 +5446,10 @@ function StrategyTracker({
     [positions, stockPrices, stockMap],
   )
 
-  // Taze haftalık sinyaller: henüz portföyde olmayanlar (slot doldurma önerisi)
+  // Taze haftalık sinyaller: seçili marketten ve henüz portföyde olmayanlar
   const freshAvailable = useMemo(
-    () => (signals || []).filter((s) => !held.has(s.symbol)),
-    [signals, positions],
+    () => (signals || []).filter((s) => !held.has(s.symbol) && inScope(s.symbol)),
+    [signals, positions, scope],
   )
 
   return (
@@ -5211,11 +5459,32 @@ function StrategyTracker({
         {notifyBtn}
       </div>
 
+      {/* BIST / ABD: ayrı stratejiler, ayrı slot bütçesi */}
+      <div className="tabs strat-scope-tabs" role="group" aria-label={t(lang, 'stratScopeLabel')}>
+        {[
+          { key: 'bist', i18nKey: 'stratScopeBist' },
+          { key: 'global', i18nKey: 'stratScopeGlobal' },
+        ].map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={`tab ${scope === s.key ? 'active' : ''}`}
+            onClick={() => setScope(s.key)}
+          >
+            {t(lang, s.i18nKey)}
+            <span className="sc-tab-count">
+              {allPositions.filter((p) => (s.key === 'bist' ? isBistSymbol(p.symbol) : !isBistSymbol(p.symbol))).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <details className="info-panel">
         <summary>{t(lang, 'stratHowTitle')}</summary>
         <div className="info-content">
           <p>{t(lang, 'stratHowBody1')}</p>
           <p>{t(lang, 'stratHowBody2')}</p>
+          <p>{t(lang, 'stratHowBody3')}</p>
         </div>
       </details>
 
@@ -5401,6 +5670,13 @@ function StrategyTracker({
 
 function App() {
   const [lang, setLangState] = useState(getLang)
+
+  // <html lang> arayüz diliyle senkron kalmalı: CSS'in text-transform: uppercase
+  // kuralı dile duyarlıdır ve Türkçede "i" → "İ" olur. Yanlış dilde "eşikleri"
+  // ekranda "EŞIKLERI" diye çıkıyordu. Ekran okuyucu ve arama motorları da bunu okur.
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
   // Açılışta ham tablo yerine günün özeti karşılasın
   const [view, setView] = useState('today')
   const [market, setMarket] = useState('bist100')
@@ -5409,6 +5685,8 @@ function App() {
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   // Filtreleri yok sayıp taranan tüm hisseleri (örn. BIST 100'ün tamamı) listele
   const [showAllStocks, setShowAllStocks] = useState(false)
+  // Yalnızca bu mumda sinyal veren (taze) hisseleri göster
+  const [onlyNew, setOnlyNew] = useState(false)
   const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
@@ -6095,6 +6373,12 @@ function App() {
         ? data.stocks
         : data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
+    // "Sadece yeniler": bu mumda filtreye YENİ giren hisseler. Sinyal listesi
+    // günlerce aynı kalabildiğinden, gerçekten yeni olanı ayırmak strateji için şart.
+    if (onlyNew) {
+      const fresh = new Set((data.results || []).filter((r) => r.is_new).map((r) => r.symbol))
+      list = list.filter((s) => fresh.has(s.symbol))
+    }
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
     const q = search.trim().toUpperCase()
     if (q)
@@ -6107,7 +6391,7 @@ function App() {
     const { key, dir } = sort
     list.sort((a, b) => compareRows(a, b, key, dir))
     return list
-  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks])
+  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks, onlyNew])
 
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
@@ -6758,6 +7042,15 @@ function App() {
               : ''}
         </span>
         <div className="actions">
+          {data?.results && (
+            <button
+              className={`btn ${onlyNew ? 'primary' : ''}`}
+              title={t(lang, 'onlyNewHint')}
+              onClick={() => setOnlyNew((v) => !v)}
+            >
+              ✨ {t(lang, 'onlyNew', data.results.filter((r) => r.is_new).length)}
+            </button>
+          )}
           {data?.stocks && (
             <button
               className={`btn ${showAllStocks ? 'primary' : ''}`}
