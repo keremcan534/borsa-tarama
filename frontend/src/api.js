@@ -89,6 +89,24 @@ export async function fetchFx() {
   return res.json();
 }
 
+/** Temettü takvimi: geçmiş ödemeler + yaklaşan ex-tarihler. İlk taramaya kadar 404 normaldir. */
+export async function fetchDividends() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/dividends.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Temettü verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
+/** Makro panel: kur/faiz/emtia/endeks özeti. İlk taramaya kadar 404 normaldir. */
+export async function fetchMacro() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/macro.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Makro veri yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 /** Günlük skor/sinyal arşivi (değişim raporu). İki gün birikene kadar 404/tek gün normaldir. */
 export async function fetchScoreHistory() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/score_history.json`);

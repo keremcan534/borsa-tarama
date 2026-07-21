@@ -308,6 +308,64 @@ Kapsam: BIST 100 100/100, S&P 500 502/503; ETF ve emtiada sektör kavramı olmad
 o marketlerde dağılım hiç gösterilmez. Sembol listeleri endeks revizyonuyla değişince
 `build_sectors.py` yeniden çalıştırılmalı.
 
+## Temettü Takvimi
+`app/data/dividends.py` → `data/dividends.json` → arayüzde **Temettü** sekmesi.
+Site bugüne kadar saf teknikti; oysa BIST yatırımcısının en çok baktığı rakamlardan
+biri temettü verimidir.
+
+**Ek veri maliyeti yok.** Ödemeler günlük fiyat isteğiyle aynı yanıtta geliyor
+(`YFinanceFetcher.fetch_ohlcv` `dividends` kolonunu yakalayıp cache'liyor — yalnızca
+`1d` mumlarda, çünkü haftalık/aylık mumda ödeme tarihi periyoda yuvarlanır), yaklaşan
+ex-tarih ise temel oranlar için zaten yapılan `.info` çağrısından düşüyor
+(`fetch_dividend_info`). Bu modül yalnızca hesap yapar.
+
+**Verim yeniden hesaplanır, kaynağın `dividendYield` alanı kullanılmaz:** o alan
+bazen bayat, bazen yıllıklandırılmış tahmindir. Burada tanım tek ve doğrulanabilir —
+*son 12 ayda gerçekten ödenen toplam ÷ güncel fiyat* — ve ödemelerin listesi satır
+açılınca yanında durur.
+
+Kurallar:
+- 12 ay içinde ödeme yoksa `ttm` **0 değil `None`**: tabloda "0,00" görmek sıfır lira
+  ödendiği anlamına gelirdi, oysa gerçek durum "bu dönemde ödeme yok".
+- Yaklaşan ex-tarih penceresi 90 gün; `.info`'daki tarih GEÇMİŞ de olabildiğinden
+  yalnızca ileri tarihli olan "yaklaşan" sayılır.
+- Temettü ödemeyen ve yaklaşan tarihi de olmayan hisse listeye hiç girmez.
+- Verim/dağıtım oranı arayüzde `formatRatioPct` ile basılır (artı işaretsiz):
+  `formatPct`'in `+`'sı bir DEĞİŞİMİ ima eder, oysa bunlar seviyedir.
+
+## Makro Panel
+`app/data/macro.py` → `data/macro.json` → arayüzde **Makro** sekmesi. BIST'in yönü
+çoğu zaman hissede değil kurda, faizde ya da petroldedir: USDTRY, EURTRY, dolar
+endeksi, gram altın, BIST 100, S&P 500, VIX, ABD 10Y faiz, ons altın, Brent ve
+Bitcoin tek ekranda (~11 istek — 600 sembollük taramanın yanında ihmal edilebilir).
+
+- Her kart 1g / 1h / 1a / 3a / YBB / 1y değişimi taşır; **hangi dönemin gösterildiği
+  kartın üstündeki anahtardan seçilir ve yüzdenin yanında yazar** (dönem etiketi kuralı).
+- Veri `2y` çekilir ama grafik son 1 yılı gösterir: "1 yıllık değişim" 252 işlem günü
+  geriye baktığından tam 1 yıl çekilince o alan sınırda kalıp çoğu enstrümanda boş dönüyordu.
+- **Gram altın türetilmiştir** (ons × kur ÷ 31,1035), ayrı istek atılmaz; iki seri
+  farklı tatil takvimlerinde olabildiğinden yalnızca ortak tarihlerde hesaplanır
+  (eksik günü doldurmak olmayan bir hareket uydururdu).
+- **BIST korelasyonu GÜNLÜK GETİRİ üzerinden** hesaplanır (90 gün), fiyat seviyesi
+  üzerinden değil: iki yükselen seri seviyede neredeyse her zaman yüksek korelasyon
+  verir ve bu sahte bir ilişkidir. `tests/test_macro.py` bunu bir testle kilitler.
+
+## Derin Bağlantı ve Paylaşım
+Uygulamanın hiç URL durumu yoktu: paylaşılan her bağlantı karşı tarafı "Bugün"
+sayfasına düşürüyordu ve hiçbir ekran yer imine eklenemiyordu. Artık görünüm, market,
+zaman dilimi ve açık hisse adres çubuğuna yazılır (`?v=…&m=…&tf=…&s=…`), başlıktaki
+🔗 düğmesi bağlantıyı kopyalar.
+
+- `replaceState` kullanılır, `pushState` değil: her sekme değişimi geri tuşuna bir adım
+  eklerse tarayıcıdan çıkmak imkânsızlaşırdı.
+- Market/zaman dilimi yalnızca ONLARI gösteren sekmelerde yazılır; "Bugün"ün
+  bağlantısında `m=bist100` durması orada bir market seçimi varmış izlenimi verirdi.
+- **Favori listesi paylaşımı** (`?w=HISSE1,HISSE2|FON1,FON2`): karşı tarafa SORULUR,
+  onaylarsa kendi listesine EKLENİR (mevcut favorileri silinmez).
+- Cevaplanmamış liste daveti adreste kalır. Sebebi ölçülen bir hata: ilk ziyarette
+  service worker güncellemesi sayfayı yeniden yüklüyor (`main.jsx`) ve parametre
+  senkron sırasında silinince paylaşılan liste sessizce kayboluyordu.
+
 ## Veri Kalitesi: Bölünme (Split) Onarımı
 `app/data/repair.py`, Yahoo'nun uygulamadığı bölünmeleri düzeltir. Gerçek örnek:
 CCOLA.IS'in 11:1 bölünmesi Yahoo'da **2024-08-13** kayıtlı ama fiyat serisi **2024-08-01**'de

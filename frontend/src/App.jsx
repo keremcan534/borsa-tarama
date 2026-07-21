@@ -1,11 +1,13 @@
-import { Component, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   fetchAllNews,
   fetchBacktest,
   fetchDailyOverview,
+  fetchDividends,
   fetchEnabledMarkets,
   fetchFundFlows,
+  fetchMacro,
   fetchScoreHistory,
   fetchFundPrices,
   fetchFunds,
@@ -61,6 +63,7 @@ const NAV_SECTIONS = [
       { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
       { key: 'bubbles', i18nKey: 'tabBubbles', icon: '🫧' },
       { key: 'rotation', i18nKey: 'tabRotation', icon: '🔄' },
+      { key: 'macro', i18nKey: 'tabMacro', icon: '🌍' },
       { key: 'news', i18nKey: 'tabNews', icon: '📰' },
     ],
   },
@@ -85,6 +88,7 @@ const NAV_SECTIONS = [
     titleKey: 'navSecAnalysis',
     items: [
       { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
+      { key: 'dividends', i18nKey: 'tabDividends', icon: '💰' },
       { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
       { key: 'scorecard', i18nKey: 'tabScorecard', icon: '🧾' },
       { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
@@ -586,6 +590,13 @@ const FUND_COLUMNS = [
   { key: 'portfolio_size', label: 'Büyüklük', i18nKey: 'colSize' },
 ]
 
+/** Oran yüzdesi (temettü verimi, dağıtım oranı, ROE): DEĞİŞİM değil, seviye.
+ *  formatPct'in artı işareti burada yanlış olurdu — "+%11 verim" bir artışı ima eder. */
+function formatRatioPct(value, digits = 1) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${(value * 100).toFixed(digits)}%`
+}
+
 function formatPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
   const pct = value * 100
@@ -777,7 +788,7 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
  * aralığı, skor geçmişi ve hisseyi taşıyan fonlar. ChartModal içinde grafiğin
  * altında gösterilir; her blok verisi olmadığında sessizce gizlenir.
  */
-function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
+function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividend }) {
   const emaPeriods = stock ? [9, 21, 50, 200].filter((p) => stock[`ema_${p}`] != null) : []
   const score = stock ? technicalScore(stock, emaPeriods) : null
 
@@ -818,7 +829,11 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
       </div>
     )
 
-  const hasAnything = stock || range || funds.length || (scoreSeries && scoreSeries.length > 1)
+  const hasFundamentals =
+    stock && (stock.pe != null || stock.pb != null || stock.roe != null)
+
+  const hasAnything =
+    stock || range || funds.length || dividend || (scoreSeries && scoreSeries.length > 1)
   if (!hasAnything) return null
 
   return (
@@ -833,6 +848,48 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
             {metric('Stoch %K', stock.stoch_k != null ? formatNum(stock.stoch_k, 1) : null)}
             {metric('Stoch RSI %K', stock.stoch_rsi_k != null ? formatNum(stock.stoch_rsi_k, 1) : null)}
             {metric(t(lang, 'colRs'), stock.relative_strength != null ? formatPct(stock.relative_strength, 1) : null, pctTone(stock.relative_strength))}
+          </div>
+        </div>
+      )}
+
+      {hasFundamentals && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdFundamentals')}</div>
+          <div className="sd-metrics">
+            {metric(t(lang, 'colPe'), stock.pe != null ? formatNum(stock.pe, 1) : null)}
+            {metric(t(lang, 'colPb'), stock.pb != null ? formatNum(stock.pb, 2) : null)}
+            {metric(t(lang, 'colRoe'), stock.roe != null ? formatRatioPct(stock.roe, 1) : null, pctTone(stock.roe))}
+            {/* Kaynağın hazır temettü verimi bilerek gösterilmiyor: aşağıdaki
+                temettü bloğu aynı sayıyı gerçek ödemelerden hesaplıyor ve iki
+                farklı "%" yan yana durursa hangisinin doğru olduğu belirsizleşir. */}
+          </div>
+        </div>
+      )}
+
+      {dividend && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'sdDividend')}</div>
+          <div className="sd-metrics">
+            {/* Verim burada ÖDEMELERDEN hesaplanmıştır (dividends.json), kaynağın
+                hazır alanı değil — ikisi ayrışabildiği için etiketi de dönemli. */}
+            {metric(
+              t(lang, 'sdDivYield'),
+              dividend.yield_ttm != null ? formatRatioPct(dividend.yield_ttm, 2) : null,
+              'pos',
+            )}
+            {metric(
+              t(lang, 'sdDivLast'),
+              dividend.last_date
+                ? `${new Date(dividend.last_date).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')} · ${formatNum(dividend.last_amount, 2)}`
+                : null,
+            )}
+            {metric(
+              t(lang, 'sdDivNext'),
+              dividend.next_ex_date
+                ? `${new Date(dividend.next_ex_date).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')} (${t(lang, 'dvdDays', dividend.days_to_ex)})`
+                : null,
+            )}
+            {metric(t(lang, 'dvdColYears'), dividend.years_paid || null)}
           </div>
         </div>
       )}
@@ -907,7 +964,7 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare }) {
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare, dividend }) {
   // TL / $ / gram altın: TL bazlı bir getirinin reelde ne olduğunu göstermek için
   const [currency, setCurrency] = useState('native')
 
@@ -1041,6 +1098,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
           scoreSeries={scoreSeries}
           series={series}
           lang={lang}
+          dividend={dividend}
         />
         {news && news.length > 0 && (
           <div className="modal-news">
@@ -1820,6 +1878,7 @@ function WatchlistView({
   onToggleFund,
   onCompareStocks,
   onCompareFunds,
+  onShare,
 }) {
   const stockRows = useMemo(() => {
     const bySymbol = new Map()
@@ -1850,6 +1909,13 @@ function WatchlistView({
     <>
       <div className="status-bar">
         <span>{t(lang, 'watchlistIntro')}</span>
+        <div className="actions">
+          {/* Favori listesi bağlantıyla paylaşılabilir; karşı taraf kendi listesine
+              EKLER, listesi değişmez (bkz. watchImport onayı). */}
+          <button className="btn" onClick={onShare}>
+            🔗 {t(lang, 'shareWatchlist')}
+          </button>
+        </div>
       </div>
       {loading && !stockRows.some((r) => !r.missing) && !fundRows.some((r) => !r.missing) && (
         <div className="empty-box">{t(lang, 'loading')}</div>
@@ -5668,6 +5734,343 @@ function StrategyTracker({
   )
 }
 
+/* ---------------------------- Makro Panel ----------------------------
+ * Kur / faiz / emtia / endeks kartları. Her kart: son değer, seçilen dönemin
+ * değişimi, 1 yıllık mini grafik ve BIST ile getiri korelasyonu.
+ * Veri app/data/macro.py'den gelir; burada yalnızca sunum yapılır. */
+
+const MACRO_PERIODS = [
+  { key: 'change_1d', i18nKey: 'macro1d' },
+  { key: 'change_1w', i18nKey: 'macro1w' },
+  { key: 'change_1m', i18nKey: 'macro1m' },
+  { key: 'change_3m', i18nKey: 'macro3m' },
+  { key: 'ytd', i18nKey: 'macroYtd' },
+  { key: 'change_1y', i18nKey: 'macro1y' },
+]
+
+const MACRO_GROUP_LABELS = {
+  fx: 'macroGroupFx',
+  index: 'macroGroupIndex',
+  rate: 'macroGroupRate',
+  commodity: 'macroGroupCommodity',
+  crypto: 'macroGroupCrypto',
+}
+
+/** Korelasyon rengi: güçlü ilişki (±0,5 üstü) vurgulanır, zayıfı nötr kalır. */
+function corrTone(value) {
+  if (value == null) return ''
+  if (value >= 0.5) return 'pos'
+  if (value <= -0.5) return 'neg'
+  return ''
+}
+
+function MacroView({ data, loading, lang }) {
+  // Kartların üstündeki dönem anahtarı: "her yüzde dönemini taşır" kuralının
+  // panel karşılığı — hangi dönemin gösterildiği tek yerden, açıkça seçilir.
+  const [period, setPeriod] = useState('change_1d')
+
+  const groups = useMemo(() => {
+    const items = data?.items || []
+    const order = ['fx', 'index', 'rate', 'commodity', 'crypto']
+    return order
+      .map((g) => ({ group: g, items: items.filter((i) => i.group === g) }))
+      .filter((g) => g.items.length > 0)
+  }, [data])
+
+  const periodLabel = t(lang, MACRO_PERIODS.find((p) => p.key === period)?.i18nKey || 'macro1d')
+
+  if (loading && !data) return <div className="loading-box">{t(lang, 'loading')}</div>
+  if (!data || !data.items?.length) return <div className="empty-box">{t(lang, 'macroEmpty')}</div>
+
+  return (
+    <>
+      <section className="today-section">
+        <h2 className="today-title">{t(lang, 'macroTitle')}</h2>
+        <p className="today-note">{t(lang, 'macroIntro')}</p>
+
+        <div className="macro-periods" role="group" aria-label={t(lang, 'macroTitle')}>
+          {MACRO_PERIODS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className={`chip ${period === p.key ? 'active' : ''}`}
+              onClick={() => setPeriod(p.key)}
+            >
+              {t(lang, p.i18nKey)}
+            </button>
+          ))}
+        </div>
+
+        {groups.map(({ group, items }) => (
+          <div key={group} className="macro-group">
+            <h3 className="macro-group-title">{t(lang, MACRO_GROUP_LABELS[group] || 'macroGroupIndex')}</h3>
+            <div className="macro-grid">
+              {items.map((item) => {
+                const change = item[period]
+                return (
+                  <article key={item.key} className="macro-card">
+                    <header className="macro-card-head">
+                      <span className="macro-name">
+                        {lang === 'en' ? item.name_en : item.name}
+                        {item.derived && (
+                          <span className="macro-derived" title={t(lang, 'macroDerivedHint')}>
+                            {t(lang, 'macroDerived')}
+                          </span>
+                        )}
+                      </span>
+                      <span className={`pct ${pctTone(change)}`}>
+                        {change == null ? '—' : formatPct(change, 2)}
+                        <span className="macro-period-tag">{periodLabel}</span>
+                      </span>
+                    </header>
+                    <div className="macro-value">
+                      {formatNum(item.last, item.last >= 1000 ? 0 : 2)}
+                      {item.unit && <span className="macro-unit">{item.unit}</span>}
+                    </div>
+                    <Sparkline points={item.series} days={365} />
+                    {item.corr_bist != null && (
+                      <div className="macro-corr" title={t(lang, 'macroCorr', data.correlation_bars)}>
+                        <span className="macro-corr-label">{t(lang, 'macroCorrShort')}</span>
+                        <span className={`macro-corr-value ${corrTone(item.corr_bist)}`}>
+                          {formatNum(item.corr_bist, 2)}
+                        </span>
+                      </div>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'macroCorrHelpTitle')}</summary>
+        <p>{t(lang, 'macroCorrHelpBody')}</p>
+      </details>
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
+/* -------------------------- Temettü Takvimi --------------------------
+ * Verim = son 12 ayda ödenen toplam ÷ güncel fiyat (app/data/dividends.py).
+ * Satır açıldığında ödemelerin kendisi gösterilir: rakamın doğrulanabilir
+ * olması, hazır bir "verim" alanını olduğu gibi basmaktan daha değerli. */
+
+function DividendsView({ data, loading, lang, onOpenChart }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(() => new Set())
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const items = useMemo(() => {
+    const q = query.trim().toUpperCase()
+    const rows = data?.items || []
+    return q ? rows.filter((r) => r.symbol.toUpperCase().includes(q)) : rows
+  }, [data, query])
+
+  const upcoming = useMemo(
+    () =>
+      (data?.items || [])
+        .filter((i) => i.next_ex_date)
+        .sort((a, b) => a.next_ex_date.localeCompare(b.next_ex_date)),
+    [data],
+  )
+
+  const toggle = (symbol) =>
+    setOpen((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) next.delete(symbol)
+      else next.add(symbol)
+      return next
+    })
+
+  if (loading && !data) return <div className="loading-box">{t(lang, 'loading')}</div>
+  if (!data || !data.items?.length) return <div className="empty-box">{t(lang, 'dvdEmpty')}</div>
+
+  return (
+    <>
+      <section className="today-section">
+        <h2 className="today-title">{t(lang, 'dvdTitle')}</h2>
+        <p className="today-note">{t(lang, 'dvdIntro')}</p>
+
+        <h3 className="div-sub">{t(lang, 'dvdUpcoming')}</h3>
+        <p className="today-note">{t(lang, 'dvdUpcomingHint', 90)}</p>
+        {upcoming.length === 0 ? (
+          <p className="flow-empty">{t(lang, 'dvdNoUpcoming')}</p>
+        ) : (
+          <div className="div-upcoming">
+            {upcoming.map((i) => (
+              <button key={i.symbol} type="button" className="div-up-card" onClick={() => onOpenChart(i.symbol)}>
+                <TickerLogo symbol={i.symbol} />
+                <span className="div-up-code">{displaySymbol(i.symbol)}</span>
+                <span className="div-up-date">{new Date(i.next_ex_date).toLocaleDateString(locale)}</span>
+                <span className="div-up-days">{t(lang, 'dvdDays', i.days_to_ex)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="today-section">
+        <div className="div-toolbar">
+          <span className="div-count">{t(lang, 'dvdCount', data.count, data.upcoming_count)}</span>
+          <input
+            className="search-input"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t(lang, 'dvdSearch')}
+            aria-label={t(lang, 'dvdSearch')}
+          />
+        </div>
+
+        <div className="table-wrap">
+          <table className="results div-table">
+            <thead>
+              <tr>
+                <th>{t(lang, 'dvdColSymbol')}</th>
+                <th>{t(lang, 'dvdColYield')}</th>
+                <th>{t(lang, 'dvdColTtm')}</th>
+                <th>{t(lang, 'dvdColLast')}</th>
+                <th>{t(lang, 'dvdColNext')}</th>
+                <th>{t(lang, 'dvdColPayout')}</th>
+                <th>{t(lang, 'dvdColYears')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((i) => (
+                // Satır + açılır detay iki <tr> olduğundan Fragment şart (tablo
+                // yapısı bozulmasın); key kısa sözdiziminde verilemez.
+                <Fragment key={i.symbol}>
+                  <tr className="div-row" onClick={() => toggle(i.symbol)}>
+                    <td>
+                      <span className="cell-symbol">
+                        <TickerLogo symbol={i.symbol} />
+                        <button
+                          type="button"
+                          className="link-symbol"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenChart(i.symbol)
+                          }}
+                        >
+                          {displaySymbol(i.symbol)}
+                        </button>
+                      </span>
+                    </td>
+                    <td className={`pct ${i.yield_ttm ? 'pos' : ''}`}>
+                      {i.yield_ttm == null ? <span className="muted">{t(lang, 'dvdYieldNone')}</span> : formatRatioPct(i.yield_ttm, 2)}
+                    </td>
+                    <td>{i.ttm == null ? '—' : formatNum(i.ttm, 2)}</td>
+                    <td>{i.last_date ? new Date(i.last_date).toLocaleDateString(locale) : '—'}</td>
+                    <td>
+                      {i.next_ex_date ? (
+                        <span className="div-next">
+                          {new Date(i.next_ex_date).toLocaleDateString(locale)}
+                          <span className="div-next-days">{t(lang, 'dvdDays', i.days_to_ex)}</span>
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>{i.payout_ratio == null ? '—' : formatRatioPct(i.payout_ratio, 0)}</td>
+                    <td>{i.years_paid}</td>
+                  </tr>
+                  {open.has(i.symbol) && (
+                    <tr className="div-detail-row">
+                      <td colSpan={7}>
+                        <div className="div-detail">
+                          <div>
+                            <span className="sd-block-title">{t(lang, 'dvdByYear')}</span>
+                            <div className="div-years">
+                              {Object.entries(i.by_year || {}).map(([year, total]) => (
+                                <span key={year} className="div-year">
+                                  <strong>{year}</strong> {formatNum(total, 2)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="sd-block-title">{t(lang, 'dvdPayments')}</span>
+                            <div className="div-payments">
+                              {(i.payments || []).slice(-8).reverse().map(([day, amount]) => (
+                                <span key={day} className="div-payment">
+                                  {new Date(day).toLocaleDateString(locale)} · {formatNum(amount, 4)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="today-note">{t(lang, 'dvdNote')}</p>
+      </section>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'dvdWhatTitle')}</summary>
+        <p>{t(lang, 'dvdWhatBody')}</p>
+      </details>
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
+/* ------------------------ Derin bağlantı (URL durumu) ------------------------
+ * Uygulamanın hiç URL durumu yoktu: paylaşılan her bağlantı karşı tarafı "Bugün"
+ * sayfasına düşürüyordu ve hiçbir ekran yer imine eklenemiyordu. Artık görünüm,
+ * market, zaman dilimi ve açık hisse adres çubuğuna yazılır.
+ *
+ * `replaceState` kullanılır, `pushState` DEĞİL: her sekme değişimi için geri
+ * tuşuna bir adım eklemek, tarayıcıdan çıkmayı imkânsız hale getirirdi. */
+
+const URL_KEYS = { view: 'v', market: 'm', timeframe: 'tf', symbol: 's' }
+
+// Market/zaman dilimi seçicileri yalnızca bu sekmelerde görünür (bkz. content-head);
+// bağlantıya da yalnızca burada yazılırlar ki URL ekranda olmayan bir seçim iddia etmesin.
+const MARKET_AWARE_VIEWS = new Set(['screener', 'backtest', 'map', 'bubbles', 'rotation'])
+const TIMEFRAME_AWARE_VIEWS = new Set(['screener', 'backtest'])
+
+function readUrlState() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const get = (key) => params.get(key) || null
+    return {
+      view: get(URL_KEYS.view),
+      market: get(URL_KEYS.market),
+      timeframe: get(URL_KEYS.timeframe),
+      symbol: get(URL_KEYS.symbol),
+      watch: get('w'),
+    }
+  } catch {
+    return {}
+  }
+}
+
+/** Favori listesi paylaşım bağlantısı: `w=HISSE1,HISSE2|FON1,FON2` */
+function encodeWatchParam(stocks, funds) {
+  return `${(stocks || []).join(',')}|${(funds || []).join(',')}`
+}
+
+function decodeWatchParam(value) {
+  const [stocks = '', funds = ''] = String(value || '').split('|')
+  const clean = (s) =>
+    s
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 100) // bağlantıdan gelen liste sınırsız büyümesin
+  return { stocks: clean(stocks), funds: clean(funds) }
+}
+
 function App() {
   const [lang, setLangState] = useState(getLang)
 
@@ -5677,10 +6080,21 @@ function App() {
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])
-  // Açılışta ham tablo yerine günün özeti karşılasın
-  const [view, setView] = useState('today')
-  const [market, setMarket] = useState('bist100')
-  const [timeframe, setTimeframe] = useState('daily')
+  // Paylaşılan bağlantıdaki durum. Yalnızca AÇILIŞTA okunur: sonrasında adres
+  // çubuğunu uygulama yazar, tersi yönde dinlemek döngü yaratırdı.
+  const [initialUrl] = useState(readUrlState)
+
+  // Açılışta ham tablo yerine günün özeti karşılasın; bağlantı bir sekme
+  // belirtiyorsa (ve o sekme gerçekten varsa) onunla açılır.
+  const [view, setView] = useState(() =>
+    NAV_ITEMS.some((i) => i.key === initialUrl.view) ? initialUrl.view : 'today',
+  )
+  const [market, setMarket] = useState(() =>
+    MARKETS.some((m) => m.key === initialUrl.market) ? initialUrl.market : 'bist100',
+  )
+  const [timeframe, setTimeframe] = useState(() =>
+    TIMEFRAMES.some((tf) => tf.key === initialUrl.timeframe) ? initialUrl.timeframe : 'daily',
+  )
   const [watchlist, setWatchlist] = useState(loadWatchlist)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   // Filtreleri yok sayıp taranan tüm hisseleri (örn. BIST 100'ün tamamı) listele
@@ -5693,6 +6107,14 @@ function App() {
   const [fundFlowsReady, setFundFlowsReady] = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false)
+  // Temettü ve makro veriler ilgili sekme (ya da hisse detayı) açılınca lazily yüklenir;
+  // `*Ready` bayrağı "istek tamamlandı" demektir: dosya yoksa (null) tekrar denenmesin.
+  const [dividends, setDividends] = useState(null)
+  const [dividendsReady, setDividendsReady] = useState(false)
+  const [dividendsLoading, setDividendsLoading] = useState(false)
+  const [macro, setMacro] = useState(null)
+  const [macroReady, setMacroReady] = useState(false)
+  const [macroLoading, setMacroLoading] = useState(false)
   const [stockPrices, setStockPrices] = useState(null)
   const [stockPricesReady, setStockPricesReady] = useState(false)
   // Döviz/altın serileri (TL / $ / gram altın anahtarı)
@@ -5709,7 +6131,8 @@ function App() {
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, emas: { ...DEFAULT_FILTERS.emas } })
   const [sort, setSort] = useState({ key: 'score', dir: 'desc' })
   const [search, setSearch] = useState('')
-  const [chartSymbol, setChartSymbol] = useState(null)
+  // Bağlantıda hisse varsa detay penceresi doğrudan açık gelir ("şu hisseye bak" paylaşımı)
+  const [chartSymbol, setChartSymbol] = useState(() => initialUrl.symbol || null)
   const [chartFund, setChartFund] = useState(null)
   const [news, setNews] = useState(null)
   const [newsLoading, setNewsLoading] = useState(false)
@@ -6225,6 +6648,52 @@ function App() {
     }
   }, [view, todayTimeframe, overviewCache, activeMarkets, marketsResolved])
 
+  // Temettü takvimi: kendi sekmesinde ve hisse detayında (detaydaki temettü bloğu
+  // için) gerekir. Tek dosya, tek istek — yüklendikten sonra tekrar çekilmez.
+  useEffect(() => {
+    if (view !== 'dividends' && !chartSymbol) return
+    if (dividendsReady) return
+    let cancelled = false
+    setDividendsLoading(true)
+    fetchDividends()
+      .then((result) => {
+        if (!cancelled) setDividends(result)
+      })
+      .catch(() => {
+        if (!cancelled) setDividends(null) // dosya yoksa hata kutusu değil, boş durum
+      })
+      .finally(() => {
+        if (cancelled) return
+        setDividendsLoading(false)
+        setDividendsReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, chartSymbol, dividendsReady])
+
+  // Makro panel: yalnızca kendi sekmesinde.
+  useEffect(() => {
+    if (view !== 'macro' || macroReady) return
+    let cancelled = false
+    setMacroLoading(true)
+    fetchMacro()
+      .then((result) => {
+        if (!cancelled) setMacro(result)
+      })
+      .catch(() => {
+        if (!cancelled) setMacro(null)
+      })
+      .finally(() => {
+        if (cancelled) return
+        setMacroLoading(false)
+        setMacroReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, macroReady])
+
   // Haberler tüm marketler için tek seferde yüklenir (akış BIST/Global olarak bölünür,
   // market sekmesine bağlı değil); sekme açılınca veya grafik modalı için lazily.
   useEffect(() => {
@@ -6328,8 +6797,10 @@ function App() {
       const found = (overviewCache.daily?.[m.key]?.stocks || []).find((s) => s.symbol === chartSymbol)
       if (found) return found
     }
-    return null
-  }, [chartSymbol, overviewCache.daily, activeMarkets])
+    // Tarama sekmesi günlük özeti yüklemez (kendi payload'ı var): oradan açılan
+    // detay penceresi gösterge bloklarını bu yedekten alır, yoksa boş kalırdı.
+    return (data?.stocks || []).find((s) => s.symbol === chartSymbol) || null
+  }, [chartSymbol, overviewCache.daily, activeMarkets, data])
 
   const chartPositions = useMemo(() => {
     if (!chartSymbol) return null
@@ -6345,6 +6816,13 @@ function App() {
     }
     return out.length > 1 ? out : null
   }, [chartSymbol, scoreHistory])
+
+  // Hisse detayındaki temettü bloğu: takvim tek dosya olduğundan sembolü orada arıyoruz
+  // (temettü ödemeyen hisse takvimde hiç yok -> blok gösterilmez).
+  const chartDividend = useMemo(() => {
+    if (!chartSymbol) return null
+    return (dividends?.items || []).find((i) => i.symbol === chartSymbol) || null
+  }, [chartSymbol, dividends])
   const availableEmas = data?.ema_periods || (timeframe === 'monthly' ? [9, 21, 50] : [9, 21, 50, 200])
 
   const isCustom = useMemo(() => {
@@ -6475,6 +6953,80 @@ function App() {
     })
   }
 
+  // Paylaşılan favori listesi: bağlantıda `w` varsa kullanıcıya SORULUR.
+  // Sessizce eklemek, birinin listesini bir bağlantıyla değiştirmek olurdu.
+  const [watchImport, setWatchImport] = useState(() => {
+    if (!initialUrl.watch) return null
+    const parsed = decodeWatchParam(initialUrl.watch)
+    return parsed.stocks.length || parsed.funds.length ? parsed : null
+  })
+
+  // Adres çubuğunu ekranla senkron tut: her ekran yer imine eklenebilir ve
+  // paylaşılabilir olsun. Market/zaman dilimi yalnızca ONLARI kullanan
+  // sekmelerde yazılır — "Bugün" sayfasının bağlantısında `m=bist100` durması
+  // kullanıcıya orada bir market seçimi varmış izlenimi verirdi.
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (view !== 'today') params.set(URL_KEYS.view, view)
+    if (MARKET_AWARE_VIEWS.has(view)) params.set(URL_KEYS.market, market)
+    if (TIMEFRAME_AWARE_VIEWS.has(view)) params.set(URL_KEYS.timeframe, timeframe)
+    if (chartSymbol) params.set(URL_KEYS.symbol, chartSymbol)
+    // Cevaplanmamış liste daveti adreste KALIR: ilk ziyarette service worker
+    // güncellemesi sayfayı yeniden yüklüyor (main.jsx) ve parametre burada
+    // silinseydi paylaşılan liste sessizce kaybolurdu — tam da bu akış bozuktu.
+    if (watchImport && initialUrl.watch) params.set('w', initialUrl.watch)
+    const query = params.toString()
+    const url = `${window.location.pathname}${query ? `?${query}` : ''}`
+    window.history.replaceState(null, '', url)
+  }, [view, market, timeframe, chartSymbol, watchImport, initialUrl.watch])
+  const [shareMsg, setShareMsg] = useState(null)
+
+  async function copyLink(url, okKey = 'shareCopied') {
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareMsg(t(lang, okKey))
+    } catch {
+      setShareMsg(t(lang, 'shareFailed'))
+    }
+    window.setTimeout(() => setShareMsg(null), 2500)
+  }
+
+  function shareCurrentScreen() {
+    copyLink(window.location.href)
+  }
+
+  function shareWatchlist() {
+    // watchlist/fundWatchlist birer Set: uzunluk `size` ile okunur.
+    if (!watchlist.size && !fundWatchlist.size) {
+      setShareMsg(t(lang, 'shareWatchlistEmpty'))
+      window.setTimeout(() => setShareMsg(null), 2500)
+      return
+    }
+    const params = new URLSearchParams({ w: encodeWatchParam([...watchlist], [...fundWatchlist]) })
+    params.set(URL_KEYS.view, 'watchlist')
+    copyLink(`${window.location.origin}${window.location.pathname}?${params.toString()}`)
+  }
+
+  function acceptWatchImport() {
+    // Mevcut favoriler korunur, yalnızca eksik olanlar eklenir.
+    const added =
+      watchImport.stocks.filter((s) => !watchlist.has(s)).length +
+      watchImport.funds.filter((f) => !fundWatchlist.has(f)).length
+    setWatchlist((prev) => {
+      const next = new Set([...prev, ...watchImport.stocks])
+      localStorage.setItem('watchlist', JSON.stringify([...next]))
+      return next
+    })
+    setFundWatchlist((prev) => {
+      const next = new Set([...prev, ...watchImport.funds])
+      localStorage.setItem('watchlist_funds', JSON.stringify([...next]))
+      return next
+    })
+    setWatchImport(null)
+    setShareMsg(t(lang, 'watchImportDone', added))
+    window.setTimeout(() => setShareMsg(null), 2500)
+  }
+
   function selectView(next) {
     setView(next)
     setMenuOpen(false)
@@ -6584,6 +7136,11 @@ function App() {
             <span className="cmdk-trigger-text">{t(lang, 'cmdkPlaceholder')}</span>
             <kbd className="cmdk-trigger-kbd">⌘K</kbd>
           </button>
+          {/* Ekranı paylaş: adres çubuğu zaten güncel durumu taşıdığından
+              bağlantıyı kopyalamak yeterli. */}
+          <button className="share-btn" type="button" onClick={shareCurrentScreen} title={t(lang, 'shareScreen')}>
+            🔗<span className="share-btn-text">{t(lang, 'shareScreen')}</span>
+          </button>
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
@@ -6668,6 +7225,7 @@ function App() {
               setCompareSeed(symbols)
               selectView('fundCompare')
             }}
+            onShare={shareWatchlist}
           />
         </>
       )}
@@ -6892,6 +7450,17 @@ function App() {
           seedSymbols={compareSeed}
         />
       )}
+
+      {view === 'dividends' && (
+        <DividendsView
+          data={dividends}
+          loading={dividendsLoading}
+          lang={lang}
+          onOpenChart={setChartSymbol}
+        />
+      )}
+
+      {view === 'macro' && <MacroView data={macro} loading={macroLoading} lang={lang} />}
 
       {view === 'stockPositions' && (
         <StockPositions
@@ -7280,6 +7849,7 @@ function App() {
           stock={chartStock}
           positions={chartPositions}
           scoreSeries={chartScoreSeries}
+          dividend={chartDividend}
           fx={fx}
           onCompare={(sym) => {
             setCompareSeed([sym])
@@ -7316,6 +7886,31 @@ function App() {
         onNavigate={selectView}
       />
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} lang={lang} />
+
+      {/* Paylaşılan favori listesi: eklemeden ÖNCE sorulur. */}
+      {watchImport && (
+        <div className="watch-import" role="dialog" aria-live="polite">
+          <div className="watch-import-body">
+            <strong>{t(lang, 'watchImportTitle', watchImport.stocks.length + watchImport.funds.length)}</strong>
+            <p>{t(lang, 'watchImportBody')}</p>
+            <div className="watch-import-list">
+              {[...watchImport.stocks, ...watchImport.funds].slice(0, 12).map((code) => (
+                <span key={code} className="chip">{displaySymbol(code)}</span>
+              ))}
+            </div>
+          </div>
+          <div className="watch-import-actions">
+            <button className="btn primary" onClick={acceptWatchImport}>
+              {t(lang, 'watchImportAccept')}
+            </button>
+            <button className="btn" onClick={() => setWatchImport(null)}>
+              {t(lang, 'watchImportDismiss')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {shareMsg && <div className="toast" role="status">{shareMsg}</div>}
       </main>
     </div>
   )

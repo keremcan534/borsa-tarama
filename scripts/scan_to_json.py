@@ -18,8 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
+from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.data.fx import fetch_fx_series
+from app.data.macro import build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
@@ -112,6 +114,10 @@ def main() -> None:
     # Değişim raporu için günlük skor + sinyal durumu: {SYM: {"s": skor, "g": 0/1}}
     score_today: dict[str, dict] = {}
 
+    # Temettü takvimi girdisi: günlük taramadaki her hisse (sembol + fiyat + market).
+    # Ödemeler ve ex-tarih fetcher cache'inde zaten var, ek istek atılmaz.
+    dividend_rows: list[dict] = []
+
     # Sinyal karnesi: bu taramada TAZE sinyal veren hisseler, fiyatıyla mühürlenir
     signal_log_today: list[dict] = []
     # Karnede giriş fiyatı olarak GÜNLÜK kapanış kullanılır. Haftalık/aylık sinyalin
@@ -150,6 +156,14 @@ def main() -> None:
                 # daily ile başladığından sonraki dilimler bu haritayı hazır bulur).
                 for s in stocks:
                     daily_close[s["symbol"]] = s["close"]
+                    dividend_rows.append(
+                        {
+                            "symbol": s["symbol"],
+                            "market": market,
+                            "close": s["close"],
+                            "sector": s.get("sector"),
+                        }
+                    )
 
                 # Endeksin kendi serisi de kaydedilir: "BIST 100 dolar bazında" gibi
                 # endeks grafiklerini hisselerle aynı yoldan çizebilmek için (df zaten elde).
@@ -243,6 +257,32 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {stock_prices_path}")
+
+    # Temettü takvimi: ödemeler günlük fiyat isteğinden, yaklaşan ex-tarih temel
+    # oran (.info) isteğinden düşer — bu adım ek istek atmaz, yalnızca hesap yapar.
+    try:
+        dividends_payload = build_dividend_payload(dividend_rows, fetcher)
+    except Exception as e:
+        print(f"[TEMETTÜ] takvim üretilemedi ({e}); boş payload yazılıyor")
+        dividends_payload = {"count": 0, "upcoming_count": 0, "items": [], "upcoming": []}
+    dividends_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    dividends_path = out_dir / "dividends.json"
+    dividends_path.write_text(json.dumps(dividends_payload, ensure_ascii=False), encoding="utf-8")
+    print(
+        f"[TEMETTÜ] {dividends_payload['count']} hisse "
+        f"({dividends_payload['upcoming_count']} yaklaşan) -> {dividends_path}"
+    )
+
+    # Makro panel: kur/faiz/emtia/endeks özeti (~10 istek).
+    try:
+        macro_payload = build_macro_payload(fetcher)
+    except Exception as e:
+        print(f"[MAKRO] panel üretilemedi ({e}); boş payload yazılıyor")
+        macro_payload = {"count": 0, "correlation_bars": 0, "items": []}
+    macro_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    macro_path = out_dir / "macro.json"
+    macro_path.write_text(json.dumps(macro_payload, ensure_ascii=False), encoding="utf-8")
+    print(f"[MAKRO] {macro_payload['count']} gösterge -> {macro_path}")
 
     # Döviz/altın serileri: arayüzdeki TL / $ / gram altın anahtarı bunlardan besleniyor.
     fx = fetch_fx_series(fetcher)

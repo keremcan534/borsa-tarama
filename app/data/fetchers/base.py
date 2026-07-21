@@ -21,6 +21,22 @@ class BaseFetcher(ABC):
         """Piyasa değerini döner (büyükten küçüğe sıralama için)."""
         ...
 
+    def fetch_dividends(self, symbol: str) -> list[list]:
+        """Geçmiş temettü ödemeleri: [[YYYY-MM-DD, tutar], ...] (yoksa boş liste).
+
+        `fetch_fundamentals` gibi bilinçli olarak SOYUT DEĞİL: her kaynak temettü
+        geçmişi vermez. Varsayılan boş listedir, arayüz o sembolü takvimde göstermez.
+        """
+        return []
+
+    def fetch_dividend_info(self, symbol: str) -> dict:
+        """İleriye dönük temettü bilgisi: {"ex_date", "rate", "payout_ratio"}.
+
+        Geçmiş ödemeler (`fetch_dividends`) fiyat verisinden türetilebilir ama
+        YAKLAŞAN temettü tarihi türetilemez — ayrı bir alan olmasının sebebi bu.
+        """
+        return {}
+
     def fetch_fundamentals(self, symbol: str) -> dict:
         """Temel oranlar: {"pe", "pb", "dividend_yield", "roe"} (bilinmeyen alan None).
 
