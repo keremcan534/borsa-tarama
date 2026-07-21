@@ -4986,8 +4986,26 @@ function SectorRotation({ overviews, market, lang, loading, onNavigate }) {
  * (signal_log.json), burada yalnızca o mühürlü kayıt okunur. Kayıt ileriye doğru
  * dolduğundan geçmişe dönük değiştirilemez.
  */
+/** Karne tablosunun sıralanabilir kolonları. */
+const SCORECARD_COLUMNS = [
+  { key: 'symbol', i18nKey: 'colSymbol', align: 'left' },
+  { key: 'day', i18nKey: 'scColDate', align: 'left' },
+  { key: 'daysHeld', i18nKey: 'scColElapsed' },
+  { key: 'entry', i18nKey: 'scColEntry' },
+  { key: 'current', i18nKey: 'scColNow' },
+  { key: 'ret', i18nKey: 'scColReturn' },
+]
+
 function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
   const [tf, setTf] = useState('weekly')
+  const [sort, setSort] = useState({ key: 'day', dir: 'desc' })
+
+  const toggleSort = (key) =>
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'symbol' || key === 'day' ? 'asc' : 'desc' },
+    )
 
   // Mühürlü kayıtları bugünkü fiyatla karşılaştır
   const { rows, stats, firstDay, dayCount, counts } = useMemo(() => {
@@ -5016,10 +5034,21 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
           0,
           Math.floor((Date.now() - Date.parse(`${day}T00:00:00Z`)) / 86400000),
         )
-        out.push({ ...e, day, entry, current, ret, daysHeld })
+        out.push({ ...e, symbol: e.s, day, entry, current, ret, daysHeld })
       }
     }
-    out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
+    // Sıralama: metin kolonları (sembol, tarih) sözlük sırasına, sayısal olanlar
+    // büyüklüğe göre. Eksik değer compareRows'daki gibi yönden bağımsız sona gider.
+    const { key, dir } = sort
+    out.sort((a, b) => {
+      const av = a[key]
+      const bv = b[key]
+      if (typeof av === 'string' || typeof bv === 'string') {
+        const cmp = String(av ?? '').localeCompare(String(bv ?? ''))
+        return dir === 'asc' ? cmp : -cmp
+      }
+      return compareRows(a, b, key, dir)
+    })
 
     // İstatistikler yalnızca üzerinden en az bir gün geçmiş kayıtlardan hesaplanır.
     // Sinyal, mumun kapanışıyla mühürlenir; aynı gün içinde güncel fiyat da o kapanış
@@ -5051,7 +5080,7 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
       dayCount: days.length,
       counts: perTf,
     }
-  }, [log, stockMap, tf])
+  }, [log, stockMap, tf, sort])
 
   if (loading) return <div className="empty-box">{t(lang, 'loading')}</div>
 
@@ -5123,12 +5152,19 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
             <table>
               <thead>
                 <tr>
-                  <th className="left">{t(lang, 'colSymbol')}</th>
-                  <th className="left">{t(lang, 'scColDate')}</th>
-                  <th>{t(lang, 'scColElapsed')}</th>
-                  <th>{t(lang, 'scColEntry')}</th>
-                  <th>{t(lang, 'scColNow')}</th>
-                  <th>{t(lang, 'scColReturn')}</th>
+                  {SCORECARD_COLUMNS.map((c) => (
+                    <th
+                      key={c.key}
+                      className={`sortable ${c.align === 'left' ? 'left' : ''} ${sort.key === c.key ? 'sorted' : ''}`}
+                      onClick={() => toggleSort(c.key)}
+                      title={t(lang, 'sortHint')}
+                    >
+                      {t(lang, c.i18nKey)}
+                      <span className="sort-arrow">
+                        {sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -5174,9 +5210,19 @@ function StrategyTracker({
   onEnableNotify,
   onOpenChart,
 }) {
-  const [positions, setPositions] = useState(loadStrategyPositions)
+  const [allPositions, setAllPositions] = useState(loadStrategyPositions)
   const [settings, setSettings] = useState(loadStrategySettings)
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
+  // BIST ve ABD ayrı stratejilerdir: farklı para birimi, farklı seans, farklı
+  // dinamik. Slot bütçesi ve çeşitlilik ölçüsü de bu yüzden market başına tutulur —
+  // 10 BIST + 10 ABD pozisyonunu tek havuzda saymak ikisini de yanlış gösterirdi.
+  const [scope, setScope] = useState('bist')
+
+  const inScope = (symbol) => (scope === 'bist' ? isBistSymbol(symbol) : !isBistSymbol(symbol))
+  const positions = useMemo(
+    () => allPositions.filter((p) => inScope(p.symbol)),
+    [allPositions, scope],
+  )
 
   const notifyBtn =
     notifyPerm === 'granted' ? (
@@ -5189,9 +5235,11 @@ function StrategyTracker({
       </button>
     )
 
-  const update = (next) => {
-    setPositions(next)
-    saveStrategyPositions(next)
+  // Kayıt her zaman TÜM pozisyonlar üzerinden yapılır; ekranda yalnızca seçili
+  // marketinkiler görünse de diğer marketin pozisyonları silinmemelidir.
+  const update = (nextAll) => {
+    setAllPositions(nextAll)
+    saveStrategyPositions(nextAll)
   }
   const patchSettings = (patch) => {
     const next = { ...settings, ...patch }
@@ -5199,16 +5247,16 @@ function StrategyTracker({
     saveStrategySettings(next)
   }
 
-  const held = new Set(positions.map((p) => p.symbol))
+  const held = new Set(allPositions.map((p) => p.symbol))
 
   const addPosition = (symbol, market) => {
     if (held.has(symbol)) return
     update([
-      ...positions,
+      ...allPositions,
       { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, symbol, market, entryDate },
     ])
   }
-  const removePosition = (id) => update(positions.filter((p) => p.id !== id))
+  const removePosition = (id) => update(allPositions.filter((p) => p.id !== id))
 
   // Her pozisyon için: kaç hafta doldu, kaç hafta kaldı, durumu
   const rows = useMemo(() => {
@@ -5237,10 +5285,10 @@ function StrategyTracker({
     [positions, stockPrices, stockMap],
   )
 
-  // Taze haftalık sinyaller: henüz portföyde olmayanlar (slot doldurma önerisi)
+  // Taze haftalık sinyaller: seçili marketten ve henüz portföyde olmayanlar
   const freshAvailable = useMemo(
-    () => (signals || []).filter((s) => !held.has(s.symbol)),
-    [signals, positions],
+    () => (signals || []).filter((s) => !held.has(s.symbol) && inScope(s.symbol)),
+    [signals, positions, scope],
   )
 
   return (
@@ -5250,11 +5298,32 @@ function StrategyTracker({
         {notifyBtn}
       </div>
 
+      {/* BIST / ABD: ayrı stratejiler, ayrı slot bütçesi */}
+      <div className="tabs strat-scope-tabs" role="group" aria-label={t(lang, 'stratScopeLabel')}>
+        {[
+          { key: 'bist', i18nKey: 'stratScopeBist' },
+          { key: 'global', i18nKey: 'stratScopeGlobal' },
+        ].map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={`tab ${scope === s.key ? 'active' : ''}`}
+            onClick={() => setScope(s.key)}
+          >
+            {t(lang, s.i18nKey)}
+            <span className="sc-tab-count">
+              {allPositions.filter((p) => (s.key === 'bist' ? isBistSymbol(p.symbol) : !isBistSymbol(p.symbol))).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <details className="info-panel">
         <summary>{t(lang, 'stratHowTitle')}</summary>
         <div className="info-content">
           <p>{t(lang, 'stratHowBody1')}</p>
           <p>{t(lang, 'stratHowBody2')}</p>
+          <p>{t(lang, 'stratHowBody3')}</p>
         </div>
       </details>
 
@@ -5440,6 +5509,13 @@ function StrategyTracker({
 
 function App() {
   const [lang, setLangState] = useState(getLang)
+
+  // <html lang> arayüz diliyle senkron kalmalı: CSS'in text-transform: uppercase
+  // kuralı dile duyarlıdır ve Türkçede "i" → "İ" olur. Yanlış dilde "eşikleri"
+  // ekranda "EŞIKLERI" diye çıkıyordu. Ekran okuyucu ve arama motorları da bunu okur.
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
   // Açılışta ham tablo yerine günün özeti karşılasın
   const [view, setView] = useState('today')
   const [market, setMarket] = useState('bist100')
@@ -5448,6 +5524,8 @@ function App() {
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   // Filtreleri yok sayıp taranan tüm hisseleri (örn. BIST 100'ün tamamı) listele
   const [showAllStocks, setShowAllStocks] = useState(false)
+  // Yalnızca bu mumda sinyal veren (taze) hisseleri göster
+  const [onlyNew, setOnlyNew] = useState(false)
   const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
@@ -6134,6 +6212,12 @@ function App() {
         ? data.stocks
         : data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
+    // "Sadece yeniler": bu mumda filtreye YENİ giren hisseler. Sinyal listesi
+    // günlerce aynı kalabildiğinden, gerçekten yeni olanı ayırmak strateji için şart.
+    if (onlyNew) {
+      const fresh = new Set((data.results || []).filter((r) => r.is_new).map((r) => r.symbol))
+      list = list.filter((s) => fresh.has(s.symbol))
+    }
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
     const q = search.trim().toUpperCase()
     if (q)
@@ -6146,7 +6230,7 @@ function App() {
     const { key, dir } = sort
     list.sort((a, b) => compareRows(a, b, key, dir))
     return list
-  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks])
+  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks, onlyNew])
 
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
@@ -6797,6 +6881,15 @@ function App() {
               : ''}
         </span>
         <div className="actions">
+          {data?.results && (
+            <button
+              className={`btn ${onlyNew ? 'primary' : ''}`}
+              title={t(lang, 'onlyNewHint')}
+              onClick={() => setOnlyNew((v) => !v)}
+            >
+              ✨ {t(lang, 'onlyNew', data.results.filter((r) => r.is_new).length)}
+            </button>
+          )}
           {data?.stocks && (
             <button
               className={`btn ${showAllStocks ? 'primary' : ''}`}

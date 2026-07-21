@@ -19,6 +19,9 @@ const STRINGS = {
     favorites: 'Favoriler',
     showAllStocks: (n) => `Tüm hisseler (${n})`,
     showAllStocksHint: 'Filtreleri yok say, taranan tüm hisseleri listele',
+    onlyNew: (n) => `Sadece yeniler (${n})`,
+    onlyNewHint:
+      'Yalnızca bu mumda sinyal veren hisseler. Sinyal listesi günlerce aynı kalabilir; strateji için önemli olan yeni girenlerdir.',
     refresh: 'Yenile',
     refreshCache: "Cache'ten Yenile",
     liveScan: 'Canlı Tara',
@@ -324,6 +327,11 @@ const STRINGS = {
       'Backtest bu kuralı test etti: haftalık grafikte filtreyi YENİ geçen (taze) sinyaller alınır, en fazla belirtilen sayıda pozisyon tutulur, her pozisyon giriş tarihinden itibaren belirlenen hafta kadar tutulup satılır. Doluyken gelen sinyaller atlanır.',
     stratHowBody2:
       'Aşağıya girişlerini kaydet; her pozisyon için kaç hafta dolduğunu ve satış zamanının gelip gelmediğini gösterir. Boş slot varsa taze haftalık sinyalleri tek tıkla ekleyebilirsin. Bu bir yatırım tavsiyesi değildir.',
+    stratScopeLabel: 'Piyasa',
+    stratScopeBist: 'BIST',
+    stratScopeGlobal: 'ABD & Global',
+    stratHowBody3:
+      'BIST ve ABD ayrı stratejiler olarak takip edilir: farklı para birimi, farklı seans ve farklı dinamikleri vardır. Pozisyon kapasitesi (slot) ve çeşitlilik ölçüsü her piyasa için ayrı hesaplanır — 10 BIST + 10 ABD pozisyonunu tek havuzda saymak ikisini de yanlış gösterirdi.',
     stratMaxPositions: 'Maks pozisyon',
     stratHoldWeeks: 'Tutma (hafta)',
     stratSlots: 'Dolu slot',
@@ -630,6 +638,9 @@ const STRINGS = {
     favorites: 'Watchlist',
     showAllStocks: (n) => `All stocks (${n})`,
     showAllStocksHint: 'Ignore filters and list every scanned stock',
+    onlyNew: (n) => `Fresh only (${n})`,
+    onlyNewHint:
+      'Only stocks that signalled on this candle. A signal list can stay unchanged for days; what matters for the strategy is the new entries.',
     refresh: 'Refresh',
     refreshCache: 'Refresh cache',
     liveScan: 'Live scan',
@@ -921,6 +932,11 @@ const STRINGS = {
       'The backtest tested this rule: buy stocks that FRESHLY cross the filter on the weekly chart, hold up to the set number of positions, and sell each after the set number of weeks from entry. Signals arriving while full are skipped.',
     stratHowBody2:
       'Record your entries below; each position shows how many weeks it has been held and whether it is due to sell. When a slot is free you can add fresh weekly signals with one click. This is not investment advice.',
+    stratScopeLabel: 'Market',
+    stratScopeBist: 'BIST',
+    stratScopeGlobal: 'US & Global',
+    stratHowBody3:
+      'BIST and US are tracked as separate strategies: they have different currencies, sessions and dynamics. Position capacity (slots) and the diversification measure are computed per market — counting 10 BIST + 10 US positions in one pool would misrepresent both.',
     stratMaxPositions: 'Max positions',
     stratHoldWeeks: 'Hold (weeks)',
     stratSlots: 'Slots used',
