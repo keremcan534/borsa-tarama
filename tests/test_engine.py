@@ -114,6 +114,46 @@ def test_run_analysis_includes_non_passing_stocks(monkeypatch):
     assert len(stocks) == 2  # filtreyi geçmeseler de analizde yer alırlar
 
 
+def test_signal_fresh_true_on_crossing_bar():
+    from app.screener.engine import signal_fresh
+    from app.screener.filters import DEFAULT_EMA_PERIODS
+
+    cols = ["close", "ema_9", "ema_21", "ema_50", "ema_200", "macd_line", "rsi", "stoch_k", "stoch_rsi_k"]
+    prev_fail = [100, 101, 101, 101, 101, -1, 50, 50, 50]  # fiyat EMA'ların altında -> geçmez
+    last_pass = [110, 100, 100, 100, 100, 1, 50, 50, 50]  # hepsinin üstünde, macd>0 -> geçer
+    df = pd.DataFrame([prev_fail, last_pass], columns=cols)
+    assert signal_fresh(df, DEFAULT_EMA_PERIODS) is True
+
+
+def test_signal_fresh_false_when_already_passing():
+    from app.screener.engine import signal_fresh
+    from app.screener.filters import DEFAULT_EMA_PERIODS
+
+    cols = ["close", "ema_9", "ema_21", "ema_50", "ema_200", "macd_line", "rsi", "stoch_k", "stoch_rsi_k"]
+    passing = [110, 100, 100, 100, 100, 1, 50, 50, 50]
+    df = pd.DataFrame([passing, passing], columns=cols)  # iki mum da geçiyor -> taze değil
+    assert signal_fresh(df, DEFAULT_EMA_PERIODS) is False
+
+
+def test_signal_fresh_false_when_last_bar_not_signal():
+    from app.screener.engine import signal_fresh
+    from app.screener.filters import DEFAULT_EMA_PERIODS
+
+    cols = ["close", "ema_9", "ema_21", "ema_50", "ema_200", "macd_line", "rsi", "stoch_k", "stoch_rsi_k"]
+    passing = [110, 100, 100, 100, 100, 1, 50, 50, 50]
+    fail = [100, 101, 101, 101, 101, -1, 50, 50, 50]
+    df = pd.DataFrame([passing, fail], columns=cols)  # son mum sinyal değil -> taze değil
+    assert signal_fresh(df, DEFAULT_EMA_PERIODS) is False
+
+
+def test_analyze_symbol_includes_signal_fresh_field():
+    from app.screener.engine import analyze_symbol
+
+    fetcher = FakeFetcher(_uptrend_ohlcv())
+    stock = analyze_symbol("XYZ", fetcher)
+    assert "signal_fresh" in stock
+
+
 def test_screen_symbol_weekly_requires_200_bars():
     fetcher = FakeFetcher(_uptrend_ohlcv(150))
     assert screen_symbol("XYZ", fetcher, timeframe="weekly") is None

@@ -1523,6 +1523,12 @@ th.sorted {
   gap: 22px;
 }
 
+/* Kapsam sekmeleri (Tümü / BIST / ABD & Global): arama kutusuyla arayı daralt */
+.news-scope-tabs {
+  align-self: flex-start;
+  margin-bottom: -12px;
+}
+
 .news-group-title {
   display: flex;
   align-items: center;
@@ -2950,7 +2956,18 @@ button.today-card.fund-card:hover {
   font-size: 12px;
   color: var(--accent);
   opacity: 0.9;
-  padding-left: 6px;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.fl-more:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* ---------- fiyat / skor alarmları ---------- */
@@ -3469,5 +3486,229 @@ tr.alert-hit td {
 
 .bubbles-axis.bottom {
   bottom: 8px;
+  color: var(--down);
+}
+
+/* ---------- Sektör rotasyonu ---------- */
+.rotation-table .rot-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rot-sector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rot-count {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.65;
+  background: var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.rot-signals {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rot-signal-rate {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+/* Sektör adı uzun olabiliyor: özet kartında rakam boyutunda değil, okunur boyutta */
+.rot-stat-name {
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+/* ---------- Para birimi anahtarı (TL / $ / gram altın) ---------- */
+.currency-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.currency-return {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.currency-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+/* ---------- Strateji Takip ---------- */
+.strat-settings {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.strat-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.strat-setting input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.strat-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+
+.strat-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.strat-stat-due {
+  border-color: var(--down);
+  background: color-mix(in srgb, var(--down) 8%, var(--surface));
+}
+
+.strat-stat-label {
+  font-size: 12px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.strat-stat-value {
+  font-size: 26px;
+  color: var(--text-h);
+  line-height: 1.1;
+}
+
+.strat-stat-sub {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.strat-progress {
+  width: 100%;
+  min-width: 70px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.strat-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.strat-progress-fill.soon {
+  background: #f59e0b;
+}
+
+.strat-progress-fill.due {
+  background: var(--down);
+}
+
+.badge.strat-badge-due {
+  background: var(--down);
+  color: #fff;
+}
+
+.badge.strat-badge-soon {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.badge.strat-badge-holding {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.strat-row-due td {
+  background: color-mix(in srgb, var(--down) 6%, transparent);
+}
+
+.strat-signals {
+  margin-top: 24px;
+}
+
+.strat-signals-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.strat-signals-entry {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.strat-signals-entry input {
+  margin-left: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.strat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.strat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.strat-full-note {
+  margin-top: 12px;
+  font-size: 13px;
   color: var(--down);
 }

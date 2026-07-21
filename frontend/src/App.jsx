@@ -11,6 +11,8 @@ import {
   fetchFunds,
   fetchScreener,
   fetchStockPositions,
+  fetchFx,
+  fetchSignalLog,
   fetchStockPrices,
   STATIC_MODE,
 } from './api'
@@ -58,6 +60,7 @@ const NAV_SECTIONS = [
       { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
       { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
       { key: 'bubbles', i18nKey: 'tabBubbles', icon: '🫧' },
+      { key: 'rotation', i18nKey: 'tabRotation', icon: '🔄' },
       { key: 'news', i18nKey: 'tabNews', icon: '📰' },
     ],
   },
@@ -73,6 +76,7 @@ const NAV_SECTIONS = [
     titleKey: 'navSecMine',
     items: [
       { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
+      { key: 'strategy', i18nKey: 'tabStrategy', icon: '🎯' },
       { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
       { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
     ],
@@ -82,6 +86,7 @@ const NAV_SECTIONS = [
     items: [
       { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
       { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
+      { key: 'scorecard', i18nKey: 'tabScorecard', icon: '🧾' },
       { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
     ],
   },
@@ -109,6 +114,101 @@ const COMMODITY_INFO = {
 
 function displaySymbol(symbol) {
   return COMMODITY_INFO[symbol]?.name || symbol.replace('.IS', '')
+}
+
+/* ---------- Para birimi dönüşümü (TL / $ / gram altın) ----------
+ * Yüksek enflasyonda TL bazlı getiri yanıltıcıdır: TL'de "+%50" dolar bazında
+ * kayıp olabilir. Dönüşüm her nokta için O GÜNÜN kuruyla yapılır — geçmişi tek
+ * bir güncel kurla çevirmek getiri eğrisini tamamen çarpıtırdı. */
+
+const GRAMS_PER_OUNCE = 31.1034768
+
+const CURRENCIES = [
+  { key: 'native', i18nKey: 'curNative' },
+  { key: 'usd', i18nKey: 'curUsd' },
+  { key: 'gold', i18nKey: 'curGold' },
+]
+
+/** Sembolün kendi para birimi: BIST TL, geri kalan (S&P, ETF, emtia) dolar. */
+const symbolCurrency = (symbol) => (symbol.endsWith('.IS') ? 'TRY' : 'USD')
+
+/**
+ * [[tarih, oran], ...] sıralı listesinden "tarihe ait ya da ondan önceki en yakın"
+ * oranı veren arama fonksiyonu üretir. Kur serisi ile hisse serisinin işlem günleri
+ * birebir örtüşmediğinden (tatiller) tam eşleşme aramak çok noktayı düşürürdü.
+ */
+function buildRateLookup(pairs) {
+  if (!pairs?.length) return null
+  const dates = pairs.map((p) => p[0])
+  const rates = pairs.map((p) => p[1])
+  return (date) => {
+    let lo = 0
+    let hi = dates.length - 1
+    let best = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (dates[mid] <= date) {
+        best = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    return best >= 0 ? rates[best] : null
+  }
+}
+
+/**
+ * Fiyat serisini hedef para birimine çevirir. Serinin formatı korunur:
+ * [tarih, kapanış, açılış, yüksek, düşük]. Kuru bilinmeyen tarihler DÜŞÜRÜLÜR —
+ * eksik kuru komşusuyla doldurmak sessizce yanlış rakam üretirdi.
+ */
+function convertSeries(points, currency, fx, symbol) {
+  if (!points?.length || currency === 'native' || !fx) return points
+  const usdLookup = buildRateLookup(fx.usdtry)
+  const goldLookup = buildRateLookup(fx.goldusd)
+  if (currency === 'usd' && !usdLookup) return points
+  if (currency === 'gold' && !goldLookup) return points
+
+  const native = symbolCurrency(symbol)
+  const out = []
+  for (const p of points) {
+    const date = p[0]
+    // Önce dolara çevir (ortak ara birim), sonra hedefe
+    let usdRate = null
+    if (native === 'TRY') {
+      usdRate = usdLookup?.(date)
+      if (!usdRate) continue
+    }
+    const toUsd = (v) => (native === 'TRY' ? v / usdRate : v)
+
+    let scale
+    if (currency === 'usd') {
+      scale = (v) => toUsd(v)
+    } else {
+      const goldOz = goldLookup?.(date)
+      if (!goldOz) continue
+      const goldPerGram = goldOz / GRAMS_PER_OUNCE
+      scale = (v) => toUsd(v) / goldPerGram
+    }
+
+    const conv = [date]
+    for (let i = 1; i < p.length; i += 1) {
+      const v = p[i]
+      conv.push(v == null ? v : Number(scale(v).toFixed(6)))
+    }
+    out.push(conv)
+  }
+  return out
+}
+
+/** Seçili para biriminde dönem getirisi: (son / ilk - 1). Kıyas için tek rakam. */
+function seriesReturn(points) {
+  if (!points || points.length < 2) return null
+  const first = points[0][1]
+  const last = points[points.length - 1][1]
+  if (!(first > 0)) return null
+  return last / first - 1
 }
 
 const DEFAULT_FILTERS = {
@@ -388,6 +488,8 @@ function NewsList({ items, lang, onOpenChart }) {
  */
 function NewsFeed({ news, loading, error, lang, onOpenChart }) {
   const [query, setQuery] = useState('')
+  // 'all' | 'bist' | 'global': tek akışta kaybolmamak için BIST/ABD sekmeleri
+  const [scope, setScope] = useState('all')
   const groups = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('tr-TR')
     let items = news?.items || []
@@ -398,11 +500,13 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
           displaySymbol(i.symbol || '').toLocaleLowerCase('tr-TR').includes(q),
       )
     }
+    // Tek grup seçiliyken daha fazla haber gösterilebilir
+    const cap = scope === 'all' ? NEWS_PER_GROUP : NEWS_PER_GROUP * 2
     return {
-      bist: items.filter((i) => isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
-      global: items.filter((i) => !isBistSymbol(i.symbol)).slice(0, NEWS_PER_GROUP),
+      bist: items.filter((i) => isBistSymbol(i.symbol)).slice(0, cap),
+      global: items.filter((i) => !isBistSymbol(i.symbol)).slice(0, cap),
     }
-  }, [news, query])
+  }, [news, query, scope])
 
   if (loading) return <div className="empty-box">{t(lang, 'newsLoading')}</div>
   if (error) return <div className="error-box">{error}</div>
@@ -411,10 +515,28 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
   const sections = [
     { key: 'bist', title: t(lang, 'newsBist'), items: groups.bist },
     { key: 'global', title: t(lang, 'newsGlobal'), items: groups.global },
-  ].filter((s) => s.items.length > 0)
+  ].filter((s) => s.items.length > 0 && (scope === 'all' || s.key === scope))
+
+  const scopeTabs = [
+    { key: 'all', i18nKey: 'newsTabAll' },
+    { key: 'bist', i18nKey: 'newsTabBist' },
+    { key: 'global', i18nKey: 'newsTabGlobal' },
+  ]
 
   return (
     <div className="news-groups">
+      <div className="tabs news-scope-tabs" role="group" aria-label={t(lang, 'newsTabAll')}>
+        {scopeTabs.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={`tab ${scope === s.key ? 'active' : ''}`}
+            onClick={() => setScope(s.key)}
+          >
+            {t(lang, s.i18nKey)}
+          </button>
+        ))}
+      </div>
       <div className="search-row">
         <input
           className="search-input"
@@ -575,7 +697,10 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang }) {
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, onCompare }) {
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare }) {
+  // TL / $ / gram altın: TL bazlı bir getirinin reelde ne olduğunu göstermek için
+  const [currency, setCurrency] = useState('native')
+
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -590,6 +715,20 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
   // widget sembolü çözemeyince varsayılan AAPL gösteriyordu. BIST hisseleri
   // kendi serimizden çizilir; TV iframe'i yalnızca çalıştığı yerde (ABD/emtia) kalır.
   const isBist = symbol.endsWith('.IS')
+
+  // Seçili para biriminde seri + o birimdeki dönem getirisi
+  const shownSeries = useMemo(
+    () => convertSeries(series, currency, fx, symbol),
+    [series, currency, fx, symbol],
+  )
+  const periodReturn = useMemo(() => seriesReturn(shownSeries), [shownSeries])
+  // Kur serisi yoksa ilgili seçeneği hiç gösterme (yanlış rakam göstermektense gizle)
+  const availableCurrencies = CURRENCIES.filter(
+    (c) =>
+      c.key === 'native' ||
+      (c.key === 'usd' ? fx?.usdtry?.length : fx?.usdtry?.length && fx?.goldusd?.length),
+  )
+
   const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
   const src =
     'https://s.tradingview.com/widgetembed/?' +
@@ -632,10 +771,36 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
             </button>
           </div>
         </div>
+        {/* Para birimi anahtarı: yalnızca kendi çizdiğimiz grafikte anlamlı
+            (TradingView iframe'i kendi verisini gösterir, çeviremeyiz). */}
+        {isBist && series?.length > 0 && availableCurrencies.length > 1 && (
+          <div className="currency-row">
+            <div className="tabs currency-tabs" role="group" aria-label={t(lang, 'curLabel')}>
+              {availableCurrencies.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  className={`tab ${currency === c.key ? 'active' : ''}`}
+                  onClick={() => setCurrency(c.key)}
+                >
+                  {t(lang, c.i18nKey)}
+                </button>
+              ))}
+            </div>
+            {periodReturn != null && (
+              <span className="currency-return">
+                {t(lang, 'curPeriodReturn')}{' '}
+                <strong className={`pct ${pctTone(periodReturn)}`}>{formatPct(periodReturn, 1)}</strong>
+              </span>
+            )}
+          </div>
+        )}
+
         {isBist ? (
           series?.length ? (
             <div className="modal-own-chart">
-              <FundPriceChart points={series} lang={lang} showEma />
+              <FundPriceChart points={shownSeries} lang={lang} showEma />
+              {currency !== 'native' && <p className="currency-note">{t(lang, 'curNote')}</p>}
             </div>
           ) : (
             <div className="empty-box modal-chart-empty">
@@ -1604,6 +1769,47 @@ function loadPortfolio() {
 
 function savePortfolio(list) {
   localStorage.setItem('portfolio_funds', JSON.stringify(list))
+}
+
+// Strateji Takip: kullanıcının bu stratejiye göre girdiği pozisyonlar (yalnızca
+// localStorage — sunucuya hiçbir şey gitmez). Şekil: { id, symbol, market, entryDate }.
+function loadStrategyPositions() {
+  try {
+    const list = JSON.parse(localStorage.getItem('strategy_positions') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveStrategyPositions(list) {
+  localStorage.setItem('strategy_positions', JSON.stringify(list))
+}
+
+const STRATEGY_DEFAULTS = { holdWeeks: 13, maxPositions: 10 }
+
+function loadStrategySettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('strategy_settings') || '{}')
+    return {
+      holdWeeks: Number(s.holdWeeks) || STRATEGY_DEFAULTS.holdWeeks,
+      maxPositions: Number(s.maxPositions) || STRATEGY_DEFAULTS.maxPositions,
+    }
+  } catch {
+    return { ...STRATEGY_DEFAULTS }
+  }
+}
+
+function saveStrategySettings(s) {
+  localStorage.setItem('strategy_settings', JSON.stringify(s))
+}
+
+// Girişten bu yana geçen tam hafta sayısı (yerel saat, gün farkından)
+function weeksSince(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00`)
+  if (Number.isNaN(start.getTime())) return 0
+  const days = Math.floor((Date.now() - start.getTime()) / 86400000)
+  return Math.max(0, Math.floor(days / 7))
 }
 
 /** Tutar (maliyet/değer) 2 ondalıkla; pay fiyatı için formatFundPrice (4 ondalık) kullanılır. */
@@ -3340,6 +3546,8 @@ const FUND_LEAGUE_METRICS = [
  */
 function FundLeague({ funds, lang, loading, onOpenFund }) {
   const [metric, setMetric] = useState('score')
+  // Açık (tüm fonları listelenen) kategoriler: "+N fon daha" tıklanınca genişler
+  const [expanded, setExpanded] = useState(() => new Set())
 
   const groups = useMemo(() => {
     const byCat = new Map()
@@ -3355,10 +3563,18 @@ function FundLeague({ funds, lang, loading, onOpenFund }) {
         cat,
         count: list.length,
         medianReturn: median(list.map((f) => f.return_1y)),
-        top: sorted.slice(0, 5),
+        top: expanded.has(cat) ? sorted : sorted.slice(0, 5),
       }
     })
-  }, [funds, metric])
+  }, [funds, metric, expanded])
+
+  const toggleExpanded = (cat) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
 
   if (loading && !funds) return <div className="empty-box">{t(lang, 'fundsLoading')}</div>
   if (!funds?.results?.length) return <div className="empty-box">{t(lang, 'flEmpty')}</div>
@@ -3415,7 +3631,11 @@ function FundLeague({ funds, lang, loading, onOpenFund }) {
                 </li>
               ))}
             </ol>
-            {g.count > 5 && <div className="fl-more">{t(lang, 'flMore', g.count - 5)}</div>}
+            {g.count > 5 && (
+              <button type="button" className="fl-more" onClick={() => toggleExpanded(g.cat)}>
+                {expanded.has(g.cat) ? t(lang, 'flLess') : t(lang, 'flMore', g.count - 5)}
+              </button>
+            )}
           </section>
         ))}
       </div>
@@ -3638,7 +3858,7 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
       (overview?.[market]?.stocks || [])
         .filter((s) => s.market_cap > 0 && s.change != null)
         .sort((a, b) => b.market_cap - a.market_cap)
-        .slice(0, 48),
+        .slice(0, 120), // BIST 100'ün tamamı sığar; S&P'de en büyük 120 gösterilir
     [overview, market],
   )
 
@@ -3659,8 +3879,10 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
 
     let bubbles = []
     const build = () => {
-      const rMin = Math.max(15, W / 46)
-      const rMax = Math.min(70, W / 9)
+      // Balon sayısı arttıkça yarıçaplar küçülür; 100 hisse de kanvasa sığar
+      const density = Math.sqrt(48 / Math.max(stocks.length, 1))
+      const rMin = Math.max(10, (W / 46) * density)
+      const rMax = Math.min(70, Math.max(rMin + 8, (W / 9) * density))
       bubbles = stocks.map((s) => {
         const tt = (Math.sqrt(s.market_cap) - sMin) / (sMax - sMin || 1)
         const r = rMin + tt * (rMax - rMin)
@@ -4358,6 +4580,547 @@ function AlertsView({ evals, stockMap, fundMap, funds, lang, notifyPerm, onEnabl
   )
 }
 
+/** Rotasyon tablosundaki ufuklar: her biri ilgili zaman diliminin SON mum değişimi. */
+const ROTATION_HORIZONS = [
+  { key: 'daily', i18nKey: 'rotH1d' },
+  { key: 'weekly', i18nKey: 'rotH1w' },
+  { key: 'monthly', i18nKey: 'rotH1m' },
+]
+
+/** Sektör getirisini (-%8..+%8 bandı) yeşil/kırmızı ısı rengine çevirir. */
+function rotationTone(value) {
+  if (value == null) return null
+  const mag = Math.min(Math.abs(value) / 0.08, 1)
+  const alpha = 0.1 + mag * 0.55
+  return value >= 0 ? `rgba(22, 163, 74, ${alpha})` : `rgba(220, 38, 38, ${alpha})`
+}
+
+/** Sayı dizisinin medyanı (aykırı tek bir hisse sektörü temsil etmesin diye ortalama değil). */
+function medianOf(values) {
+  const v = values.filter((x) => x != null).sort((a, b) => a - b)
+  if (!v.length) return null
+  return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2
+}
+
+/**
+ * Sektör Rotasyonu: hangi sektör ısınıyor, hangisi soğuyor?
+ *
+ * Her sektörün getirisi, o sektördeki hisselerin MEDYAN değişimidir — ortalama,
+ * tek bir uç hissenin (örn. tavan yapan küçük bir şirket) sektörü olduğundan
+ * güçlü göstermesine yol açıyordu. Sinyal yoğunluğu (kaç hisse filtreyi geçiyor)
+ * ayrı bir kolonda: getiri geçmişi, sinyal ise şimdiki teknik durumu anlatır.
+ */
+function SectorRotation({ overviews, market, lang, loading, onNavigate }) {
+  const [sortKey, setSortKey] = useState('weekly')
+
+  const rows = useMemo(() => {
+    // sektör -> { horizon -> [değişimler] , signals, count }
+    const bySector = new Map()
+    const ensure = (sec) => {
+      if (!bySector.has(sec)) {
+        bySector.set(sec, { sector: sec, changes: {}, signals: 0, count: 0 })
+      }
+      return bySector.get(sec)
+    }
+
+    // Tek market: BIST ile S&P'yi aynı sektör medyanında toplamak farklı para birimi
+    // ve dinamikleri harmanlayıp yanıltırdı (üstteki market sekmesinden seçilir).
+    for (const h of ROTATION_HORIZONS) {
+      const payload = overviews?.[h.key]?.[market]
+      if (!payload) continue
+      const signalSyms = new Set((payload.results || []).map((r) => r.symbol))
+      for (const s of payload.stocks || []) {
+        if (!s.sector) continue // ETF/emtiada sektör kavramı yok
+        const row = ensure(s.sector)
+        if (s.change != null) (row.changes[h.key] ||= []).push(s.change)
+        // Hisse sayısı ve sinyal yoğunluğu günlük taramadan (tek sayım)
+        if (h.key === 'daily') {
+          row.count += 1
+          if (signalSyms.has(s.symbol)) row.signals += 1
+        }
+      }
+    }
+
+    const out = [...bySector.values()].map((r) => ({
+      sector: r.sector,
+      count: r.count,
+      signals: r.signals,
+      signalRate: r.count ? r.signals / r.count : null,
+      values: Object.fromEntries(ROTATION_HORIZONS.map((h) => [h.key, medianOf(r.changes[h.key] || [])])),
+    }))
+    out.sort((a, b) => (b.values[sortKey] ?? -Infinity) - (a.values[sortKey] ?? -Infinity))
+    return out
+  }, [overviews, market, sortKey])
+
+  // Özet kartları için asgari hisse sayısı: tek-iki hisselik bir "sektör" gerçek bir
+  // sektör trendi değildir, onu "öne çıkan" ilan etmek yanıltıcı olurdu. Tablo yine
+  // hepsini gösterir (hisse sayısı rozetiyle birlikte).
+  const ROTATION_MIN_STOCKS = 3
+  const representative = rows.filter((r) => r.count >= ROTATION_MIN_STOCKS && r.values[sortKey] != null)
+
+  if (loading && !rows.length) return <div className="empty-box">{t(lang, 'loading')}</div>
+  if (!rows.length) return <div className="empty-box">{t(lang, 'rotEmpty')}</div>
+
+  const leader = representative[0]
+  const laggard = representative[representative.length - 1]
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'rotIntro')}</span>
+      </div>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'rotHowTitle')}</summary>
+        <div className="info-content">
+          <p>{t(lang, 'rotHowBody1')}</p>
+          <p>{t(lang, 'rotHowBody2')}</p>
+        </div>
+      </details>
+
+      {leader && laggard && leader !== laggard && (
+        <div className="strat-summary">
+          <div className="strat-stat">
+            <span className="strat-stat-label">{t(lang, 'rotLeader')}</span>
+            <strong className="strat-stat-value rot-stat-name">{sectorLabel(leader.sector, lang)}</strong>
+            <span className={`strat-stat-sub pct ${pctTone(leader.values[sortKey])}`}>
+              {formatPct(leader.values[sortKey], 1)}
+            </span>
+          </div>
+          <div className="strat-stat">
+            <span className="strat-stat-label">{t(lang, 'rotLaggard')}</span>
+            <strong className="strat-stat-value rot-stat-name">{sectorLabel(laggard.sector, lang)}</strong>
+            <span className={`strat-stat-sub pct ${pctTone(laggard.values[sortKey])}`}>
+              {formatPct(laggard.values[sortKey], 1)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table className="rotation-table">
+          <thead>
+            <tr>
+              <th className="left">{t(lang, 'rotColSector')}</th>
+              {ROTATION_HORIZONS.map((h) => (
+                <th
+                  key={h.key}
+                  className={`sortable ${sortKey === h.key ? 'sorted' : ''}`}
+                  onClick={() => setSortKey(h.key)}
+                  title={t(lang, 'sortHint')}
+                >
+                  {t(lang, h.i18nKey)}
+                  <span className="sort-arrow">{sortKey === h.key ? '▼' : '⇅'}</span>
+                </th>
+              ))}
+              <th title={t(lang, 'rotColSignalsTitle')}>{t(lang, 'rotColSignals')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.sector}>
+                <td className="left rot-sector">
+                  <button className="link-btn" type="button" onClick={() => onNavigate(r.sector)}>
+                    {sectorLabel(r.sector, lang)}
+                  </button>
+                  <span className="rot-count">{r.count}</span>
+                </td>
+                {ROTATION_HORIZONS.map((h) => (
+                  <td
+                    key={h.key}
+                    className="rot-cell"
+                    style={{ background: rotationTone(r.values[h.key]) || undefined }}
+                  >
+                    <span className={`pct ${pctTone(r.values[h.key])}`}>
+                      {formatPct(r.values[h.key], 1)}
+                    </span>
+                  </td>
+                ))}
+                <td>
+                  <span className="rot-signals">
+                    {r.signals}
+                    <span className="rot-signal-rate">({formatRate(r.signalRate)})</span>
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
+/**
+ * Sinyal Karnesi: "site N hafta önce şu sinyalleri verdi — bugün ne durumdalar?"
+ *
+ * Backtest geçmişe bakar ve bu yüzden hep "geçmişe uydurdun" şüphesi taşır. Karne
+ * bunun panzehiri: her tarama o günün TAZE sinyallerini fiyatıyla mühürler
+ * (signal_log.json), burada yalnızca o mühürlü kayıt okunur. Kayıt ileriye doğru
+ * dolduğundan geçmişe dönük değiştirilemez.
+ */
+function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
+  const [tf, setTf] = useState('weekly')
+
+  // Mühürlü kayıtları bugünkü fiyatla karşılaştır
+  const { rows, stats, firstDay, dayCount } = useMemo(() => {
+    const history = log?.history || {}
+    const days = Object.keys(history).sort()
+    const out = []
+    for (const day of days) {
+      for (const e of history[day] || []) {
+        if (e.tf !== tf) continue
+        const current = stockMap.get(e.s)?.close
+        const entry = e.p
+        // Fiyatı bilinmeyen (taramadan düşmüş) sembolü karneye katma: eksik veriyi
+        // "0 getiri" saymak isabet oranını sessizce şişirirdi.
+        if (!(entry > 0) || !(current > 0)) continue
+        const ret = current / entry - 1
+        const daysHeld = Math.max(0, Math.round((Date.now() - new Date(`${day}T00:00:00`)) / 86400000))
+        out.push({ ...e, day, entry, current, ret, daysHeld })
+      }
+    }
+    out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
+
+    const rets = out.map((r) => r.ret)
+    const wins = rets.filter((r) => r > 0).length
+    const avg = rets.length ? rets.reduce((s, r) => s + r, 0) / rets.length : null
+    const sorted = [...rets].sort((a, b) => a - b)
+    const med = sorted.length
+      ? sorted.length % 2
+        ? sorted[(sorted.length - 1) / 2]
+        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      : null
+    return {
+      rows: out,
+      stats: { count: rets.length, winRate: rets.length ? wins / rets.length : null, avg, med },
+      firstDay: days[0] || null,
+      dayCount: days.length,
+    }
+  }, [log, stockMap, tf])
+
+  if (loading) return <div className="empty-box">{t(lang, 'loading')}</div>
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'scIntro')}</span>
+        {firstDay && <span className="bt-period">{t(lang, 'scSince', firstDay, dayCount)}</span>}
+      </div>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'scHowTitle')}</summary>
+        <div className="info-content">
+          <p>{t(lang, 'scHowBody1')}</p>
+          <p>{t(lang, 'scHowBody2')}</p>
+        </div>
+      </details>
+
+      <div className="tabs" role="group" aria-label={t(lang, 'scTfLabel')}>
+        {['daily', 'weekly'].map((k) => (
+          <button
+            key={k}
+            type="button"
+            className={`tab ${tf === k ? 'active' : ''}`}
+            onClick={() => setTf(k)}
+          >
+            {tfLabel(TIMEFRAMES.find((x) => x.key === k), lang)}
+          </button>
+        ))}
+      </div>
+
+      {!log || rows.length === 0 ? (
+        <div className="empty-box">{t(lang, 'scEmpty')}</div>
+      ) : (
+        <>
+          <div className="strat-summary">
+            <div className="strat-stat">
+              <span className="strat-stat-label">{t(lang, 'scCount')}</span>
+              <strong className="strat-stat-value">{stats.count}</strong>
+              <span className="strat-stat-sub">{t(lang, 'scCountSub')}</span>
+            </div>
+            <div className="strat-stat">
+              <span className="strat-stat-label">{t(lang, 'scWinRate')}</span>
+              <strong className="strat-stat-value">{formatRate(stats.winRate)}</strong>
+              <span className="strat-stat-sub">{t(lang, 'scWinRateSub')}</span>
+            </div>
+            <div className="strat-stat">
+              <span className="strat-stat-label">{t(lang, 'scAvg')}</span>
+              <strong className={`strat-stat-value pct ${pctTone(stats.avg)}`}>
+                {formatPct(stats.avg, 1)}
+              </strong>
+              <span className="strat-stat-sub">{t(lang, 'scMedian', formatPct(stats.med, 1))}</span>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="left">{t(lang, 'colSymbol')}</th>
+                  <th className="left">{t(lang, 'scColDate')}</th>
+                  <th>{t(lang, 'scColElapsed')}</th>
+                  <th>{t(lang, 'scColEntry')}</th>
+                  <th>{t(lang, 'scColNow')}</th>
+                  <th>{t(lang, 'scColReturn')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={`${r.day}-${r.s}-${i}`}>
+                    <td className="symbol-cell">
+                      <button className="symbol-btn" type="button" onClick={() => onOpenChart(r.s)}>
+                        <TickerLogo symbol={r.s} />
+                        {displaySymbol(r.s)}
+                      </button>
+                    </td>
+                    <td className="left">{r.day}</td>
+                    <td>{t(lang, 'scDaysN', r.daysHeld)}</td>
+                    <td>{formatNum(r.entry, 2)}</td>
+                    <td>{formatNum(r.current, 2)}</td>
+                    <td className={`pct ${pctTone(r.ret)}`}>{formatPct(r.ret, 1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
+/**
+ * Strateji Takip: "haftalık taze sinyalleri al, en fazla N pozisyon, H hafta tut, sat"
+ * stratejisini yönetmek için. Backtest'in kuralını gerçek hayatta uygulamak elle
+ * takip gerektiriyordu (hangi pozisyon kaç hafta doldu, slot boş mu, yeni sinyal var mı).
+ * Bu sekme onu üstlenir. Pozisyonlar yalnızca localStorage'da — sunucuya gitmez.
+ */
+function StrategyTracker({ signals, signalsLoading, lang, notifyPerm, onEnableNotify, onOpenChart }) {
+  const [positions, setPositions] = useState(loadStrategyPositions)
+  const [settings, setSettings] = useState(loadStrategySettings)
+  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  const notifyBtn =
+    notifyPerm === 'granted' ? (
+      <span className="alert-notify-on">{t(lang, 'alertNotifyOn')}</span>
+    ) : notifyPerm === 'denied' ? (
+      <span className="alert-notify-blocked">{t(lang, 'alertNotifyBlocked')}</span>
+    ) : notifyPerm === 'unsupported' ? null : (
+      <button className="btn" type="button" onClick={onEnableNotify}>
+        {t(lang, 'alertEnableNotify')}
+      </button>
+    )
+
+  const update = (next) => {
+    setPositions(next)
+    saveStrategyPositions(next)
+  }
+  const patchSettings = (patch) => {
+    const next = { ...settings, ...patch }
+    setSettings(next)
+    saveStrategySettings(next)
+  }
+
+  const held = new Set(positions.map((p) => p.symbol))
+
+  const addPosition = (symbol, market) => {
+    if (held.has(symbol)) return
+    update([
+      ...positions,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, symbol, market, entryDate },
+    ])
+  }
+  const removePosition = (id) => update(positions.filter((p) => p.id !== id))
+
+  // Her pozisyon için: kaç hafta doldu, kaç hafta kaldı, durumu
+  const rows = useMemo(() => {
+    return positions
+      .map((p) => {
+        const weeksHeld = weeksSince(p.entryDate)
+        const weeksLeft = settings.holdWeeks - weeksHeld
+        const status = weeksLeft <= 0 ? 'due' : weeksLeft <= 1 ? 'soon' : 'holding'
+        return { ...p, weeksHeld, weeksLeft, status }
+      })
+      .sort((a, b) => a.weeksLeft - b.weeksLeft)
+  }, [positions, settings.holdWeeks])
+
+  const dueCount = rows.filter((r) => r.status === 'due').length
+  const freeSlots = Math.max(0, settings.maxPositions - positions.length)
+
+  // Taze haftalık sinyaller: henüz portföyde olmayanlar (slot doldurma önerisi)
+  const freshAvailable = useMemo(
+    () => (signals || []).filter((s) => !held.has(s.symbol)),
+    [signals, positions],
+  )
+
+  return (
+    <>
+      <div className="status-bar">
+        <span>{t(lang, 'stratIntro')}</span>
+        {notifyBtn}
+      </div>
+
+      <details className="info-panel">
+        <summary>{t(lang, 'stratHowTitle')}</summary>
+        <div className="info-content">
+          <p>{t(lang, 'stratHowBody1')}</p>
+          <p>{t(lang, 'stratHowBody2')}</p>
+        </div>
+      </details>
+
+      {/* Kapasite / süre ayarları */}
+      <div className="strat-settings">
+        <label className="strat-setting">
+          <span>{t(lang, 'stratMaxPositions')}</span>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={settings.maxPositions}
+            onChange={(e) => patchSettings({ maxPositions: Math.max(1, Number(e.target.value) || 1) })}
+          />
+        </label>
+        <label className="strat-setting">
+          <span>{t(lang, 'stratHoldWeeks')}</span>
+          <input
+            type="number"
+            min="1"
+            max="104"
+            value={settings.holdWeeks}
+            onChange={(e) => patchSettings({ holdWeeks: Math.max(1, Number(e.target.value) || 1) })}
+          />
+        </label>
+      </div>
+
+      {/* Özet kartları: slot doluluğu + bu hafta satılacaklar */}
+      <div className="strat-summary">
+        <div className="strat-stat">
+          <span className="strat-stat-label">{t(lang, 'stratSlots')}</span>
+          <strong className="strat-stat-value">
+            {positions.length} / {settings.maxPositions}
+          </strong>
+          <span className="strat-stat-sub">{t(lang, 'stratFreeSlots', freeSlots)}</span>
+        </div>
+        <div className={`strat-stat ${dueCount ? 'strat-stat-due' : ''}`}>
+          <span className="strat-stat-label">{t(lang, 'stratDueTitle')}</span>
+          <strong className="strat-stat-value">{dueCount}</strong>
+          <span className="strat-stat-sub">{t(lang, 'stratDueSub')}</span>
+        </div>
+      </div>
+
+      {/* Açık pozisyonlar */}
+      {rows.length === 0 ? (
+        <div className="empty-box">{t(lang, 'stratEmpty')}</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="left">{t(lang, 'colSymbol')}</th>
+                <th className="left">{t(lang, 'stratColEntry')}</th>
+                <th>{t(lang, 'stratColHeld')}</th>
+                <th>{t(lang, 'stratColLeft')}</th>
+                <th>{t(lang, 'stratColStatus')}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={r.status === 'due' ? 'strat-row-due' : ''}>
+                  <td className="symbol-cell">
+                    <button className="symbol-btn" type="button" onClick={() => onOpenChart(r.symbol)}>
+                      <TickerLogo symbol={r.symbol} />
+                      {displaySymbol(r.symbol)}
+                    </button>
+                  </td>
+                  <td className="left">{r.entryDate}</td>
+                  <td>{t(lang, 'stratWeeksN', r.weeksHeld)}</td>
+                  <td>
+                    <div className="strat-progress" title={t(lang, 'stratWeeksN', Math.max(0, r.weeksLeft))}>
+                      <div
+                        className={`strat-progress-fill ${r.status}`}
+                        style={{ width: `${Math.min(100, (r.weeksHeld / settings.holdWeeks) * 100)}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge strat-badge-${r.status}`}>
+                      {r.status === 'due'
+                        ? t(lang, 'stratSellNow')
+                        : r.status === 'soon'
+                          ? t(lang, 'stratSoon')
+                          : t(lang, 'stratWeeksLeft', r.weeksLeft)}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="star-btn pf-remove"
+                      type="button"
+                      title={t(lang, 'stratRemove')}
+                      onClick={() => removePosition(r.id)}
+                    >
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Taze haftalık sinyaller: boş slot varsa doldurma önerisi */}
+      <section className="strat-signals">
+        <h3 className="strat-signals-title">
+          {t(lang, 'stratFreshTitle')}
+          <span className="news-group-count">{freshAvailable.length}</span>
+        </h3>
+        <div className="strat-signals-entry">
+          <label>
+            {t(lang, 'stratEntryDate')}
+            <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+          </label>
+        </div>
+        {signalsLoading ? (
+          <div className="empty-box">{t(lang, 'loading')}</div>
+        ) : freshAvailable.length === 0 ? (
+          <div className="empty-box">{t(lang, 'stratNoFresh')}</div>
+        ) : (
+          <div className="strat-chips">
+            {freshAvailable.map((s) => (
+              <div key={s.symbol} className="strat-chip">
+                <button className="symbol-btn" type="button" onClick={() => onOpenChart(s.symbol)}>
+                  <TickerLogo symbol={s.symbol} />
+                  {displaySymbol(s.symbol)}
+                </button>
+                <button
+                  className="btn small"
+                  type="button"
+                  disabled={freeSlots <= 0}
+                  title={freeSlots <= 0 ? t(lang, 'stratNoSlot') : t(lang, 'stratAdd')}
+                  onClick={() => addPosition(s.symbol, s.market)}
+                >
+                  + {t(lang, 'stratAdd')}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {freeSlots <= 0 && freshAvailable.length > 0 && (
+          <p className="strat-full-note">{t(lang, 'stratFullNote')}</p>
+        )}
+      </section>
+
+      <p className="disclaimer">{t(lang, 'disclaimer')}</p>
+    </>
+  )
+}
+
 function App() {
   const [lang, setLangState] = useState(getLang)
   // Açılışta ham tablo yerine günün özeti karşılasın
@@ -4366,6 +5129,8 @@ function App() {
   const [timeframe, setTimeframe] = useState('daily')
   const [watchlist, setWatchlist] = useState(loadWatchlist)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  // Filtreleri yok sayıp taranan tüm hisseleri (örn. BIST 100'ün tamamı) listele
+  const [showAllStocks, setShowAllStocks] = useState(false)
   const [fundWatchlist, setFundWatchlist] = useState(loadFundWatchlist)
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
@@ -4374,6 +5139,13 @@ function App() {
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false)
   const [stockPrices, setStockPrices] = useState(null)
   const [stockPricesReady, setStockPricesReady] = useState(false)
+  // Döviz/altın serileri (TL / $ / gram altın anahtarı)
+  const [fx, setFx] = useState(null)
+  const [fxReady, setFxReady] = useState(false)
+  // Sinyal karnesi arşivi (mühürlü geçmiş sinyaller)
+  const [signalLog, setSignalLog] = useState(null)
+  const [signalLogLoading, setSignalLogLoading] = useState(false)
+  const [signalLogReady, setSignalLogReady] = useState(false)
   const [stockPricesLoading, setStockPricesLoading] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -4404,6 +5176,9 @@ function App() {
   const [overviewCache, setOverviewCache] = useState({})
   const [overviewLoading, setOverviewLoading] = useState(false)
   const [overviewError, setOverviewError] = useState(null)
+  // Strateji Takip + yeni-sinyal bildirimi için haftalık sinyal özeti (tüm marketler)
+  const [weeklySignals, setWeeklySignals] = useState(null)
+  const [weeklySignalsLoading, setWeeklySignalsLoading] = useState(false)
   const [todayTimeframe, setTodayTimeframe] = useState('daily')
   const [menuOpen, setMenuOpen] = useState(false)
   const [theme, setThemeState] = useState(loadTheme)
@@ -4716,6 +5491,44 @@ function App() {
     }
   }, [chartSymbol, view, stockPricesReady])
 
+  // Sinyal karnesi arşivi: yalnızca Karne sekmesinde gerekir.
+  useEffect(() => {
+    if (view !== 'scorecard' || signalLogReady) return
+    let cancelled = false
+    setSignalLogLoading(true)
+    fetchSignalLog()
+      .then((result) => {
+        if (!cancelled) setSignalLog(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setSignalLogReady(true)
+          setSignalLogLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, signalLogReady])
+
+  // Döviz/altın serileri: BIST grafiği açıldığında (para birimi anahtarı için) yüklenir.
+  useEffect(() => {
+    if (!chartSymbol?.endsWith('.IS') || fxReady) return
+    let cancelled = false
+    fetchFx()
+      .then((result) => {
+        if (!cancelled) setFx(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFxReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chartSymbol, fxReady])
+
   // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
   // 404 döner ve panel görünmez (fetch null döndürür).
   useEffect(() => {
@@ -4809,11 +5622,19 @@ function App() {
       view !== 'map' &&
       view !== 'bubbles' &&
       view !== 'alerts' &&
-      view !== 'portfolio'
+      view !== 'portfolio' &&
+      view !== 'scorecard' && // karne, güncel fiyatı stockMap'ten okur
+      view !== 'rotation'
     )
       return
     if (!marketsResolved) return
-    const wanted = view === 'today' ? ['daily', todayTimeframe] : ['daily']
+    // Rotasyon tablosu üç ufku birden karşılaştırır; diğer sekmelere günlük yeter.
+    const wanted =
+      view === 'rotation'
+        ? ['daily', 'weekly', 'monthly']
+        : view === 'today'
+          ? ['daily', todayTimeframe]
+          : ['daily']
     const needed = [...new Set(wanted)].filter((tf) => !overviewCache[tf])
     if (!needed.length) return
 
@@ -4869,6 +5690,68 @@ function App() {
       ignore = true
     }
   }, [view, chartSymbol, chartFund, news, activeMarkets, marketsResolved])
+
+  // Haftalık sinyaller: Strateji sekmesi açıkken veya bildirim izni verilmişken
+  // (arka planda yeni-sinyal bildirimi için) tek sefer yüklenir.
+  useEffect(() => {
+    if (!marketsResolved) return
+    if (view !== 'strategy' && notifyPerm !== 'granted') return
+    if (weeklySignals) return
+    let cancelled = false
+    setWeeklySignalsLoading(true)
+    fetchDailyOverview(activeMarkets.map((m) => m.key), 'weekly')
+      .then((result) => {
+        if (!cancelled) setWeeklySignals(result)
+      })
+      .catch(() => {
+        if (!cancelled) setWeeklySignals({})
+      })
+      .finally(() => {
+        if (!cancelled) setWeeklySignalsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, notifyPerm, weeklySignals, activeMarkets, marketsResolved])
+
+  // Tüm marketlerin haftalık taze sinyalleri tek listede (market etiketiyle)
+  const freshWeeklySignals = useMemo(() => {
+    if (!weeklySignals) return []
+    const out = []
+    for (const m of activeMarkets) {
+      for (const s of weeklySignals[m.key]?.results || []) {
+        if (s.is_new) out.push({ ...s, market: m.key })
+      }
+    }
+    return out
+  }, [weeklySignals, activeMarkets])
+
+  // Yeni haftalık sinyal bildirimi: daha önce bildirilmemiş taze sinyaller için
+  // tek bir tarayıcı bildirimi. Bildirilenler localStorage'da tutulur (tekrar atmaz).
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (!freshWeeklySignals.length) return
+    let notified
+    try {
+      notified = new Set(JSON.parse(localStorage.getItem('strategy_notified') || '[]'))
+    } catch {
+      notified = new Set()
+    }
+    const fresh = freshWeeklySignals.filter((s) => !notified.has(s.symbol))
+    if (!fresh.length) return
+    try {
+      const names = fresh.map((s) => displaySymbol(s.symbol))
+      new Notification(t(lang, 'stratNotifTitle', fresh.length), {
+        body: names.slice(0, 6).join(', ') + (names.length > 6 ? ` +${names.length - 6}` : ''),
+      })
+    } catch {
+      /* bildirim atılamadıysa sessiz geç */
+    }
+    // Artık listede olmayan eski sembolleri de temizle: sinyal tekrar taze olursa yeniden bildirilsin
+    const current = new Set(freshWeeklySignals.map((s) => s.symbol))
+    const keep = [...notified].filter((sym) => current.has(sym))
+    localStorage.setItem('strategy_notified', JSON.stringify([...keep, ...fresh.map((s) => s.symbol)]))
+  }, [freshWeeklySignals, lang])
 
   const overview = overviewCache.daily || null
   const marketOverview = overviewCache[todayTimeframe] || null
@@ -4928,7 +5811,9 @@ function App() {
   const rows = useMemo(() => {
     if (!data) return []
     let list = data.stocks
-      ? data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
+      ? showAllStocks
+        ? data.stocks
+        : data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
     const q = search.trim().toUpperCase()
@@ -4949,7 +5834,7 @@ function App() {
       return dir === 'asc' ? av - bv : bv - av
     })
     return list
-  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort])
+  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks])
 
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
@@ -5152,7 +6037,12 @@ function App() {
           {/* Market/zaman dilimi menüde değil burada: bunlar navigasyon değil,
               görünümün filtresi — yalnızca ilgili sekmelerde anlamlılar. */}
           <div className="tab-groups">
-            {(view === 'screener' || view === 'backtest' || view === 'map' || view === 'bubbles') && marketsResolved && (
+            {(view === 'screener' ||
+              view === 'backtest' ||
+              view === 'map' ||
+              view === 'bubbles' ||
+              view === 'rotation') &&
+              marketsResolved && (
               <div className="tabs">
                 {activeMarkets.map((m) => (
                   <button
@@ -5462,6 +6352,44 @@ function App() {
         />
       )}
 
+      {view === 'rotation' && (
+        <SectorRotation
+          overviews={overviewCache}
+          market={market}
+          lang={lang}
+          loading={overviewLoading}
+          onNavigate={(sector) => {
+            // Sektöre tıkla → taramayı o sektöre filtrele (rotasyondan hisseye geçiş).
+            // "Tüm hisseler" modu filtreleri atladığından kapatılır; aksi halde
+            // sektör seçimi sessizce hiçbir şey yapmazdı.
+            setFilters((f) => ({ ...f, sectors: [sector] }))
+            setShowAllStocks(false)
+            selectView('screener')
+          }}
+        />
+      )}
+
+      {view === 'scorecard' && (
+        <SignalScorecard
+          log={signalLog}
+          stockMap={stockMap}
+          lang={lang}
+          loading={signalLogLoading || (overviewLoading && !overviewCache.daily)}
+          onOpenChart={setChartSymbol}
+        />
+      )}
+
+      {view === 'strategy' && (
+        <StrategyTracker
+          signals={freshWeeklySignals}
+          signalsLoading={weeklySignalsLoading}
+          lang={lang}
+          notifyPerm={notifyPerm}
+          onEnableNotify={enableNotify}
+          onOpenChart={setChartSymbol}
+        />
+      )}
+
       {view === 'alerts' && (
         <AlertsView
           evals={alertEvals}
@@ -5562,6 +6490,15 @@ function App() {
               : ''}
         </span>
         <div className="actions">
+          {data?.stocks && (
+            <button
+              className={`btn ${showAllStocks ? 'primary' : ''}`}
+              title={t(lang, 'showAllStocksHint')}
+              onClick={() => setShowAllStocks((v) => !v)}
+            >
+              📋 {t(lang, 'showAllStocks', data.stocks.length)}
+            </button>
+          )}
           <button
             className={`btn ${onlyWatchlist ? 'primary' : ''}`}
             title="Sadece favori hisseleri göster"
@@ -5594,7 +6531,7 @@ function App() {
         </div>
       </div>
 
-      {data?.stocks && (
+      {data?.stocks && !showAllStocks && (
         <FilterPanel
           filters={filters}
           setFilters={setFilters}
@@ -5776,6 +6713,7 @@ function App() {
           stock={chartStock}
           positions={chartPositions}
           scoreSeries={chartScoreSeries}
+          fx={fx}
           onCompare={(sym) => {
             setCompareSeed([sym])
             selectView('stockCompare')
