@@ -3597,6 +3597,39 @@ tr.alert-hit td {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Kod ile yedek taşıma ---------- */
+.bk-code {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.bk-code-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.bk-code-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.bk-code-row .search-input {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.bk-code-warning {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--down);
+}
+
 /* ---------- Çeşitlilik paneli (Strateji Takip) ---------- */
 .div-panel {
   margin: 16px 0;

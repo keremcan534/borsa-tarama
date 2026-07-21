@@ -2029,6 +2029,114 @@ function saveStrategySettings(s) {
   localStorage.setItem('strategy_settings', JSON.stringify(s))
 }
 
+/* ---------- Yedekleme (dosya + kod) ----------
+ * Tüm kişisel veri yalnızca localStorage'da yaşar; sunucu yoktur. Cihaz değiştirmenin
+ * tek yolu bu yedek. Kod biçimi bilinçli bir tercihtir: kod, sunucudaki veriye açılan
+ * bir ANAHTAR değil, verinin KENDİSİDİR. Böylece kimse başkasının kodunu tahmin edip
+ * verisine ulaşamaz — ortada ulaşılacak bir sunucu yoktur. */
+
+// Yedeğe girecek localStorage anahtarları ve birleştirme biçimleri.
+// Yeni bir kişisel veri anahtarı eklendiğinde BURAYA da eklenmelidir.
+const BACKUP_KEYS = [
+  { key: 'watchlist', kind: 'set' },
+  { key: 'watchlist_funds', kind: 'set' },
+  { key: 'portfolio_funds', kind: 'list' },
+  { key: 'strategy_positions', kind: 'list' },
+  { key: 'alerts', kind: 'list' },
+  { key: 'saved_screens', kind: 'list' },
+  { key: 'strategy_settings', kind: 'object' },
+]
+
+const BACKUP_CODE_PREFIX = 'BT1.'
+
+function buildBackupPayload() {
+  const data = {}
+  for (const { key } of BACKUP_KEYS) {
+    const raw = localStorage.getItem(key)
+    if (raw == null) continue
+    try {
+      data[key] = JSON.parse(raw)
+    } catch {
+      /* bozuk kayıt yedeğe alınmaz */
+    }
+  }
+  return { app: 'borsa-tarama', exported_at: new Date().toISOString(), ...data }
+}
+
+/**
+ * Yedeği localStorage'a uygular. ÜZERİNE YAZMAZ, birleştirir: yanlış kod/dosya
+ * yapıştırıldığında mevcut veri kaybolmasın. Liste öğeleri id ile tekilleştirilir.
+ */
+function applyBackupPayload(data) {
+  if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
+  for (const { key, kind } of BACKUP_KEYS) {
+    const incoming = data[key]
+    if (incoming == null) continue
+
+    if (kind === 'set') {
+      const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+      for (const s of incoming) if (typeof s === 'string') cur.add(s)
+      localStorage.setItem(key, JSON.stringify([...cur]))
+    } else if (kind === 'list') {
+      let cur = []
+      try {
+        cur = JSON.parse(localStorage.getItem(key) || '[]')
+      } catch {
+        cur = []
+      }
+      if (!Array.isArray(cur)) cur = []
+      const ids = new Set(cur.map((x) => x?.id).filter(Boolean))
+      for (const item of Array.isArray(incoming) ? incoming : []) {
+        if (!item || typeof item !== 'object') continue
+        if (item.id && ids.has(item.id)) continue
+        cur.push(item)
+      }
+      localStorage.setItem(key, JSON.stringify(cur))
+    } else if (kind === 'object') {
+      // Ayarlarda birleştirme anlamsız: gelen değer geçerliyse olduğu gibi alınır
+      if (incoming && typeof incoming === 'object') {
+        localStorage.setItem(key, JSON.stringify(incoming))
+      }
+    }
+  }
+}
+
+const bytesToBase64 = (bytes) => {
+  let bin = ''
+  // Parça parça: büyük dizilerde String.fromCharCode(...) yığın taşmasına yol açar
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(bin)
+}
+
+const base64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+
+/** Yedeği tek satırlık koda çevirir (varsa gzip ile sıkıştırarak). */
+async function encodeBackupCode(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
+  if (typeof CompressionStream === 'undefined') {
+    return `${BACKUP_CODE_PREFIX}0.${bytesToBase64(bytes)}`
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))
+  const gz = new Uint8Array(await new Response(stream).arrayBuffer())
+  return `${BACKUP_CODE_PREFIX}1.${bytesToBase64(gz)}`
+}
+
+async function decodeBackupCode(code) {
+  const trimmed = (code || '').trim().replace(/\s+/g, '')
+  if (!trimmed.startsWith(BACKUP_CODE_PREFIX)) throw new Error('bad prefix')
+  const rest = trimmed.slice(BACKUP_CODE_PREFIX.length)
+  const sep = rest.indexOf('.')
+  const compressed = rest.slice(0, sep) === '1'
+  let bytes = base64ToBytes(rest.slice(sep + 1))
+  if (compressed) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+  }
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 // Girişten bu yana geçen tam hafta sayısı (yerel saat, gün farkından)
 function weeksSince(dateStr) {
   const start = new Date(`${dateStr}T00:00:00`)
@@ -2635,24 +2743,13 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
   }
 
   const [backupMsg, setBackupMsg] = useState(null)
+  const [codeInput, setCodeInput] = useState('')
 
-  // Favoriler + portföy localStorage'da yaşar; cihaz değişiminde tek taşıma
-  // yolu bu dosya. Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
+  // Tüm kişisel veri (favoriler, portföy, strateji pozisyonları, alarmlar, kayıtlı
+  // taramalar) localStorage'da yaşar; cihaz değişiminde tek taşıma yolu bu yedek.
+  // Sunucu tarafı olmadığından senkronizasyon bilinçli olarak yok.
   function exportBackup() {
-    const read = (key) => {
-      try {
-        return JSON.parse(localStorage.getItem(key) || '[]')
-      } catch {
-        return []
-      }
-    }
-    const payload = {
-      app: 'borsa-tarama',
-      exported_at: new Date().toISOString(),
-      watchlist: read('watchlist'),
-      watchlist_funds: read('watchlist_funds'),
-      portfolio_funds: read('portfolio_funds'),
-    }
+    const payload = buildBackupPayload()
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -2670,40 +2767,35 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result)
-        if (data?.app !== 'borsa-tarama') throw new Error('unrecognized')
-        // Mevcut verinin ÜZERİNE yazmaz, birleştirir: yanlış dosya seçiminde kayıp olmasın
-        const mergeSet = (key) => {
-          const cur = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
-          for (const s of data[key] || []) if (typeof s === 'string') cur.add(s)
-          localStorage.setItem(key, JSON.stringify([...cur]))
-        }
-        mergeSet('watchlist')
-        mergeSet('watchlist_funds')
-        const cur = loadPortfolio()
-        const ids = new Set(cur.map((p) => p.id))
-        for (const p of data.portfolio_funds || []) {
-          if (!p || typeof p.symbol !== 'string' || typeof p.date !== 'string') continue
-          const price = Number(p.price)
-          const qty = Number(p.qty)
-          if (!(price > 0) || !(qty > 0)) continue
-          if (p.id && ids.has(p.id)) continue
-          cur.push({
-            id: p.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            symbol: p.symbol.toUpperCase(),
-            date: p.date,
-            price,
-            qty,
-          })
-        }
-        savePortfolio(cur)
-        // Favori set'leri App state'inde: en güvenilir senkron tam yeniden yükleme
+        applyBackupPayload(JSON.parse(reader.result))
+        // Veriler App state'inde de tutuluyor: en güvenilir senkron tam yeniden yükleme
         window.location.reload()
       } catch {
         setBackupMsg(t(lang, 'bkImportErr'))
       }
     }
     reader.readAsText(file)
+  }
+
+  // Kod ile taşıma: dosya indirip taşımak mobilde zahmetli. Kod, verinin kendisidir
+  // (sunucudaki bir kayda açılan anahtar değil), bu yüzden paylaşılmadıkça risk yok.
+  async function copyBackupCode() {
+    try {
+      const code = await encodeBackupCode(buildBackupPayload())
+      await navigator.clipboard.writeText(code)
+      setBackupMsg(t(lang, 'bkCopied', code.length))
+    } catch {
+      setBackupMsg(t(lang, 'bkCopyErr'))
+    }
+  }
+
+  async function applyBackupCode() {
+    try {
+      applyBackupPayload(await decodeBackupCode(codeInput))
+      window.location.reload()
+    } catch {
+      setBackupMsg(t(lang, 'bkCodeErr'))
+    }
   }
 
   return (
@@ -2926,6 +3018,31 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
             <input type="file" accept="application/json,.json" hidden onChange={importBackup} />
           </label>
         </div>
+
+        {/* Kod ile taşıma: dosya indirmeden, kopyala-yapıştır ile */}
+        <div className="bk-code">
+          <h3 className="bk-code-title">{t(lang, 'bkCodeTitle')}</h3>
+          <p className="fc-overlap-hint">{t(lang, 'bkCodeHint')}</p>
+          <div className="actions">
+            <button className="btn primary" type="button" onClick={copyBackupCode}>
+              📋 {t(lang, 'bkCopyCode')}
+            </button>
+          </div>
+          <div className="bk-code-row">
+            <input
+              className="search-input"
+              type="text"
+              placeholder={t(lang, 'bkCodePlaceholder')}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+            />
+            <button className="btn" type="button" disabled={!codeInput.trim()} onClick={applyBackupCode}>
+              {t(lang, 'bkApplyCode')}
+            </button>
+          </div>
+          <p className="bk-code-warning">{t(lang, 'bkCodeWarning')}</p>
+        </div>
+
         {backupMsg && <p className="fc-overlap-note">{backupMsg}</p>}
       </section>
 
