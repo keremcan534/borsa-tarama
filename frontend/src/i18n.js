@@ -149,6 +149,9 @@ const STRINGS = {
     todayLastScan: (when) => `Son tarama: ${when}`,
     todayIntro:
       'Günün özeti: endeksler, yeni sinyaller ve öne çıkanlar. Detay için ilgili sekmeye geç.',
+    todayScopeLabel: 'Piyasa',
+    todayScopeBist: '🇹🇷 BIST',
+    todayScopeGlobal: '🇺🇸 ABD & Global',
     newsBist: 'BIST Haberleri',
     newsGlobal: 'Global Haberler',
     newsTabAll: 'Tümü',
@@ -778,6 +781,9 @@ const STRINGS = {
     todayLastScan: (when) => `Last scan: ${when}`,
     todayIntro:
       "Today at a glance: indices, new signals and standouts. Switch to a tab for the detail.",
+    todayScopeLabel: 'Market',
+    todayScopeBist: '🇹🇷 BIST',
+    todayScopeGlobal: '🇺🇸 US & Global',
     newsBist: 'BIST news',
     newsGlobal: 'Global news',
     newsTabAll: 'All',

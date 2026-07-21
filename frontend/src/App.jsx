@@ -3076,7 +3076,9 @@ function sectorLabel(sector, lang) {
  * karşılaştırır. Skoru en çok yükselen/düşen hisseler ve sinyale yeni
  * giren/çıkanlar. Arşiv iki gün birikene kadar panel görünmez.
  */
-function ChangeReport({ scores, lang, onOpenChart }) {
+/** `scope`: 'bist' | 'global' | undefined (hepsi). Dize olarak alınır ki her
+ *  render'da yeni bir fonksiyon referansı useMemo'yu boşuna geçersiz kılmasın. */
+function ChangeReport({ scores, lang, scope, onOpenChart }) {
   const computed = useMemo(() => {
     const history = scores?.history || {}
     const days = Object.keys(history).sort()
@@ -3087,6 +3089,8 @@ function ChangeReport({ scores, lang, onOpenChart }) {
     const entered = []
     const dropped = []
     for (const [sym, cur] of Object.entries(today)) {
+      // Seçili piyasa dışındaki semboller rapora girmez (BIST/ABD ayrımı)
+      if (scope && (scope === 'bist') !== isBistSymbol(sym)) continue
       const before = prev[sym]
       if (before) {
         const delta = (cur.s ?? 0) - (before.s ?? 0)
@@ -3101,7 +3105,7 @@ function ChangeReport({ scores, lang, onOpenChart }) {
     const fallers = [...moves].filter((m) => m.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5)
     if (!risers.length && !fallers.length && !entered.length && !dropped.length) return null
     return { risers, fallers, entered, dropped, from: days[days.length - 2], to: days[days.length - 1] }
-  }, [scores])
+  }, [scores, scope])
 
   if (!computed) return null
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
@@ -3330,10 +3334,30 @@ function TodayView({
   onOpenFund,
   onNavigate,
 }) {
+  // BIST / ABD ayrımı: iki piyasanın seansı, para birimi ve gündemi ayrı. Tek sayfada
+  // harmanlandığında "bugün ne oldu" sorusunun cevabı bulanıklaşıyordu (ör. nabız
+  // kartında BIST yükselirken S&P düşüyor, hareketliler listesi ikisinden karışık).
+  // allMarkets'ı kapsama göre filtrelemek ayrımı tüm alt bölümlere birden yayar.
+  // Seçim hatırlanır: "Bugün" açılış sayfası, ABD takip eden biri her ziyarette
+  // sekme değiştirmek zorunda kalmamalı.
+  const [scope, setScopeState] = useState(() => {
+    const saved = localStorage.getItem('today_scope')
+    return saved === 'global' || saved === 'bist' ? saved : 'bist'
+  })
+  const setScope = (next) => {
+    setScopeState(next)
+    localStorage.setItem('today_scope', next)
+  }
+  const isBistMarket = (key) => key === 'bist100'
+  const scopedMarkets = useMemo(
+    () => allMarkets.filter((m) => (scope === 'bist' ? isBistMarket(m.key) : !isBistMarket(m.key))),
+    [allMarkets, scope],
+  )
+
   // Market kartları seçilen zaman dilimine göre; öne çıkan sinyaller / nabız günlük kalır.
   const markets = useMemo(
-    () => (marketOverview ? allMarkets.filter((m) => marketOverview[m.key]) : []),
-    [marketOverview, allMarkets],
+    () => (marketOverview ? scopedMarkets.filter((m) => marketOverview[m.key]) : []),
+    [marketOverview, scopedMarkets],
   )
 
   // Tüm marketlerin sinyalleri, teknik puana göre. Önceden yalnızca "yeni" sinyaller
@@ -3342,7 +3366,7 @@ function TodayView({
   const signals = useMemo(() => {
     if (!overview) return []
     const out = []
-    for (const m of allMarkets) {
+    for (const m of scopedMarkets) {
       const payload = overview[m.key]
       const emaPeriods = payload?.ema_periods || [9, 21, 50, 200]
       for (const s of payload?.results || []) {
@@ -3352,24 +3376,24 @@ function TodayView({
     // Yeniler önce, sonra puan: yeni sinyal günün asıl haberi
     out.sort((a, b) => Number(b.is_new || false) - Number(a.is_new || false) || b.score - a.score)
     return out.slice(0, 12)
-  }, [overview, allMarkets])
+  }, [overview, scopedMarkets])
 
   // Sayım, rozetlerle AYNI alandan (is_new) türetilir. Payload'daki new_count'u
   // kullanmak, ikisinin ayrışıp "1 yeni sinyal" yazarken hiç rozet göstermemesine
   // yol açabiliyordu.
   const newSignalCount = useMemo(() => {
     if (!overview) return 0
-    return allMarkets.reduce(
+    return scopedMarkets.reduce(
       (n, m) => n + (overview[m.key]?.results || []).filter((s) => s.is_new).length,
       0,
     )
-  }, [overview, allMarkets])
+  }, [overview, scopedMarkets])
 
   const indexes = useMemo(() => {
     if (!overview) return []
     const seen = new Set()
     const out = []
-    for (const m of allMarkets) {
+    for (const m of scopedMarkets) {
       const b = overview[m.key]?.benchmark
       // Endeksin adı marketin adından gelmez: S&P nabzı, sp500 kapalıyken ETF
       // marketi üzerinden geliyor ve kart yine "S&P 500" demeli.
@@ -3378,7 +3402,7 @@ function TodayView({
       out.push({ ...b, label: b.name || mLabel(m, lang) })
     }
     return out
-  }, [overview, allMarkets, lang])
+  }, [overview, scopedMarkets, lang])
 
   // Popülerliğe (yatırımcı sayısı) göre — puana göre sıralamak, 1-18 yatırımcılı
   // niş fonları "öne çıkan" diye tepeye taşıyordu. Puan yine kartta duruyor.
@@ -3391,19 +3415,20 @@ function TodayView({
     [funds],
   )
 
+  // Haberler de seçili piyasadan: BIST sekmesinde ABD haberi göstermek sayfanın
+  // "bugün burada ne oldu" vaadini bozardı.
   const topNews = useMemo(() => {
     const items = news?.items || []
-    return [
-      ...items.filter((i) => isBistSymbol(i.symbol)).slice(0, 4),
-      ...items.filter((i) => !isBistSymbol(i.symbol)).slice(0, 3),
-    ]
-  }, [news])
+    return items
+      .filter((i) => (scope === 'bist' ? isBistSymbol(i.symbol) : !isBistSymbol(i.symbol)))
+      .slice(0, 6)
+  }, [news, scope])
 
   if (loading && !overview) return <div className="empty-box">{t(lang, 'todayLoading')}</div>
   if (error && !overview) return <div className="error-box">{error}</div>
   if (!overview) return null
 
-  const firstMarketKey = allMarkets.find((m) => overview[m.key])?.key
+  const firstMarketKey = scopedMarkets.find((m) => overview[m.key])?.key
   const generatedAt = firstMarketKey ? overview[firstMarketKey]?.generated_at : null
 
   return (
@@ -3415,6 +3440,24 @@ function TodayView({
             {t(lang, 'todayLastScan', new Date(generatedAt).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'))}
           </span>
         )}
+      </div>
+
+      {/* Piyasa seçimi: sayfanın tamamı (nabız, sinyaller, hareketliler, genişlik,
+          sektör ısı haritası, haberler) seçili piyasaya göre filtrelenir. */}
+      <div className="tabs today-scope-tabs" role="group" aria-label={t(lang, 'todayScopeLabel')}>
+        {[
+          { key: 'bist', i18nKey: 'todayScopeBist' },
+          { key: 'global', i18nKey: 'todayScopeGlobal' },
+        ].map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={`tab ${scope === s.key ? 'active' : ''}`}
+            onClick={() => setScope(s.key)}
+          >
+            {t(lang, s.i18nKey)}
+          </button>
+        ))}
       </div>
 
       {indexes.length > 0 && (
@@ -3467,13 +3510,13 @@ function TodayView({
         )}
       </section>
 
-      <TopMovers overview={overview} allMarkets={allMarkets} lang={lang} onOpenChart={onOpenChart} />
+      <TopMovers overview={overview} allMarkets={scopedMarkets} lang={lang} onOpenChart={onOpenChart} />
 
-      <ChangeReport scores={scores} lang={lang} onOpenChart={onOpenChart} />
+      <ChangeReport scores={scores} lang={lang} scope={scope} onOpenChart={onOpenChart} />
 
-      <MarketBreadth overview={overview} allMarkets={allMarkets} lang={lang} />
+      <MarketBreadth overview={overview} allMarkets={scopedMarkets} lang={lang} />
 
-      <SectorHeatmap overview={overview} allMarkets={allMarkets} lang={lang} />
+      <SectorHeatmap overview={overview} allMarkets={scopedMarkets} lang={lang} />
 
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'todayMarkets')}</h2>
@@ -3516,7 +3559,8 @@ function TodayView({
         ) : null}
       </section>
 
-      {popularFunds.length > 0 && (
+      {/* TEFAS fonları yalnızca Türkiye piyasasına ait; ABD sekmesinde gösterilmez */}
+      {scope === 'bist' && popularFunds.length > 0 && (
         <section className="today-section">
           <h2 className="today-title">
             {t(lang, 'todayFunds')}

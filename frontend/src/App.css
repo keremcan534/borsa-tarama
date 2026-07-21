@@ -3597,6 +3597,17 @@ tr.alert-hit td {
   font-variant-numeric: tabular-nums;
 }
 
+/* "Bugün" piyasa seçimi: sayfanın tamamını filtreler, o yüzden en üstte ve belirgin */
+.today-scope-tabs {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.today-scope-tabs .tab {
+  font-size: 14px;
+  padding: 8px 16px;
+}
+
 /* ---------- Kod ile yedek taşıma ---------- */
 .bk-code {
   margin-top: 20px;
