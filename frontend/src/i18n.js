@@ -290,7 +290,11 @@ const STRINGS = {
     scEmpty:
       'Bu zaman diliminde henüz kayıtlı sinyal yok. Kayıt her taramayla birikiyor; yeni sinyaller çıktıkça burada görünecekler.',
     scCount: 'Sinyal',
-    scCountSub: 'kayıtlı sinyal',
+    scCountSub: 'olgunlaşmış sinyal',
+    scAllPending: (n) =>
+      `Bu zaman diliminde ${n} sinyal bugün kaydedildi. Sinyal, mumun kapanış fiyatıyla mühürlenir; aynı gün içinde getiri zorunlu olarak %0 olacağından istatistik hesaplanmaz. Yarınki taramadan itibaren burada gerçek rakamlar görünecek.`,
+    scPendingNote: (n) =>
+      `${n} sinyal bugün kaydedildi ve henüz olgunlaşmadı; aşağıdaki tabloda görünüyorlar ama getiri zorunlu olarak %0 olacağından istatistiklere katılmadılar.`,
     scWinRate: 'Artıda',
     scWinRateSub: 'sinyalin oranı',
     scAvg: 'Ort. getiri',
@@ -883,7 +887,11 @@ const STRINGS = {
     scEmpty:
       'No recorded signals in this timeframe yet. The record grows with every scan; new signals will show up here.',
     scCount: 'Signals',
-    scCountSub: 'recorded signals',
+    scCountSub: 'matured signals',
+    scAllPending: (n) =>
+      `${n} signals in this timeframe were recorded today. A signal is sealed at the candle's closing price, so within the same day the return is necessarily 0% and no statistics are computed. Real numbers will appear here from tomorrow's scan onwards.`,
+    scPendingNote: (n) =>
+      `${n} signals were recorded today and have not matured yet; they appear in the table below but are excluded from the statistics because their return is necessarily 0%.`,
     scWinRate: 'In profit',
     scWinRateSub: 'share of signals',
     scAvg: 'Avg return',

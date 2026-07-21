@@ -35,7 +35,7 @@ __all__ = ["BENCHMARKS", "HORIZONS", "Benchmark", "backtest_symbol", "load_bench
 
 # Backtest, canlı taramadan daha uzun geçmiş ister (canlı tarama yalnızca son mumu
 # kullandığı için "1y" yetiyordu; burada her mumda sinyal aranıyor).
-BACKTEST_PERIODS = {"daily": "5y", "weekly": "10y", "monthly": "max", "quarterly": "max"}
+BACKTEST_PERIODS = {"daily": "5y", "weekly": "max", "monthly": "max", "quarterly": "max"}
 
 # Sinyalden sonra kaç mum tutulduğunda ölçüleceği. Mum cinsindendir:
 # günlükte 5/20/60 mum ~ 1 hafta / 1 ay / 3 ay.

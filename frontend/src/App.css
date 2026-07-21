@@ -3560,6 +3560,24 @@ tr.alert-hit td {
   opacity: 0.85;
 }
 
+.sc-pending-note {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Karne sekmelerindeki kayıt sayısı rozeti */
+.sc-tab-count {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Çeşitlilik paneli (Strateji Takip) ---------- */
 .div-panel {
   margin: 16px 0;

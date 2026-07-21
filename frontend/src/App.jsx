@@ -4990,10 +4990,17 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
   const [tf, setTf] = useState('weekly')
 
   // Mühürlü kayıtları bugünkü fiyatla karşılaştır
-  const { rows, stats, firstDay, dayCount } = useMemo(() => {
+  const { rows, stats, firstDay, dayCount, counts } = useMemo(() => {
     const history = log?.history || {}
     const days = Object.keys(history).sort()
     const out = []
+    // Sekme rozetleri: her zaman diliminde kaç kayıt var (boş sekmeye tıklamayı önler)
+    const perTf = {}
+    for (const day of days) {
+      for (const e of history[day] || []) {
+        perTf[e.tf] = (perTf[e.tf] || 0) + 1
+      }
+    }
     for (const day of days) {
       for (const e of history[day] || []) {
         if (e.tf !== tf) continue
@@ -5003,13 +5010,26 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         // "0 getiri" saymak isabet oranını sessizce şişirirdi.
         if (!(entry > 0) || !(current > 0)) continue
         const ret = current / entry - 1
-        const daysHeld = Math.max(0, Math.round((Date.now() - new Date(`${day}T00:00:00`)) / 86400000))
+        // floor: bugün kaydedilen sinyal "0 gün"dür. round kullanıldığında aradan
+        // 18 saat geçmiş bir kayıt "1 gün" sayılıp olgunlaşmış gibi görünüyordu.
+        const daysHeld = Math.max(
+          0,
+          Math.floor((Date.now() - Date.parse(`${day}T00:00:00Z`)) / 86400000),
+        )
         out.push({ ...e, day, entry, current, ret, daysHeld })
       }
     }
     out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
 
-    const rets = out.map((r) => r.ret)
+    // İstatistikler yalnızca üzerinden en az bir gün geçmiş kayıtlardan hesaplanır.
+    // Sinyal, mumun kapanışıyla mühürlenir; aynı gün içinde güncel fiyat da o kapanış
+    // olduğundan getiri zorunlu olarak 0'dır. Bunları katmak isabet oranını sıfıra
+    // çekip "strateji hiç kazandırmadı" gibi okunuyordu — oysa henüz zaman geçmemiştir.
+    // Olgunluk takvim gününe göre: kayıt günü bugünden ÖNCEyse olgunlaşmıştır.
+    // (Tarama günü UTC yazıldığından karşılaştırma da UTC tarih dizesiyle yapılır.)
+    const todayUtc = new Date().toISOString().slice(0, 10)
+    const matured = out.filter((r) => r.day < todayUtc)
+    const rets = matured.map((r) => r.ret)
     const wins = rets.filter((r) => r > 0).length
     const avg = rets.length ? rets.reduce((s, r) => s + r, 0) / rets.length : null
     const sorted = [...rets].sort((a, b) => a - b)
@@ -5020,9 +5040,16 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
       : null
     return {
       rows: out,
-      stats: { count: rets.length, winRate: rets.length ? wins / rets.length : null, avg, med },
+      stats: {
+        count: rets.length,
+        pending: out.length - matured.length, // henüz olgunlaşmamış (aynı gün) kayıtlar
+        winRate: rets.length ? wins / rets.length : null,
+        avg,
+        med,
+      },
       firstDay: days[0] || null,
       dayCount: days.length,
+      counts: perTf,
     }
   }, [log, stockMap, tf])
 
@@ -5043,15 +5070,17 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         </div>
       </details>
 
+      {/* Kayıt dört zaman dilimini birden tutar; hepsi görüntülenebilmeli */}
       <div className="tabs" role="group" aria-label={t(lang, 'scTfLabel')}>
-        {['daily', 'weekly'].map((k) => (
+        {TIMEFRAMES.map((x) => (
           <button
-            key={k}
+            key={x.key}
             type="button"
-            className={`tab ${tf === k ? 'active' : ''}`}
-            onClick={() => setTf(k)}
+            className={`tab ${tf === x.key ? 'active' : ''}`}
+            onClick={() => setTf(x.key)}
           >
-            {tfLabel(TIMEFRAMES.find((x) => x.key === k), lang)}
+            {tfLabel(x, lang)}
+            {counts[x.key] > 0 && <span className="sc-tab-count">{counts[x.key]}</span>}
           </button>
         ))}
       </div>
@@ -5060,6 +5089,15 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         <div className="empty-box">{t(lang, 'scEmpty')}</div>
       ) : (
         <>
+          {/* Tüm kayıtlar bugünden ise istatistik yoktur: getiri zorunlu olarak 0 olurdu */}
+          {stats.count === 0 ? (
+            <div className="empty-box">{t(lang, 'scAllPending', stats.pending)}</div>
+          ) : (
+            stats.pending > 0 && (
+              <p className="sc-pending-note">{t(lang, 'scPendingNote', stats.pending)}</p>
+            )
+          )}
+          {stats.count > 0 && (
           <div className="strat-summary">
             <div className="strat-stat">
               <span className="strat-stat-label">{t(lang, 'scCount')}</span>
@@ -5079,6 +5117,7 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
               <span className="strat-stat-sub">{t(lang, 'scMedian', formatPct(stats.med, 1))}</span>
             </div>
           </div>
+          )}
 
           <div className="table-wrap">
             <table>

@@ -114,6 +114,11 @@ def main() -> None:
 
     # Sinyal karnesi: bu taramada TAZE sinyal veren hisseler, fiyatıyla mühürlenir
     signal_log_today: list[dict] = []
+    # Karnede giriş fiyatı olarak GÜNLÜK kapanış kullanılır. Haftalık/aylık sinyalin
+    # kendi mumu 5 güne (aya) kadar eski olabilir; kullanıcının sinyali gördüğü gün
+    # karşısına çıkan fiyat ise güncel piyasa fiyatıdır. Karne "site bu sinyali verdiği
+    # gün fiyat X'ti, bugün Y" demek istediğinden ölçü noktası o gün olmalı.
+    daily_close: dict[str, float] = {}
 
     for market in markets:
         symbols = load_symbols(market)
@@ -141,6 +146,11 @@ def main() -> None:
             # Günlük skor arşivi (yalnızca daily): tüm taranan hisselerin puanı +
             # sinyal (filtreden geçti mi) durumu. Değişim raporu bundan üretilir.
             if timeframe == "daily":
+                # Karne giriş fiyatları için güncel piyasa fiyatı (TIMEFRAMES sırası
+                # daily ile başladığından sonraki dilimler bu haritayı hazır bulur).
+                for s in stocks:
+                    daily_close[s["symbol"]] = s["close"]
+
                 # Endeksin kendi serisi de kaydedilir: "BIST 100 dolar bazında" gibi
                 # endeks grafiklerini hisselerle aynı yoldan çizebilmek için (df zaten elde).
                 bench_symbol = BENCHMARKS.get(market)
@@ -173,10 +183,17 @@ def main() -> None:
                 s["is_new"] = bool(s.get("signal_fresh"))
                 if s["is_new"]:
                     new_count += 1
-                    # Karne kaydı: sinyali O ANKİ fiyatıyla mühürle. Fiyatı burada
-                    # saklamak, karneyi fiyat serisi arşivinin ömründen bağımsız kılar.
+                    # Karne kaydı: sinyali O GÜNKÜ piyasa fiyatıyla mühürle. Fiyatı
+                    # burada saklamak karneyi fiyat serisi arşivinin ömründen bağımsız
+                    # kılar. Günlük kapanış yoksa (ör. o sembol günlük taramaya girmemiş)
+                    # kendi diliminin kapanışına düşülür.
                     signal_log_today.append(
-                        {"s": s["symbol"], "m": market, "tf": timeframe, "p": s["close"]}
+                        {
+                            "s": s["symbol"],
+                            "m": market,
+                            "tf": timeframe,
+                            "p": daily_close.get(s["symbol"], s["close"]),
+                        }
                     )
 
             for s in results:
