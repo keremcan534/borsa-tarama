@@ -17,13 +17,13 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.data.benchmarks import benchmark_summary, fetch_benchmark
+from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.fx import fetch_fx_series
 from app.data.markets import enabled_markets, load_symbols
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
-from app.screener.diff import mark_new_signals
 from app.screener.engine import run_analysis
 from app.screener.filters import passes_filters
 from app.screener.score import technical_score
@@ -31,23 +31,6 @@ from app.screener.timeframes import TIMEFRAMES
 
 # Arayüzdeki filtre panelinin varsayılan eşikleri (client-side filtreleme için)
 DEFAULT_THRESHOLDS = {"rsi": 70, "stoch_k": 80, "stoch_rsi_k": 80, "macd_positive": True}
-
-
-def fetch_previous_symbols(market: str, timeframe: str) -> set[str] | None:
-    """Yayındaki mevcut JSON'dan bir önceki taramanın sinyal sembollerini çeker.
-
-    Erişilemezse None döner (yeni sinyal tespiti o koşuda devre dışı kalır).
-    """
-    suffix = "" if timeframe == "daily" else f"_{timeframe}"
-    url = f"{SITE_URL}data/{market}{suffix}.json"
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        payload = resp.json()
-        return {s["symbol"] for s in payload.get("results", [])}
-    except Exception as e:
-        print(f"[DIFF] {market}/{timeframe} için önceki tarama alınamadı ({e}); yeni-sinyal etiketi atlanacak")
-        return None
 
 
 # Fon akışı arşivi bu kadar günü aşınca en eski günler düşer
@@ -71,8 +54,26 @@ def fetch_previous_flows() -> dict:
         return {}
 
 
-# Skor/sinyal geçmişi (değişim raporu) için gün sayısı tavanı
+# Skor/sinyal geçmişi (değişim raporu) için gün sayısı tavanı. Bu arşiv TÜM
+# sembollerin skorunu taşır (gün başına ~600 kayıt), o yüzden kısa tutulur.
 SCORE_HISTORY_DAYS = 30
+
+# Sinyal karnesi arşivi: yalnızca TAZE sinyaller kaydedilir (gün başına ~60 kayıt),
+# bu yüzden çok daha uzun saklanabilir. Karnenin değeri ileriye dönük ve
+# uydurulamaz olmasında: her tarama o günün sinyallerini fiyatıyla mühürler.
+SIGNAL_LOG_DAYS = 400
+
+
+def fetch_previous_signal_log() -> dict:
+    """Yayındaki signal_log.json'dan birikmiş sinyal karnesi arşivini çeker."""
+    try:
+        resp = requests.get(f"{SITE_URL}data/signal_log.json", timeout=15)
+        resp.raise_for_status()
+        history = resp.json().get("history")
+        return history if isinstance(history, dict) else {}
+    except Exception as e:
+        print(f"[KARNE] önceki sinyal arşivi alınamadı ({e}); yeni arşiv başlatılıyor")
+        return {}
 
 
 def fetch_previous_scores() -> dict:
@@ -111,6 +112,9 @@ def main() -> None:
     # Değişim raporu için günlük skor + sinyal durumu: {SYM: {"s": skor, "g": 0/1}}
     score_today: dict[str, dict] = {}
 
+    # Sinyal karnesi: bu taramada TAZE sinyal veren hisseler, fiyatıyla mühürlenir
+    signal_log_today: list[dict] = []
+
     for market in markets:
         symbols = load_symbols(market)
         min_turnover = settings.min_daily_turnover.get(market)
@@ -137,6 +141,22 @@ def main() -> None:
             # Günlük skor arşivi (yalnızca daily): tüm taranan hisselerin puanı +
             # sinyal (filtreden geçti mi) durumu. Değişim raporu bundan üretilir.
             if timeframe == "daily":
+                # Endeksin kendi serisi de kaydedilir: "BIST 100 dolar bazında" gibi
+                # endeks grafiklerini hisselerle aynı yoldan çizebilmek için (df zaten elde).
+                bench_symbol = BENCHMARKS.get(market)
+                if bench_symbol and benchmark_df is not None and bench_symbol not in stock_series:
+                    bars = benchmark_df[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)
+                    stock_series[bench_symbol] = [
+                        [
+                            ts.strftime("%Y-%m-%d"),
+                            round(float(row.close), 4),
+                            round(float(row.open), 4),
+                            round(float(row.high), 4),
+                            round(float(row.low), 4),
+                        ]
+                        for ts, row in bars.iterrows()
+                    ]
+
                 signal_syms = {s["symbol"] for s in results}
                 for s in stocks:
                     score_today[s["symbol"]] = {
@@ -144,8 +164,20 @@ def main() -> None:
                         "g": 1 if s["symbol"] in signal_syms else 0,
                     }
 
-            previous = fetch_previous_symbols(market, timeframe)
-            new_count = mark_new_signals(results, previous)
+            # "Yeni sinyal": filtre son kapanmış mumda açıldı mı (signal_fresh,
+            # analyze_symbol'de hesaplanır). Önceki taramayla kıyaslayan eski yöntem
+            # haftalık/aylık sinyali yalnızca tek koşu boyu "yeni" gösteriyordu; bu
+            # tanım tüm periyot boyunca doğru kalır ve backtest'in giriş kuralıyla aynıdır.
+            new_count = 0
+            for s in results:
+                s["is_new"] = bool(s.get("signal_fresh"))
+                if s["is_new"]:
+                    new_count += 1
+                    # Karne kaydı: sinyali O ANKİ fiyatıyla mühürle. Fiyatı burada
+                    # saklamak, karneyi fiyat serisi arşivinin ömründen bağımsız kılar.
+                    signal_log_today.append(
+                        {"s": s["symbol"], "m": market, "tf": timeframe, "p": s["close"]}
+                    )
 
             for s in results:
                 if s["symbol"] not in signal_symbols:
@@ -195,6 +227,18 @@ def main() -> None:
     )
     print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {stock_prices_path}")
 
+    # Döviz/altın serileri: arayüzdeki TL / $ / gram altın anahtarı bunlardan besleniyor.
+    fx = fetch_fx_series(fetcher)
+    fx_path = out_dir / "fx.json"
+    fx_path.write_text(
+        json.dumps(
+            {"generated_at": datetime.now(timezone.utc).isoformat(), **fx},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[FX] usdtry={len(fx.get('usdtry', []))} goldusd={len(fx.get('goldusd', []))} -> {fx_path}")
+
     # Skor/sinyal geçmişi: değişim raporu (skoru en çok yükselen/düşen, sinyale
     # yeni giren/çıkan) arayüzde son iki günü karşılaştırarak üretilir.
     score_history = fetch_previous_scores()
@@ -211,6 +255,25 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[SCAN] skor arşivi: {len(score_history)} gün -> {score_path}")
+
+    # Sinyal karnesi arşivi: "site N hafta önce şu sinyalleri verdi, bugün ne durumda?"
+    # Aynı gün iki kez tarama çalıştığında gün kaydı ÜZERİNE yazılır (mükerrer kayıt olmaz).
+    signal_log = fetch_previous_signal_log()
+    if signal_log_today:
+        signal_log[scan_day] = signal_log_today
+    signal_log = dict(sorted(signal_log.items())[-SIGNAL_LOG_DAYS:])
+    signal_log_path = out_dir / "signal_log.json"
+    signal_log_path.write_text(
+        json.dumps(
+            {"generated_at": datetime.now(timezone.utc).isoformat(), "history": signal_log},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(
+        f"[KARNE] sinyal arşivi: {len(signal_log)} gün, "
+        f"bugün {len(signal_log_today)} taze sinyal -> {signal_log_path}"
+    )
 
     # TEFAS yatırım fonları (hisse pipeline'ından ayrı: getiri/risk metrikleri).
     # Fiyat serileri ayrı dosyada: karşılaştırma grafiği için; liste JSON'unu şişirmez.

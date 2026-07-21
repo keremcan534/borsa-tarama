@@ -38,6 +38,22 @@ def drop_in_progress_bar(df: pd.DataFrame, interval: str, now: pd.Timestamp | No
     return df
 
 
+def signal_fresh(df: pd.DataFrame, ema_periods: list[int]) -> bool:
+    """Filtre SON KAPANMIŞ mumda False→True geçtiyse True (taze sinyal).
+
+    "Yeni sinyal" bunu ifade eder ve backtest'in giriş kuralıyla (find_signal_bars,
+    filtrenin kapalıdan açığa döndüğü bar) birebir aynıdır. Önceki taramayla kıyaslayan
+    eski yöntemin aksine bu tanım verinin kendisinden gelir: haftalık/aylık bir sinyal
+    tüm periyot boyunca (son mum değişene dek) taze işaretlenir, günde iki kez çalışan
+    tarama etiketi bir sonraki koşuda düşürmez.
+    """
+    if df.empty or not passes_filters(df.iloc[-1], ema_periods):
+        return False
+    if len(df) < 2:
+        return True  # kıyaslanacak önceki mum yok: ilk mumdaki sinyali taze say
+    return not passes_filters(df.iloc[-2], ema_periods)
+
+
 def last_bar_change(df: pd.DataFrame) -> float | None:
     """Son mumun bir öncekine göre yüzde değişimi (oran, örn. 0.031 = %3,1).
 
@@ -134,6 +150,13 @@ def analyze_symbol(
 
     rs = relative_strength(df["close"], benchmark_close, config["rs_bars"])
     result["relative_strength"] = None if rs is None else round(rs, 4)
+
+    # Sinyal bu (son kapanmış) mumda mı açıldı? "YENİ" etiketi bundan üretilir.
+    result["signal_fresh"] = signal_fresh(df, ema_periods)
+
+    # Temel oranlar (F/K, PD/DD, temettü): tarama saf teknikti, "güçlü ama pahalı mı?"
+    # sorusuna cevabı yoktu. Kaynak temel veri sağlamıyorsa alanlar hiç eklenmez.
+    result.update(fetcher.fetch_fundamentals(symbol))
 
     if series_sink is not None:
         bars = df[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)

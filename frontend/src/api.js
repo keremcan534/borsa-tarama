@@ -70,6 +70,25 @@ export async function fetchStockPrices() {
   return res.json();
 }
 
+/** Sinyal karnesi arşivi: her taramanın taze sinyalleri, fiyatıyla mühürlenmiş.
+ * Arşiv birikene kadar 404/az gün normaldir (kayıt ileriye doğru dolar). */
+export async function fetchSignalLog() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/signal_log.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Sinyal arşivi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
+/** Döviz/altın serileri: TL / $ / gram altın bazlı gösterim için. İlk taramaya kadar 404 normaldir. */
+export async function fetchFx() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/fx.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Kur verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
 /** Günlük skor/sinyal arşivi (değişim raporu). İki gün birikene kadar 404/tek gün normaldir. */
 export async function fetchScoreHistory() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/score_history.json`);
