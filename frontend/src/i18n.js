@@ -658,6 +658,57 @@ const STRINGS = {
     screenSave: 'Kaydet',
     screenNamePh: 'Tarama adı…',
     screenDelete: 'Sil',
+    // --- Hakkında / Güven sayfası ---
+    tabAbout: 'Hakkında',
+    aboutTitle: 'Hakkında, Veri Kaynakları ve Gizlilik',
+    aboutIntro:
+      'Bu sayfa dört soruya cevap verir: bu site ne, veri nereden geliyor, ne kadar gecikmeli ve kişisel verine ne oluyor. Bir finans sitesine güvenmeden önce sorman gereken sorular bunlar.',
+    aboutWhatTitle: 'Bu site ne?',
+    aboutWhatBody:
+      'BIST 100, S&P 500, emtia/kripto ve TEFAS yatırım fonlarını her gün otomatik tarayan ücretsiz bir teknik analiz aracı. Üyelik yok, ücret yok, reklam yok. Bağımsız bir kişisel projedir; hiçbir aracı kurum, portföy şirketi veya yayıncıyla bağlantısı yoktur ve hiçbirinden ödeme almaz.',
+    aboutSourcesTitle: 'Veri kaynakları',
+    aboutSourceStocks: 'Hisse fiyatları ve temel oranlar',
+    aboutSourceStocksBody:
+      'Yahoo Finance (yfinance kütüphanesi üzerinden). Resmi bir API değildir; zaman zaman eksik veya tutarsız veri dönebilir. Bilinen bir sorun uygulanmamış bölünmelerdir — bunun için bir onarım katmanı yazıldı (aşağıdaki "Bilinen sınırlar").',
+    aboutSourceFunds: 'Yatırım fonları',
+    aboutSourceFundsBody:
+      'TEFAS (Türkiye Elektronik Fon Alım Satım Platformu) resmi verisi. Fonların hisse pozisyonları KAP’ın resmi Portföy Dağılım Raporu PDF’lerinden çıkarılır.',
+    aboutSourceNews: 'Haberler',
+    aboutSourceNewsBody:
+      'Yalnızca başlık, kaynak adı, tarih ve bağlantı gösterilir — haber metni hiçbir zaman kopyalanmaz. Tıklayınca kaynağın kendi sitesine gidersin. BIST için Google Haberler, global için Yahoo Finance akışı.',
+    aboutSourceLogos: 'Şirket logoları',
+    aboutSourceLogosBody:
+      'Şirketlerin kendi web sitelerinden bir kez indirilip projede saklanır. Tarayıcın logo için üçüncü bir sunucuya istek atmaz — yani hangi hisseye baktığın dışarı sızmaz.',
+    aboutFreshTitle: 'Ne kadar gecikmeli? (önemli)',
+    aboutFreshBody:
+      'Veri CANLI DEĞİLDİR. Tarama hafta içi günde iki kez çalışır: BIST kapanışından sonra ~18:45 ve ABD kapanışından sonra ~00:15 (TR saati). Yani gördüğün fiyatlar son kapanışa aittir, anlık değildir. Gün içi al-sat için uygun değildir; bu araç günler–haftalar ölçeğinde teknik görünüm taraması için tasarlandı. Her sayfanın üstünde son tarama zamanı yazar.',
+    aboutMethodTitle: 'Yöntem ve dürüstlük',
+    aboutMethodBody:
+      'Sinyaller gizli bir "yapay zeka" değil, açıkça yazılı bir momentum filtresidir (fiyat 9/21/50/200 EMA üstünde, MACD>0, RSI<70, Stokastik<80). Daha önemlisi: bu stratejinin geçmiş performansı Strateji sekmesinde olduğu gibi yayınlanır — ve sonuç şudur: sinyallerin yalnızca ~%50’si endeksi yenmektedir, yani strateji "endeksi döven bir sistem" DEĞİLDİR. Bunu saklamak yerine yazıyoruz; çünkü saklayan bir site zaten şüphelidir.',
+    aboutLimitsTitle: 'Bilinen sınırlar',
+    aboutLimit1: 'Veri kaynağı resmi değil: yfinance bazen eksik ya da bayat veri döner.',
+    aboutLimit2: 'Temel oranlar (F/K, PD/DD) BIST hisselerinde tutarsız olabilir; karar öncesi KAP’tan doğrula.',
+    aboutLimit3: 'Backtest yalnızca bugün hayatta olan şirketlerle yapılır (survivorship bias) — geçmiş sonuçlar olduğundan iyimser görünür.',
+    aboutLimit4: 'Geçmiş performans gelecek getiriyi göstermez.',
+    aboutPrivacyTitle: 'Gizlilik',
+    aboutPrivacyBody:
+      'Bu sitenin sunucusu yoktur; tamamen statik dosyalardan çalışır. Bunun doğrudan sonucu: senin hakkında veri toplanacak bir yer de yoktur.',
+    aboutPrivacy1: 'Üyelik yok, hesap yok, e-posta istenmez.',
+    aboutPrivacy2: 'Çerez kullanılmaz. Google Analytics ya da benzeri hiçbir izleme kodu yoktur.',
+    aboutPrivacy3:
+      'Favorilerin, portföyün, alarmların ve ayarların YALNIZCA kendi tarayıcında (localStorage) saklanır. Bize gönderilmez, biz göremeyiz. Tarayıcı verini temizlersen kaybolurlar — Portföy sayfasındaki yedekleme tam bunun içindir.',
+    aboutPrivacy4:
+      'Site GitHub Pages üzerinde barındırılır; GitHub kendi altyapı kayıtlarını (IP gibi) tutar. Bunlar bizim erişimimizde değildir.',
+    aboutPrivacy5:
+      'Bir haber başlığına ya da TradingView bağlantısına tıklarsan o siteye geçmiş olursun; orada onların kuralları geçerlidir.',
+    aboutDisclaimerTitle: 'Sorumluluk reddi',
+    aboutDisclaimerBody:
+      'Bu sitedeki hiçbir bilgi yatırım tavsiyesi, yatırım danışmanlığı ya da alım-satım önerisi değildir. Yatırım danışmanlığı yetkili kuruluşlarca ve kişiye özel olarak verilir; burada gösterilenler ise herkese aynı şekilde sunulan, geçmiş fiyat hareketine dayalı otomatik hesaplamalardır. Yatırım kararlarının ve sonuçlarının sorumluluğu tamamen sana aittir.',
+    aboutContactTitle: 'İletişim ve kaynak kod',
+    aboutContactBody:
+      'Projenin tüm kaynak kodu açıktır — her rakamın nasıl hesaplandığını satır satır inceleyebilirsin. Hata bildirimi ve öneriler için GitHub üzerinden ulaşabilirsin.',
+    aboutContactRepo: 'Kaynak kodu GitHub’da incele',
+    aboutUpdated: 'Bu sayfa en son güncellendi',
     // Temettü takvimi
     tabDividends: 'Temettü',
     dvdTitle: 'Temettü Takvimi',
@@ -1368,6 +1419,57 @@ const STRINGS = {
     screenSave: 'Save',
     screenNamePh: 'Screen name…',
     screenDelete: 'Delete',
+    // --- About / trust page ---
+    tabAbout: 'About',
+    aboutTitle: 'About, Data Sources and Privacy',
+    aboutIntro:
+      'This page answers four questions: what this site is, where the data comes from, how delayed it is, and what happens to your personal data. These are the questions you should ask before trusting any finance site.',
+    aboutWhatTitle: 'What is this site?',
+    aboutWhatBody:
+      'A free technical-analysis tool that automatically scans BIST 100, S&P 500, commodities/crypto and Turkish TEFAS mutual funds every day. No sign-up, no fees, no ads. It is an independent personal project with no affiliation to, and no payment from, any broker, asset manager or publisher.',
+    aboutSourcesTitle: 'Data sources',
+    aboutSourceStocks: 'Stock prices and fundamentals',
+    aboutSourceStocksBody:
+      'Yahoo Finance (via the yfinance library). It is not an official API and can return missing or inconsistent data. One known issue is unapplied stock splits — a repair layer was written for it (see "Known limits").',
+    aboutSourceFunds: 'Mutual funds',
+    aboutSourceFundsBody:
+      'Official TEFAS (Turkish Electronic Fund Trading Platform) data. Fund stock holdings are extracted from the official KAP Portfolio Allocation Report PDFs.',
+    aboutSourceNews: 'News',
+    aboutSourceNewsBody:
+      'Only the headline, source name, date and link are shown — article text is never copied. Clicking takes you to the publisher. Google News for BIST, Yahoo Finance feed for global.',
+    aboutSourceLogos: 'Company logos',
+    aboutSourceLogosBody:
+      'Downloaded once from the companies’ own websites and stored with the project. Your browser makes no third-party request for logos — so which stock you are viewing never leaves this site.',
+    aboutFreshTitle: 'How delayed is it? (important)',
+    aboutFreshBody:
+      'The data is NOT live. The scan runs twice a day on weekdays: after the BIST close (~18:45) and after the US close (~00:15), Turkish time. The prices you see are from the last close, not real time. This is not suitable for intraday trading; the tool is built for technical screening on a days-to-weeks horizon. The last scan time is shown at the top of each page.',
+    aboutMethodTitle: 'Method and honesty',
+    aboutMethodBody:
+      'Signals are not a hidden "AI" but an explicitly documented momentum filter (price above the 9/21/50/200 EMAs, MACD>0, RSI<70, Stochastic<80). More importantly: this strategy’s historical performance is published as-is in the Strategy tab — and the result is that only ~50% of signals beat the index, meaning the strategy is NOT a system that beats the market. We publish this instead of hiding it, because a site that hides it is already suspect.',
+    aboutLimitsTitle: 'Known limits',
+    aboutLimit1: 'The data source is unofficial: yfinance sometimes returns missing or stale data.',
+    aboutLimit2: 'Fundamentals (P/E, P/B) can be inconsistent for BIST stocks; verify against official filings before acting.',
+    aboutLimit3: 'The backtest uses only companies that exist today (survivorship bias) — past results look rosier than reality.',
+    aboutLimit4: 'Past performance does not indicate future returns.',
+    aboutPrivacyTitle: 'Privacy',
+    aboutPrivacyBody:
+      'This site has no server; it runs entirely from static files. The direct consequence: there is nowhere for anything about you to be collected.',
+    aboutPrivacy1: 'No sign-up, no accounts, no email requested.',
+    aboutPrivacy2: 'No cookies. No Google Analytics or any other tracking code.',
+    aboutPrivacy3:
+      'Your favourites, portfolio, alerts and settings are stored ONLY in your own browser (localStorage). They are never sent to us and we cannot see them. Clearing your browser data deletes them — that is exactly what the backup feature on the Portfolio page is for.',
+    aboutPrivacy4:
+      'The site is hosted on GitHub Pages; GitHub keeps its own infrastructure logs (such as IP addresses). We have no access to those.',
+    aboutPrivacy5:
+      'If you click a news headline or a TradingView link you leave for that site, where their rules apply.',
+    aboutDisclaimerTitle: 'Disclaimer',
+    aboutDisclaimerBody:
+      'Nothing on this site is investment advice, investment consultancy or a recommendation to buy or sell. Investment advice is provided by licensed institutions and is personal to its recipient; what is shown here are automated calculations based on past price action, presented identically to everyone. All investment decisions and their consequences are entirely your own responsibility.',
+    aboutContactTitle: 'Contact and source code',
+    aboutContactBody:
+      'The entire source code is open — you can inspect line by line how every number is produced. For bug reports and suggestions, reach out via GitHub.',
+    aboutContactRepo: 'Inspect the source on GitHub',
+    aboutUpdated: 'This page was last updated',
     // Dividend calendar
     tabDividends: 'Dividends',
     dvdTitle: 'Dividend Calendar',

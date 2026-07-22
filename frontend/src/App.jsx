@@ -64,6 +64,7 @@ const NAV_ICON_PATHS = {
   stockPositions: 'M4 4h16v16H4zM4 9.5h16M4 15h16M9.5 4v16M15 4v16',
   scorecard: 'M6 3h12v18l-3-1.5L12 21l-3-1.5L6 21V3ZM9 8h6M9 12h6M9 16h3',
   backtest: 'M4 19 9 13l3.5 3.5L20 8M20 8h-4.5M20 8v4.5',
+  about: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 11v6M12 7.5v.5',
 }
 
 function NavIcon({ name }) {
@@ -168,6 +169,7 @@ const NAV_SECTIONS = [
       { key: 'stockPositions', i18nKey: 'tabStockPositions' },
       { key: 'scorecard', i18nKey: 'tabScorecard' },
       { key: 'backtest', i18nKey: 'tabBacktest' },
+      { key: 'about', i18nKey: 'tabAbout' },
     ],
   },
 ]
@@ -6078,6 +6080,97 @@ function MacroView({ data, loading, lang }) {
   )
 }
 
+/* ------------------------- Hakkında / Güven sayfası -------------------------
+ * Ölçülen eksik: sitede veri kaynağının ve GECİKMENİN yazılı olduğu hiçbir yer
+ * yoktu. Bir profesyonel siteye bakınca dört şey sorar — kim yaptı, veri nereden,
+ * ne kadar gecikmeli, geçmiş performans ne? Son soruya Strateji sekmesi zaten
+ * dürüstçe cevap veriyordu; bu sayfa ilk üçünü kapatıyor.
+ *
+ * Buradaki her iddia koddan doğrulanarak yazıldı (izleme kodu yok, çerez yok,
+ * veriler yalnızca localStorage'da). Doğrulanmamış bir gizlilik cümlesi yazmak,
+ * hiç yazmamaktan kötüdür. */
+
+const REPO_URL = 'https://github.com/keremcan534/borsa-tarama'
+
+// Sayfanın içeriği elle güncellendiğinde bu tarih de güncellenmeli.
+const ABOUT_UPDATED = '2026-07-22'
+
+function AboutView({ lang }) {
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+
+  const kaynak = (baslikKey, govdeKey) => (
+    <div className="about-source">
+      <h3 className="about-source-title">{t(lang, baslikKey)}</h3>
+      <p>{t(lang, govdeKey)}</p>
+    </div>
+  )
+
+  return (
+    <>
+      <section className="today-section about-page">
+        <h2 className="today-title">{t(lang, 'aboutTitle')}</h2>
+        <p className="today-note">{t(lang, 'aboutIntro')}</p>
+
+        <h3 className="about-heading">{t(lang, 'aboutWhatTitle')}</h3>
+        <p>{t(lang, 'aboutWhatBody')}</p>
+
+        {/* Gecikme uyarısı vurgulu bir kutuda: bu sayfadaki en kritik bilgi.
+            "Canlı sandım" en pahalı yanlış anlama olurdu. */}
+        <div className="about-callout">
+          <h3 className="about-heading">{t(lang, 'aboutFreshTitle')}</h3>
+          <p>{t(lang, 'aboutFreshBody')}</p>
+        </div>
+
+        <h3 className="about-heading">{t(lang, 'aboutSourcesTitle')}</h3>
+        <div className="about-sources">
+          {kaynak('aboutSourceStocks', 'aboutSourceStocksBody')}
+          {kaynak('aboutSourceFunds', 'aboutSourceFundsBody')}
+          {kaynak('aboutSourceNews', 'aboutSourceNewsBody')}
+          {kaynak('aboutSourceLogos', 'aboutSourceLogosBody')}
+        </div>
+
+        <h3 className="about-heading">{t(lang, 'aboutMethodTitle')}</h3>
+        <p>{t(lang, 'aboutMethodBody')}</p>
+
+        <h3 className="about-heading">{t(lang, 'aboutLimitsTitle')}</h3>
+        <ul className="about-list">
+          <li>{t(lang, 'aboutLimit1')}</li>
+          <li>{t(lang, 'aboutLimit2')}</li>
+          <li>{t(lang, 'aboutLimit3')}</li>
+          <li>{t(lang, 'aboutLimit4')}</li>
+        </ul>
+      </section>
+
+      <section className="today-section about-page">
+        <h2 className="today-title">{t(lang, 'aboutPrivacyTitle')}</h2>
+        <p>{t(lang, 'aboutPrivacyBody')}</p>
+        <ul className="about-list">
+          <li>{t(lang, 'aboutPrivacy1')}</li>
+          <li>{t(lang, 'aboutPrivacy2')}</li>
+          <li>{t(lang, 'aboutPrivacy3')}</li>
+          <li>{t(lang, 'aboutPrivacy4')}</li>
+          <li>{t(lang, 'aboutPrivacy5')}</li>
+        </ul>
+
+        <h3 className="about-heading">{t(lang, 'aboutDisclaimerTitle')}</h3>
+        <p>{t(lang, 'aboutDisclaimerBody')}</p>
+
+        <h3 className="about-heading">{t(lang, 'aboutContactTitle')}</h3>
+        <p>{t(lang, 'aboutContactBody')}</p>
+        <p>
+          <a className="btn small" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+            {t(lang, 'aboutContactRepo')} ↗
+          </a>
+        </p>
+
+        <p className="about-updated">
+          {t(lang, 'aboutUpdated')}: {new Date(ABOUT_UPDATED).toLocaleDateString(locale)}
+        </p>
+      </section>
+    </>
+  )
+}
+
 /* -------------------------- Temettü Takvimi --------------------------
  * Verim = son 12 ayda ödenen toplam ÷ güncel fiyat (app/data/dividends.py).
  * Satır açıldığında ödemelerin kendisi gösterilir: rakamın doğrulanabilir
@@ -7865,6 +7958,8 @@ function App() {
       )}
 
       {view === 'macro' && <MacroView data={macro} loading={macroLoading} lang={lang} />}
+
+      {view === 'about' && <AboutView lang={lang} />}
 
       {view === 'stockPositions' && (
         <StockPositions
