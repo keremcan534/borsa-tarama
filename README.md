@@ -418,6 +418,10 @@ Tarama, Fonlar, Temettü ve Makro sayfalarında aynı şerit durur: **CSV indir*
 - Etiketler `ellipsize` ile kutuya sığdırılır: veri kaynaklı uzun bir isim
   (fon adı gibi) geldiğinde etiket ile değer çakışıp kartı okunmaz hale getirirdi.
   100 karakterlik yapay bir etiketle test edildi — 46px temiz boşluk kalıyor.
+- **X penceresi senkron açılır, karttan ÖNCE.** `await`ten sonra çağrılan
+  `window.open` kullanıcı hareketi bağlamını kaybeder ve açılır pencere
+  engelleyicisine takılır: kullanıcı butona basar, kart iner, X hiç açılmazdı.
+  Kart arka planda üretilir.
 - **X, web intent ile görsel eklemez.** Bu yüzden akış "önce kartı indir, sonra
   X'i hazır metinle aç" biçiminde kurgulandı ve buton ipucu bunu açıkça söylüyor.
   Paylaşılan bağlantı o anki derin bağlantıdır: karşı taraf tam olarak aynı ekranı açar.

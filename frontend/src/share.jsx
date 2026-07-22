@@ -164,6 +164,18 @@ export async function nativeShare({ title, text, url, blob, filename }) {
  */
 export function ShareBar({ lang, csv, card, shareText, onMessage }) {
   const [busy, setBusy] = useState(false)
+  // Sayfanın kendi toast'ı yoksa şerit geri bildirimi kendi içinde gösterir:
+  // aksi halde "X'te paylaş"a basan kullanıcı kartın indiğini hiç öğrenmiyordu.
+  const [note, setNote] = useState(null)
+
+  function notify(message) {
+    if (onMessage) {
+      onMessage(message)
+      return
+    }
+    setNote(message)
+    window.setTimeout(() => setNote(null), 3500)
+  }
   const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share
 
   async function saveCard() {
@@ -193,17 +205,20 @@ export function ShareBar({ lang, csv, card, shareText, onMessage }) {
           type="button"
           disabled={busy}
           title={t(lang, 'shareXHint')}
-          onClick={async () => {
-            // Kart varsa önce indirilir: X intent'i dosya taşıyamadığından
-            // kullanıcının görseli tweete elle eklemesi gerekiyor.
-            if (card) await saveCard()
+          onClick={() => {
+            // X penceresi ÖNCE ve senkron açılır: `await`ten sonra çağrılan
+            // window.open kullanıcı hareketi bağlamını kaybeder ve açılır pencere
+            // engelleyicisine takılır — kullanıcı butona basar, kart iner, X hiç
+            // açılmazdı. Kart arkadan indirilir; intent zaten dosya taşıyamıyor.
             shareToX({ text: shareText, url: window.location.href })
-            onMessage?.(t(lang, 'shareXDone'))
+            if (card) saveCard()
+            notify(t(lang, 'shareXDone'))
           }}
         >
           𝕏 {t(lang, 'shareX')}
         </button>
       )}
+      {note && <span className="share-note">{note}</span>}
       {canNativeShare && shareText && (
         <button
           className="btn small"
