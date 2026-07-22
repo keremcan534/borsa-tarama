@@ -318,7 +318,25 @@ filtreyi geçiyor ama endeksin **%11 gerisinde** — bu kolon olmadan görünmez
 Endeks tanımları `app/data/benchmarks.py`'de; backtest ve tarama aynı endeksi kullanır ki
 iki yer farklı şeyi ölçmesin.
 
-### Şirket Logoları
+### Hakkında / Güven Sayfası
+`AboutView` -> sol menüde **Hakkında**. Ölçülen eksik: sitede veri kaynağının ve
+**gecikmenin** yazılı olduğu hiçbir yer yoktu. Bir profesyonel siteye bakınca dört
+sey sorar - kim yapti, veri nereden, ne kadar gecikmeli, gecmis performans ne?
+Son soruya Strateji sekmesi zaten durustce cevap veriyordu; bu sayfa ilk ucunu kapatir.
+
+Icerik: ne oldugu - **gecikme uyarisi** (vurgulu kutuda: "canli sandim" en pahali
+yanlis anlama) - veri kaynaklari (yfinance / TEFAS / KAP / haber akislari / logolar) -
+yontem ve durustluk - bilinen sinirlar - gizlilik - sorumluluk reddi - kaynak kod.
+
+**Buradaki her gizlilik iddiasi koddan dogrulanarak yazildi**, tahminle degil:
+izleme kodu yok (gtag/analytics/piksel sifir eslesme), `document.cookie` hic
+kullanilmiyor, kisisel veri yalnizca 11 localStorage anahtarinda duruyor, calisma
+aninda ucuncu tarafa istek atilmiyor. Dogrulanmamis bir gizlilik cumlesi yazmak
+hic yazmamaktan kotudur. Play Store da gizlilik politikasini zorunlu kiliyor.
+
+Sayfa metni elle guncellenirse `ABOUT_UPDATED` tarihi de guncellenmeli.
+
+## Şirket Logoları
 `scripts/build_logos.py` -> `frontend/public/logos/*.png` + `index.json` manifesti ->
 arayüzde `TickerLogo`. Kullanıcı "isimlerin yanındaki monogramlar yapay duruyor, gerçek
 logo çekmenin yolu yok mu" dedi; var.
