@@ -463,6 +463,16 @@ th.sorted {
   flex-shrink: 0;
 }
 
+/* Gerçek şirket logosu (build_logos.py). Beyaz zeminli favicon'lar koyu temada
+ * kaybolmasın diye açık bir yastık + hafif iç boşluk verilir; logolar farklı en-boy
+ * oranında geldiğinden `contain` ile kutuya oturtulur (kırpılmaz, bozulmaz). */
+.ticker-logo-img {
+  object-fit: contain;
+  padding: 2px;
+  background: #fff;
+  border-color: var(--border);
+}
+
 .badge.score-strong {
   background: rgba(22, 163, 74, 0.18);
   color: var(--up);

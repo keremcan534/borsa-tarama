@@ -123,6 +123,30 @@ export async function fetchPriceIndex() {
   return res.json();
 }
 
+/**
+ * Şirket logosu manifesti: { "THYAO.IS": "THYAO_IS.png", ... }. Logolar build
+ * zamanında indirilip repoya konur (scripts/build_logos.py); çalışma anında yalnızca
+ * bu küçük manifest inip hangi sembolün gerçek logosu olduğunu söyler. Logosu
+ * olmayan sembol manifestte yer almaz ve arayüzde nötr harf rozetine düşer.
+ * Dosya yoksa (henüz logo üretilmemiş) boş manifest döner: hata değil, herkes monogram.
+ */
+export async function fetchLogoManifest() {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}logos/index.json`);
+    if (!res.ok) return {};
+    if (!(res.headers.get("content-type") || "").includes("json")) return {};
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+
+/** Bir sembolün logo URL'i (manifestte varsa), yoksa null. */
+export function logoUrl(manifest, symbol) {
+  const file = manifest?.[symbol];
+  return file ? `${import.meta.env.BASE_URL}logos/${file}` : null;
+}
+
 /** Sinyal karnesi arşivi: her taramanın taze sinyalleri, fiyatıyla mühürlenmiş.
  * Arşiv birikene kadar 404/az gün normaldir (kayıt ileriye doğru dolar). */
 export async function fetchSignalLog() {

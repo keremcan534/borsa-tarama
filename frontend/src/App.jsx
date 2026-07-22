@@ -1,4 +1,4 @@
-import { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   fetchAllNews,
@@ -15,7 +15,9 @@ import {
   fetchStockPositions,
   fetchFx,
   fetchSignalLog,
+  fetchLogoManifest,
   fetchPriceIndex,
+  logoUrl,
   fetchStockSeriesMany,
   STATIC_MODE,
 } from './api'
@@ -621,11 +623,40 @@ function scoreTone(score) {
  * bırakıyordu. Artık tek nötr yüzey kullanılıyor — rozet bir dekor değil,
  * satırı taramayı kolaylaştıran tipografik bir işaret.
  */
+/* Logo manifesti tüm ağaca Context ile dağıtılır: TickerLogo onlarca yerde
+ * prop'suz çağrılıyor, prop drilling anlamsız olurdu. Varsayılan boş obje —
+ * sağlayıcı yüklemeden önce (veya logo hiç üretilmemişse) herkes monograma düşer. */
+const LogoContext = createContext({})
+
+/**
+ * Sembol rozeti: manifestte gerçek logosu varsa onu, yoksa koddan türetilen iki
+ * harfi gösterir. Logolar build zamanında indirilip repoya konur (build_logos.py),
+ * çalışma anında harici istek yok.
+ *
+ * Gerçek logo bir <img>: yüklenemezse (dosya bozuk/eksik) `onError` ile monograma
+ * düşülür — kırık resim ikonu göstermektense harf rozeti yeğdir.
+ */
 function TickerLogo({ symbol }) {
-  const t = displaySymbol(symbol)
+  const manifest = useContext(LogoContext)
+  const label = displaySymbol(symbol)
+  const [failed, setFailed] = useState(false)
+  const url = logoUrl(manifest, symbol)
+
+  if (url && !failed) {
+    return (
+      <img
+        className="ticker-logo ticker-logo-img"
+        src={url}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    )
+  }
   return (
     <span className="ticker-logo" aria-hidden="true">
-      {t.slice(0, 2).toUpperCase()}
+      {label.slice(0, 2).toUpperCase()}
     </span>
   )
 }
@@ -8254,9 +8285,25 @@ function App() {
 }
 
 export default function Root() {
+  // Logo manifesti bir kez, açılışta yüklenir (birkaç KB) ve tüm ağaca Context ile
+  // dağıtılır. Yüklenene kadar boş obje: TickerLogo'lar önce monogram gösterir,
+  // manifest gelince gerçek logosu olanlar kendiliğinden logoya döner.
+  const [logos, setLogos] = useState({})
+  useEffect(() => {
+    let iptal = false
+    fetchLogoManifest().then((m) => {
+      if (!iptal) setLogos(m || {})
+    })
+    return () => {
+      iptal = true
+    }
+  }, [])
+
   return (
     <ErrorBoundary>
-      <App />
+      <LogoContext.Provider value={logos}>
+        <App />
+      </LogoContext.Provider>
     </ErrorBoundary>
   )
 }

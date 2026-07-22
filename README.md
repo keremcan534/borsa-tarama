@@ -318,7 +318,34 @@ filtreyi geçiyor ama endeksin **%11 gerisinde** — bu kolon olmadan görünmez
 Endeks tanımları `app/data/benchmarks.py`'de; backtest ve tarama aynı endeksi kullanır ki
 iki yer farklı şeyi ölçmesin.
 
-### Sektör Dağılımı
+### Şirket Logoları
+`scripts/build_logos.py` -> `frontend/public/logos/*.png` + `index.json` manifesti ->
+arayüzde `TickerLogo`. Kullanıcı "isimlerin yanındaki monogramlar yapay duruyor, gerçek
+logo çekmenin yolu yok mu" dedi; var.
+
+Yöntem `build_sectors.py` ile aynı felsefe: logo, şirketin `website` alanından
+(yfinance `.info`) türetilir ve **build zamanında BİR KEZ** indirilip repoya konur.
+Çalışma anında sıfır harici istek olur — hem hız, hem gizlilik (kimse hangi hisseye
+baktığını üçüncü bir sunucuya sızdırmaz). Logo neredeyse hiç değişmez, her taramada
+yeniden çekmek anlamsız; sektör haritası gibi statiktir.
+
+Kaynak Google favicon servisi (`s2/favicons?domain=...&sz=128`). **Gerçek ayraç HTTP
+durum kodudur** (bilinmeyen alan adı 404, bilinen 200 + görsel), byte boyutu DEĞİL:
+ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu olan gerçek
+şirketleri eliyordu (100'de 48'i boşuna atlanmıştı, eşik kaldırılınca 83 oldu).
+
+- BIST 100: **83/100** sembolde gerçek logo (kalan 17 web sitesi vermiyor ya da
+  faviconu yok -> nötr harf rozetine düşer, mevcut davranış). Toplam ~430 KB.
+- Logosu olmayan sembol manifestte YOKtur; ETF/emtia/kripto ve TEFAS fonları da
+  (şirket sitesi olmadığından) monogram gösterir.
+- `TickerLogo` gerçek logoyu bir `<img loading="lazy">` olarak çizer; yüklenemezse
+  `onError` ile monograma düşer (kırık resim ikonu göstermektense harf yeğdir).
+- Manifest tüm ağaca React Context ile dağıtılır (TickerLogo 23 yerde prop'suz çağrılıyor).
+- Yeniden çalıştır: `python scripts/build_logos.py` (eksikleri tamamlar; sembol
+  listeleri değişince). S&P 500 için de çalıştırılabilir ama şimdilik yalnızca BIST
+  indirildi (ana pazar; 500 ABD logosu repoyu ~1 MB büyütür).
+
+## Sektör Dağılımı
 Tarama tablosunun üstünde sinyallerin sektör dağılımı chip'lerle gösterilir (filtreye
 göre canlı güncellenir). Amacı süs değil: sinyaller tek sektörde yoğunlaşmışsa liste
 göründüğü kadar çeşitli değildir, hepsi birlikte düşebilir.
