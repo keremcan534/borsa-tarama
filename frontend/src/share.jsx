@@ -6,7 +6,7 @@
  * import ettiğinden dairesel bağımlılık doğardı.
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { t } from './i18n'
 
@@ -168,13 +168,18 @@ export function ShareBar({ lang, csv, card, shareText, onMessage }) {
   // aksi halde "X'te paylaş"a basan kullanıcı kartın indiğini hiç öğrenmiyordu.
   const [note, setNote] = useState(null)
 
+  const noteTimer = useRef(null)
+
   function notify(message) {
     if (onMessage) {
       onMessage(message)
       return
     }
+    // Önceki zamanlayıcı iptal edilmezse, arka arkaya iki tıklamada ESKİ tıklamanın
+    // zamanlayıcısı yenisinin notunu erkenden siliyordu.
+    if (noteTimer.current) window.clearTimeout(noteTimer.current)
     setNote(message)
-    window.setTimeout(() => setNote(null), 3500)
+    noteTimer.current = window.setTimeout(() => setNote(null), 3500)
   }
   const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share
 

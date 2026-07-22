@@ -5989,6 +5989,9 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
     [scoped],
   )
 
+  // Son 12 ayda gerçekten ödeme yapanlar (paylaşım metni ve sayaç bunu kullanır)
+  const payingCount = useMemo(() => scoped.filter((i) => i.yield_ttm != null).length, [scoped])
+
   const toggle = (symbol) =>
     setOpen((prev) => {
       const next = new Set(prev)
@@ -6083,12 +6086,16 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
                 tone: 'pos',
               })),
           }}
-          shareText={t(lang, 'dvdShareText', items.filter((i) => i.yield_ttm != null).length)}
+          shareText={t(lang, 'dvdShareText', payingCount)}
         />
         <div className="div-toolbar">
           {/* Sayaç seçili kapsamı anlatmalı: toplam sayı, ekranda görülenle
-              uyuşmayınca "hani nerede?" sorusunu doğuruyordu. */}
-          <span className="div-count">{t(lang, 'dvdCount', scoped.length, upcoming.length)}</span>
+              uyuşmayınca "hani nerede?" sorusunu doğuruyordu.
+              "Temettü ödüyor" derken son 12 ayda GERÇEKTEN ödeyenler sayılır:
+              canlıda 61 yazarken bunların 14'ü tabloda "ödeme yok" gösteriyordu —
+              aynı ekran kendini yalanlıyordu. Ödemesi duran şirketler listede
+              kalmaya devam eder (geçmişi ve yaklaşan tarihi bilgidir). */}
+          <span className="div-count">{t(lang, 'dvdCount', payingCount, upcoming.length)}</span>
           <input
             className="search-input"
             type="search"
