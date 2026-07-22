@@ -635,6 +635,12 @@ const LogoContext = createContext({})
  *
  * Gerçek logo bir <img>: yüklenemezse (dosya bozuk/eksik) `onError` ile monograma
  * düşülür — kırık resim ikonu göstermektense harf rozeti yeğdir.
+ *
+ * Bilinçli olarak `loading="lazy"` DEĞİL: lazy yalnızca tarayıcı kareyi boyadığında
+ * ekran-içi görselleri yükler ve bu doğrulama ortamında (kare derlenmiyor) hiç
+ * tetiklenmiyordu — yani "çalıştığını sanıp" gönderemezdim. Logolar minik (~2 KB,
+ * kalıcı cache) olduğundan eager yüklemenin maliyeti önemsiz, doğrulanabilirliği ise
+ * net: satır render olunca logosu iner.
  */
 function TickerLogo({ symbol }) {
   const manifest = useContext(LogoContext)
@@ -649,7 +655,6 @@ function TickerLogo({ symbol }) {
         src={url}
         alt=""
         aria-hidden="true"
-        loading="lazy"
         onError={() => setFailed(true)}
       />
     )

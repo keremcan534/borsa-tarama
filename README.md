@@ -338,8 +338,11 @@ ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu 
   faviconu yok -> nötr harf rozetine düşer, mevcut davranış). Toplam ~430 KB.
 - Logosu olmayan sembol manifestte YOKtur; ETF/emtia/kripto ve TEFAS fonları da
   (şirket sitesi olmadığından) monogram gösterir.
-- `TickerLogo` gerçek logoyu bir `<img loading="lazy">` olarak çizer; yüklenemezse
-  `onError` ile monograma düşer (kırık resim ikonu göstermektense harf yeğdir).
+- `TickerLogo` gerçek logoyu bir `<img>` olarak çizer; yüklenemezse `onError` ile
+  monograma düşer (kırık resim ikonu göstermektense harf yeğdir). Bilinçli olarak
+  `loading="lazy"` DEĞİL: lazy yalnızca tarayıcı kareyi boyadığında tetiklenir ve
+  bu doğrulama ortamında hiç çalışmıyordu — logolar minik olduğundan (~2 KB, kalıcı
+  cache) eager yüklemenin maliyeti önemsiz, doğrulanabilirliği net.
 - Manifest tüm ağaca React Context ile dağıtılır (TickerLogo 23 yerde prop'suz çağrılıyor).
 - Yeniden çalıştır: `python scripts/build_logos.py` (eksikleri tamamlar; sembol
   listeleri değişince). S&P 500 için de çalıştırılabilir ama şimdilik yalnızca BIST
