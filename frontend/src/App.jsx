@@ -2036,7 +2036,7 @@ function WatchlistView({
             )}
           </h2>
           <div className="table-wrap">
-            <table>
+            <table className="frozen-name">
               <thead>
                 <tr>
                   <th className="star-cell"></th>
@@ -2093,7 +2093,7 @@ function WatchlistView({
             )}
           </h2>
           <div className="table-wrap">
-            <table>
+            <table className="frozen-name">
               <thead>
                 <tr>
                   <th className="star-cell"></th>
@@ -2340,15 +2340,38 @@ function priceOn(series, dateStr) {
  * penceredeki değişimi hesaplar. "Para nereye akıyor" sorusuna popülerlik
  * üzerinden yaklaşık bir cevap; arşiv birikene kadar panel görünmez.
  */
+const FLOW_WINDOWS = [7, 30]
+
 function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
-  const [win, setWin] = useState(30)
   const history = flows?.history || {}
   const dates = useMemo(() => Object.keys(history).sort(), [history])
+
+  /* Arşiv ileriye doğru dolar (her tarama o günü ekler), yani ilk günlerde 30
+   * günlük pencere için veri YOKTUR. Eskiden bu durumda pencere sessizce en eski
+   * güne kırpılıyordu: 5 günlük arşivde 7G ve 30G sekmeleri AYNI sayıları
+   * gösteriyordu ve panel bozuk görünüyordu. Artık kapsanmayan pencere devre
+   * dışı ve sebebi yazıyor. */
+  const spanDays = useMemo(() => {
+    if (dates.length < 2) return 0
+    return Math.round((Date.parse(dates[dates.length - 1]) - Date.parse(dates[0])) / 86400000)
+  }, [dates])
+
+  const covers = (days) => spanDays >= days
+  const [win, setWin] = useState(() => (spanDays >= 30 ? 30 : 7))
+
+  // Arşiv büyüdükçe daha uzun pencere açılır; kullanıcı seçimi geçersizse düşürülür.
+  useEffect(() => {
+    if (!covers(win) && covers(7)) setWin(7)
+  }, [spanDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const computed = useMemo(() => {
     if (dates.length < 2) return null
     const lastDate = dates[dates.length - 1]
-    const cutoff = new Date(Date.parse(lastDate) - win * 86400000).toISOString().slice(0, 10)
+    // Seçili pencere arşivden uzunsa tüm arşiv kullanılır (kırpma sessiz değil:
+    // hem sekmeler gizlenir hem tarih aralığı yazılır).
+    const cutoff = covers(win)
+      ? new Date(Date.parse(lastDate) - win * 86400000).toISOString().slice(0, 10)
+      : dates[0]
     const baseDate = dates.find((d) => d >= cutoff) ?? dates[0]
     if (baseDate === lastDate) return null
     const base = history[baseDate]
@@ -2403,14 +2426,34 @@ function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
     <section className="watch-section flow-panel">
       <div className="pf-chart-head">
         <h2 className="today-title">{t(lang, 'flowTitle')}</h2>
-        <div className="tabs">
-          {[7, 30].map((d) => (
-            <button key={d} type="button" className={`tab ${win === d ? 'active' : ''}`} onClick={() => setWin(d)}>
-              {d}G
-            </button>
-          ))}
-        </div>
+        {/* Hiçbir hazır pencere kapsanmıyorsa sekme gösterilmez: kapalı bir "7G"
+            sekmesinin altında 4 günlük veri durması, rakamı 7 günlük sanmaya
+            yol açardı. O durumda panel tüm arşivi gösterir ve bunu yazar. */}
+        {covers(FLOW_WINDOWS[0]) && (
+          <div className="tabs">
+            {FLOW_WINDOWS.map((d) => {
+              const acik = covers(d)
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  className={`tab ${win === d ? 'active' : ''}`}
+                  disabled={!acik}
+                  title={acik ? undefined : t(lang, 'flowNeedsMoreDays', d, spanDays)}
+                  onClick={() => acik && setWin(d)}
+                >
+                  {d}G
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
+      {!covers(FLOW_WINDOWS[FLOW_WINDOWS.length - 1]) && (
+        <p className="flow-archive-note">
+          {t(lang, 'flowArchiveNote', spanDays)}
+        </p>
+      )}
       <p className="fc-overlap-hint">
         {t(
           lang,
@@ -7619,7 +7662,7 @@ function App() {
 
           {!fundsError && fundRows.length > 0 && (
             <div className="table-wrap">
-              <table>
+              <table className="frozen-name">
                 <thead>
                   <tr>
                     <th className="star-cell"></th>
@@ -8047,7 +8090,7 @@ function App() {
 
       {!error && data && rows.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="frozen-name">
             <thead>
               <tr>
                 <th className="star-cell"></th>

@@ -4301,3 +4301,54 @@ tr.alert-hit td {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ---------- Dondurulmuş isim kolonu ----------
+ * Fon/tarama tabloları 13-15 kolon taşıyor; sağa kaydırınca hangi satıra baktığın
+ * kayboluyordu ("istatistikleri görmek için sağa kaydırdığımda isimleri
+ * göremiyorum"). Yıldız + sembol kolonları yerinde kalır, gerisi altından kayar.
+ *
+ * Arka plan ŞART: sticky hücre saydam kalsaydı altından geçen sütunlar görünürdü. */
+
+.table-wrap table.frozen-name th:nth-child(1),
+.table-wrap table.frozen-name td:nth-child(1),
+.table-wrap table.frozen-name th:nth-child(2),
+.table-wrap table.frozen-name td:nth-child(2) {
+  position: sticky;
+  background: var(--surface);
+}
+
+.table-wrap table.frozen-name th:nth-child(1),
+.table-wrap table.frozen-name td:nth-child(1) {
+  left: 0;
+  z-index: 1;
+}
+
+/* Sembol kolonu yıldız kolonunun (34px) hemen sağında durur */
+.table-wrap table.frozen-name th:nth-child(2),
+.table-wrap table.frozen-name td:nth-child(2) {
+  left: 34px;
+  z-index: 1;
+  /* Donmuş bölgenin bittiği yeri belli eden ince gölge */
+  box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.18);
+}
+
+/* Başlık satırı hem üstte hem solda kalmalı: köşe hücreleri diğerlerinin üstünde */
+.table-wrap table.frozen-name thead th:nth-child(1),
+.table-wrap table.frozen-name thead th:nth-child(2) {
+  z-index: 3;
+}
+
+/* Satır vurgusu donmuş hücrelerde de sürsün, yoksa hücreler "kopuk" görünür */
+.table-wrap table.frozen-name tbody tr:hover td:nth-child(1),
+.table-wrap table.frozen-name tbody tr:hover td:nth-child(2) {
+  background: var(--row-hover);
+}
+
+@media (max-width: 560px) {
+  /* Dar ekranda donmuş kolon ekranın yarısını yerdi; isim zaten ilk görünen şey. */
+  .table-wrap table.frozen-name th:nth-child(2),
+  .table-wrap table.frozen-name td:nth-child(2) {
+    position: static;
+    box-shadow: none;
+  }
+}

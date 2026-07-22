@@ -445,6 +445,10 @@ const STRINGS = {
     flowTitle: 'Fon akışı — yatırımcı sayısı değişimi',
     flowGainers: 'En çok yatırımcı kazanan',
     flowLosers: 'En çok yatırımcı kaybeden',
+    flowNeedsMoreDays: (istenen, mevcut) =>
+      `${istenen} günlük karşılaştırma için ${istenen} günlük arşiv gerekiyor; şu an ${mevcut} gün var. Arşiv her taramada bir gün büyüyor.`,
+    flowArchiveNote: (gun) =>
+      `Arşiv ${gun} günlük ve her taramada büyüyor; aşağıdaki değişim tüm arşivi kapsıyor. 7 ve 30 günlük karşılaştırmalar arşiv dolunca açılacak.`,
     flowRange: (from, to) => `${from} → ${to} arası değişim. Yatırımcı sayısı paranın yönü için yaklaşık bir göstergedir.`,
     stockChartPending:
       'Fiyat grafiği bir sonraki taramayla birlikte burada görünecek. Şimdilik TradingView bağlantısını kullanabilirsin.',
@@ -1161,6 +1165,10 @@ const STRINGS = {
     flowTitle: 'Fund flows — investor count change',
     flowGainers: 'Most investors gained',
     flowLosers: 'Most investors lost',
+    flowNeedsMoreDays: (istenen, mevcut) =>
+      `A ${istenen}-day comparison needs ${istenen} days of archive; only ${mevcut} days are available so far. The archive grows by one day per scan.`,
+    flowArchiveNote: (gun) =>
+      `The archive is ${gun} days old and grows with every scan; the change below covers the whole archive. The 7- and 30-day comparisons unlock once it fills.`,
     flowRange: (from, to) => `Change between ${from} → ${to}. Investor count is a rough proxy for where money is flowing.`,
     stockChartPending:
       'The price chart will appear here after the next scan. Use the TradingView link in the meantime.',
