@@ -346,6 +346,16 @@ Bitcoin tek ekranda (~11 istek — 600 sembollük taramanın yanında ihmal edil
 - **Gram altın türetilmiştir** (ons × kur ÷ 31,1035), ayrı istek atılmaz; iki seri
   farklı tatil takvimlerinde olabildiğinden yalnızca ortak tarihlerde hesaplanır
   (eksik günü doldurmak olmayan bir hareket uydururdu).
+- **İstekler taramanın EN BAŞINDA atılır.** İlk sürümde sonda duruyordu ve canlıda
+  şu görüldü: 600+ sembol tarandıktan sonra yfinance rate-limit'e geçiyor ve 11
+  isteğin **hepsi** "Too Many Requests" alıyor — panel bomboş yayınlandı. Makro veri
+  taramanın çıktısına bağlı olmadığından başta durmasının maliyeti yok.
+- **İkinci savunma:** eksik kalan gösterge, yayındaki son `macro.json`'dan
+  `merge_with_previous_macro` ile tamamlanır ve arayüzde **"eski veri"** rozeti +
+  tarihi ile gösterilir. Kartın tamamen kaybolması, bir gün eski veriyi tarihiyle
+  göstermekten kötüdür; ama etiketsiz göstermek de bugünün rakamı sanılmasına yol
+  açardı. `tests/test_scan_macro_merge.py` bunu kilitler (üst üste iki başarısız
+  koşuda tarihin "kaymaması" dahil).
 - **BIST korelasyonu GÜNLÜK GETİRİ üzerinden** hesaplanır (90 gün), fiyat seviyesi
   üzerinden değil: iki yükselen seri seviyede neredeyse her zaman yüksek korelasyon
   verir ve bu sahte bir ilişkidir. `tests/test_macro.py` bunu bir testle kilitler.

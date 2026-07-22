@@ -5817,6 +5817,21 @@ function MacroView({ data, loading, lang }) {
                             {t(lang, 'macroDerived')}
                           </span>
                         )}
+                        {/* Rate-limit yüzünden bu koşuda çekilemeyen gösterge, önceki
+                            yayından tamamlanır. Etiketsiz göstermek kullanıcıya bugünün
+                            rakamı sanmasına yol açardı. */}
+                        {item.stale && (
+                          <span
+                            className="macro-stale"
+                            title={t(
+                              lang,
+                              'macroStaleHint',
+                              item.as_of ? new Date(item.as_of).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR') : '—',
+                            )}
+                          >
+                            {t(lang, 'macroStale')}
+                          </span>
+                        )}
                       </span>
                       <span className={`pct ${pctTone(change)}`}>
                         {change == null ? '—' : formatPct(change, 2)}

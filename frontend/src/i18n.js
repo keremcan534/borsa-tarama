@@ -683,6 +683,8 @@ const STRINGS = {
     macroCorrHelpTitle: 'Korelasyon nasıl okunur?',
     macroCorrHelpBody:
       '+1\'e yakın: BIST ile aynı yönde hareket ediyor. -1\'e yakın: ters yönde (BIST düşerken yükseliyor — portföyde denge sağlar). 0 civarı: ilişkisiz. Fiyat seviyesiyle değil GÜNLÜK GETİRİYLE hesaplanır; iki yükselen seri seviyede her zaman ilişkili görünür, bu sahte bir ilişkidir.',
+    macroStale: 'eski veri',
+    macroStaleHint: (d) => `Bu gösterge son taramada çekilemedi (kaynak istek sınırı); ${d} tarihli veri gösteriliyor.`,
     macroDerived: 'türetilmiş',
     macroDerivedHint: 'Gram altın = ons altın × dolar kuru ÷ 31,1035. Ayrı bir veri kaynağından çekilmez.',
     // Derin bağlantı / paylaşım
@@ -1363,6 +1365,8 @@ const STRINGS = {
     macroCorrHelpTitle: 'How to read correlation',
     macroCorrHelpBody:
       'Near +1: moves with BIST. Near -1: moves against it (rises when BIST falls — a portfolio hedge). Around 0: unrelated. Computed on DAILY RETURNS, not price levels; two rising series always look related in levels, and that relationship is spurious.',
+    macroStale: 'stale',
+    macroStaleHint: (d) => `This instrument could not be fetched in the last scan (provider rate limit); showing data from ${d}.`,
     macroDerived: 'derived',
     macroDerivedHint: 'Gram gold = gold per ounce × USD/TRY ÷ 31.1035. Not fetched from a separate source.',
     // Deep links / sharing

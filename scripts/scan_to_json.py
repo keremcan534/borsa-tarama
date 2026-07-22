@@ -21,7 +21,7 @@ from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
 from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.data.fx import fetch_fx_series
-from app.data.macro import build_macro_payload
+from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
@@ -90,6 +90,45 @@ def fetch_previous_scores() -> dict:
         return {}
 
 
+def fetch_previous_macro() -> dict:
+    """Yayındaki macro.json: rate-limit'te eksik kalan kartları tamamlamak için."""
+    try:
+        resp = requests.get(f"{SITE_URL}data/macro.json", timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"[MAKRO] önceki panel alınamadı ({e}); yalnızca taze veri yayınlanacak")
+        return {}
+
+
+def merge_with_previous_macro(fresh: dict, previous: dict) -> dict:
+    """Taze veride olmayan göstergeleri öncekinden `stale` işaretiyle tamamlar.
+
+    Sıra öncekinin değil TAZE payload'ın sırasını izler; eksikler kendi grup
+    sırasına göre sona eklenir (arayüz zaten gruplayarak gösteriyor).
+    """
+    prev_items = {i.get("key"): i for i in previous.get("items", []) if i.get("key")}
+    if not prev_items:
+        return fresh
+
+    fresh_keys = {i.get("key") for i in fresh.get("items", [])}
+    filled = list(fresh.get("items", []))
+    prev_date = previous.get("generated_at")
+
+    for key, item in prev_items.items():
+        if key in fresh_keys:
+            continue
+        # `stale` bayrağı arayüzde etiketle görünür: kullanıcı rakamın bugüne ait
+        # olmadığını bilmeli, sessizce eski veri göstermek yanıltıcı olurdu.
+        filled.append({**item, "stale": True, "as_of": item.get("as_of") or prev_date})
+
+    fresh["items"] = filled
+    fresh["count"] = len(filled)
+    fresh.setdefault("correlation_bars", previous.get("correlation_bars", CORRELATION_BARS))
+    return fresh
+
+
 def main() -> None:
     out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "data")
     reports_dir = Path(sys.argv[2] if len(sys.argv) > 2 else "reports")
@@ -99,6 +138,25 @@ def main() -> None:
     fetcher = YFinanceFetcher()
     all_market_payloads: dict[str, dict[str, dict]] = {}
     markets = enabled_markets()
+
+    # Makro panel EN BAŞTA çekilir. Ölçülen sebep: ilk sürümde taramanın sonunda
+    # duruyordu ve 600+ sembolden sonra yfinance'in rate-limit'i devreye girip
+    # 11 isteğin HEPSİ "Too Many Requests" aldı — panel canlıda boş yayınlandı.
+    # Sıranın başında bütçe daha taze; ayrıca makro veri taramanın çıktısına
+    # bağlı olmadığından burada durmasının bir maliyeti yok.
+    try:
+        macro_payload = build_macro_payload(fetcher)
+    except Exception as e:
+        print(f"[MAKRO] panel üretilemedi ({e})")
+        macro_payload = {"count": 0, "correlation_bars": CORRELATION_BARS, "items": []}
+    # Eksik kalan göstergeler yayındaki son veriden tamamlanır: rate-limit yüzünden
+    # kartın tamamen KAYBOLMASI, bir gün eski veriyi tarihiyle göstermekten kötüdür.
+    macro_payload = merge_with_previous_macro(macro_payload, fetch_previous_macro())
+    macro_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    macro_path = out_dir / "macro.json"
+    macro_path.write_text(json.dumps(macro_payload, ensure_ascii=False), encoding="utf-8")
+    stale = sum(1 for i in macro_payload["items"] if i.get("stale"))
+    print(f"[MAKRO] {macro_payload['count']} gösterge ({stale} tanesi eski veriden) -> {macro_path}")
 
     # Arayüz market listesini bu manifestten okur: kapalı bir marketin sekmesi
     # gösterilip veri dosyası bulunamaması (backend/frontend drift'i) böyle önlenir.
@@ -272,17 +330,6 @@ def main() -> None:
         f"[TEMETTÜ] {dividends_payload['count']} hisse "
         f"({dividends_payload['upcoming_count']} yaklaşan) -> {dividends_path}"
     )
-
-    # Makro panel: kur/faiz/emtia/endeks özeti (~10 istek).
-    try:
-        macro_payload = build_macro_payload(fetcher)
-    except Exception as e:
-        print(f"[MAKRO] panel üretilemedi ({e}); boş payload yazılıyor")
-        macro_payload = {"count": 0, "correlation_bars": 0, "items": []}
-    macro_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
-    macro_path = out_dir / "macro.json"
-    macro_path.write_text(json.dumps(macro_payload, ensure_ascii=False), encoding="utf-8")
-    print(f"[MAKRO] {macro_payload['count']} gösterge -> {macro_path}")
 
     # Döviz/altın serileri: arayüzdeki TL / $ / gram altın anahtarı bunlardan besleniyor.
     fx = fetch_fx_series(fetcher)
