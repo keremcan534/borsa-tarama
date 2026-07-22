@@ -360,6 +360,19 @@ Bitcoin tek ekranda (~11 istek — 600 sembollük taramanın yanında ihmal edil
   üzerinden değil: iki yükselen seri seviyede neredeyse her zaman yüksek korelasyon
   verir ve bu sahte bir ilişkidir. `tests/test_macro.py` bunu bir testle kilitler.
 
+## Görsel Dil: Rozetler ve İkonlar
+`TickerLogo` gerçek şirket logosu değil, sembol kodundan türetilen iki harftir.
+Eskiden her sembole isminden türetilen **rastgele doygun bir renk** atanıyordu;
+ekranda yan yana onlarca farklı renk arayüze "hazır klip art" havası veriyordu.
+Artık tek nötr yüzey kullanılıyor: rozet dekor değil, satırı taramayı kolaylaştıran
+tipografik bir işarettir. (Gerçek logolar hâlâ yok — BIST için güvenilir ve ücretsiz
+tek bir kaynak yok, elle toplanıp repoya konması gerekir.)
+
+Sol menü ikonları da emoji değil, `NAV_ICON_PATHS` içindeki ince çizgi SVG'lerdir.
+Emoji her işletim sisteminde farklı çizilir, boyutu satır yüksekliğine göre zıplar
+ve tema rengini almaz; SVG'ler `currentColor` kullandığından menüyle birlikte
+renk değiştirir. Harici ikon kütüphanesi bağımlılığı yoktur.
+
 ## Derin Bağlantı ve Paylaşım
 Uygulamanın hiç URL durumu yoktu: paylaşılan her bağlantı karşı tarafı "Bugün"
 sayfasına düşürüyordu ve hiçbir ekran yer imine eklenemiyordu. Artık görünüm, market,
@@ -372,6 +385,21 @@ zaman dilimi ve açık hisse adres çubuğuna yazılır (`?v=…&m=…&tf=…&s=
   bağlantısında `m=bist100` durması orada bir market seçimi varmış izlenimi verirdi.
 - **Favori listesi paylaşımı** (`?w=HISSE1,HISSE2|FON1,FON2`): karşı tarafa SORULUR,
   onaylarsa kendi listesine EKLENİR (mevcut favorileri silinmez).
+### Paylaş / İndir Şeridi (`ShareBar`)
+Tarama, Fonlar, Temettü ve Makro sayfalarında aynı şerit durur: **CSV indir**,
+**kart indir (PNG)**, **X'te paylaş** ve destekleyen cihazlarda **yerel paylaş menüsü**.
+
+- Kart, DOM'un ekran görüntüsü DEĞİL, canvas'a çizilen amaca özel bir görseldir
+  (`drawListCard`). Böylece html2canvas gibi bir bağımlılık gerekmez, her temada
+  aynı görünür ve **yatırım tavsiyesi uyarısı görselden koparılamaz**.
+- Etiketler `ellipsize` ile kutuya sığdırılır: veri kaynaklı uzun bir isim
+  (fon adı gibi) geldiğinde etiket ile değer çakışıp kartı okunmaz hale getirirdi.
+  100 karakterlik yapay bir etiketle test edildi — 46px temiz boşluk kalıyor.
+- **X, web intent ile görsel eklemez.** Bu yüzden akış "önce kartı indir, sonra
+  X'i hazır metinle aç" biçiminde kurgulandı ve buton ipucu bunu açıkça söylüyor.
+  Paylaşılan bağlantı o anki derin bağlantıdır: karşı taraf tam olarak aynı ekranı açar.
+- Yerel paylaş menüsü (`navigator.share`) destekliyorsa görseli dosya olarak da ekler.
+
 - Cevaplanmamış liste daveti adreste kalır. Sebebi ölçülen bir hata: ilk ziyarette
   service worker güncellemesi sayfayı yeniden yüklüyor (`main.jsx`) ve parametre
   senkron sırasında silinince paylaşılan liste sessizce kayboluyordu.

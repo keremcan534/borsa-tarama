@@ -314,6 +314,15 @@ const STRINGS = {
     scDaysN: (n) => `${n} gün`,
     shareCard: 'Kart indir',
     shareCardHint: 'Bu hisseyi özetleyen paylaşılabilir bir görsel (PNG) indir',
+    shareCardHint2: 'Bu ekranı özetleyen paylaşılabilir bir görsel (PNG) indir',
+    shareX: "X'te paylaş",
+    shareXHint:
+      "Kartı indirir ve X'i hazır metinle açar. X, görseli bağlantıyla otomatik ekleyemediğinden gönderiye indirilen kartı elle eklemen gerekir.",
+    shareXDone: 'Kart indirildi — X penceresinde gönderiye ekleyebilirsin',
+    shareNative: 'Paylaş',
+    shareScreenerTitle: 'Teknik görünümü güçlü hisseler',
+    shareScreenerText: (n, m) => `${m} taramasında teknik görünümü güçlü ${n} hisse:`,
+    shareFundsText: (n) => `TEFAS fon taraması: getiri/risk puanına göre sıralı ${n} fon.`,
     shareChangeLabel: 'Son kapanışa göre günlük değişim',
     shareDisclaimer: 'Yatırım tavsiyesi değildir · Teknik göstergelere dayalı veri',
     curLabel: 'Para birimi',
@@ -661,6 +670,8 @@ const STRINGS = {
       'Verim = son 12 ayda ödenen toplam temettü ÷ bugünkü fiyat. Örnek: fiyat 100 ₺, yıl içinde 8 ₺ temettü ödendiyse verim %8. Bu GEÇMİŞ ödemedir, gelecek yıl aynısı ödenecek diye bir garanti yoktur.',
     dvdYieldNone: 'ödeme yok',
     dvdUpcomingMore: (n) => `+${n} tarih daha (tabloda)`,
+    dvdShareText: (n) =>
+      `Temettü takvimi: ${n} hissenin son 12 aydaki gerçek temettü verimi tek listede.`,
     // Makro panel
     tabMacro: 'Makro',
     macroTitle: 'Makro Panel',
@@ -683,6 +694,7 @@ const STRINGS = {
     macroCorrHelpTitle: 'Korelasyon nasıl okunur?',
     macroCorrHelpBody:
       '+1\'e yakın: BIST ile aynı yönde hareket ediyor. -1\'e yakın: ters yönde (BIST düşerken yükseliyor — portföyde denge sağlar). 0 civarı: ilişkisiz. Fiyat seviyesiyle değil GÜNLÜK GETİRİYLE hesaplanır; iki yükselen seri seviyede her zaman ilişkili görünür, bu sahte bir ilişkidir.',
+    macroShareText: (p) => `Makro panel — ${p} değişimleri: kur, faiz, emtia ve endeksler tek ekranda.`,
     macroStale: 'eski veri',
     macroStaleHint: (d) => `Bu gösterge son taramada çekilemedi (kaynak istek sınırı); ${d} tarihli veri gösteriliyor.`,
     macroDerived: 'türetilmiş',
@@ -1006,6 +1018,15 @@ const STRINGS = {
     scDaysN: (n) => `${n}d`,
     shareCard: 'Save card',
     shareCardHint: 'Download a shareable image (PNG) summarising this stock',
+    shareCardHint2: 'Download a shareable image (PNG) summarising this screen',
+    shareX: 'Share on X',
+    shareXHint:
+      'Downloads the card and opens X with prefilled text. X cannot attach the image automatically, so add the downloaded card to the post yourself.',
+    shareXDone: 'Card downloaded — attach it in the X window',
+    shareNative: 'Share',
+    shareScreenerTitle: 'Stocks with strong technicals',
+    shareScreenerText: (n, m) => `${n} stocks with strong technicals in the ${m} screen:`,
+    shareFundsText: (n) => `TEFAS fund screen: ${n} funds ranked by return/risk score.`,
     shareChangeLabel: 'Daily change vs previous close',
     shareDisclaimer: 'Not investment advice · Data based on technical indicators',
     curLabel: 'Currency',
@@ -1343,6 +1364,7 @@ const STRINGS = {
       'Yield = total dividends paid in the last 12 months ÷ today\'s price. Example: price 100, 8 paid during the year → 8% yield. This is a PAST payment; there is no guarantee next year matches it.',
     dvdYieldNone: 'no payment',
     dvdUpcomingMore: (n) => `+${n} more dates (in the table)`,
+    dvdShareText: (n) => `Dividend calendar: real 12-month dividend yield for ${n} stocks in one list.`,
     // Macro panel
     tabMacro: 'Macro',
     macroTitle: 'Macro Panel',
@@ -1365,6 +1387,7 @@ const STRINGS = {
     macroCorrHelpTitle: 'How to read correlation',
     macroCorrHelpBody:
       'Near +1: moves with BIST. Near -1: moves against it (rises when BIST falls — a portfolio hedge). Around 0: unrelated. Computed on DAILY RETURNS, not price levels; two rising series always look related in levels, and that relationship is spurious.',
+    macroShareText: (p) => `Macro panel — ${p} changes: FX, rates, commodities and indices on one screen.`,
     macroStale: 'stale',
     macroStaleHint: (d) => `This instrument could not be fetched in the last scan (provider rate limit); showing data from ${d}.`,
     macroDerived: 'derived',

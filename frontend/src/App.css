@@ -444,6 +444,7 @@ th.sorted {
 
 /* ---------- ticker monogram + puan ---------- */
 
+/* Nötr sembol rozeti: rastgele renk yok (bkz. TickerLogo yorumu). */
 .ticker-logo {
   display: inline-flex;
   align-items: center;
@@ -451,9 +452,12 @@ th.sorted {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  color: #fff;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.3px;
   margin-right: 8px;
   flex-shrink: 0;
@@ -1858,10 +1862,21 @@ button.today-card.fund-card:hover {
   font-weight: 600;
 }
 
+/* Emoji değil SVG taşır (bkz. NavIcon): sabit kutu, satırla aynı renk. */
 .nav-icon {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   line-height: 1;
+  opacity: 0.75;
 }
+
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
 
 .sidebar .lang-switch {
   margin-top: auto;
@@ -3349,10 +3364,12 @@ tr.alert-hit td {
 }
 
 .cmdk-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
-  text-align: center;
-  font-size: 16px;
   flex-shrink: 0;
+  opacity: 0.75;
 }
 
 /* fon detay: kategori rozeti + kategori içi sıra */
@@ -4193,4 +4210,16 @@ tr.alert-hit td {
   background: rgba(220, 38, 38, 0.12);
   color: var(--down);
   cursor: help;
+}
+
+/* Paylaş/indir şeridi: sayfanın araç çubuğuna gömülür, kendi satırını istemez. */
+.share-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.today-section > .share-bar {
+  margin: 10px 0 4px;
 }

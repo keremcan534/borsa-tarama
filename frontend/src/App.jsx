@@ -23,6 +23,56 @@ import StockCompare from './StockCompare'
 import StockPositions from './StockPositions'
 import { getLang, setLang as persistLang, t } from './i18n'
 
+/* ---------------------------- Menü ikonları ----------------------------
+ * Emoji yerine ince çizgi SVG. Sebep: emoji her işletim sisteminde farklı
+ * çizilir (Windows'ta dolgun ve renkli, macOS'ta bambaşka), boyutu satır
+ * yüksekliğine göre zıplar ve arayüze "hazır klip art" havası verir. Bunlar
+ * `currentColor` kullanır, yani seçili/karanlık durumda menüyle birlikte
+ * renk değiştirir. Harici ikon kütüphanesi bağımlılığı yok.
+ */
+const NAV_ICON_PATHS = {
+  today: 'M7 3v3M17 3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z',
+  screener: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM16 16l4.5 4.5',
+  map: 'M4 20V7l5-3 6 3 5-3v13l-5 3-6-3-5 3ZM9 4v13M15 7v13',
+  bubbles: 'M8 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM17 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17.5 9.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+  rotation: 'M20 12a8 8 0 0 1-13.7 5.6M4 12a8 8 0 0 1 13.7-5.6M17 3v4h-4M7 21v-4h4',
+  macro: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3 12h18M12 3c2.5 2.4 3.9 5.6 4 9-.1 3.4-1.5 6.6-4 9-2.5-2.4-3.9-5.6-4-9 .1-3.4 1.5-6.6 4-9Z',
+  news: 'M4 5h13a1 1 0 0 1 1 1v13H5a1 1 0 0 1-1-1V5ZM18 9h2v9a1 1 0 0 1-1 1M7 9h7M7 13h7M7 16h4',
+  funds: 'M3 9.5 12 4l9 5.5M5 10v8M10 10v8M14 10v8M19 10v8M3 21h18',
+  fundLeague: 'M8 4h8v4a4 4 0 0 1-8 0V4ZM8 5H5v1a3 3 0 0 0 3 3M16 5h3v1a3 3 0 0 1-3 3M12 12v4M9 20h6M10 20v-2h4v2',
+  fundCompare: 'M12 4v16M6 8 3 15h6L6 8ZM18 8l-3 7h6l-3-7ZM4 7h16',
+  watchlist: 'm12 4 2.4 5 5.6.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.6-.8L12 4Z',
+  strategy: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 11.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Z',
+  portfolio: 'M4 8h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1ZM9 8V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18',
+  alerts: 'M12 4a5 5 0 0 0-5 5c0 4-2 5-2 7h14c0-2-2-3-2-7a5 5 0 0 0-5-5ZM10 19a2 2 0 0 0 4 0',
+  stockCompare: 'M5 20V10M12 20V4M19 20v-7M3 20h18',
+  dividends: 'M12 5c3.9 0 7 1.1 7 2.5S15.9 10 12 10 5 8.9 5 7.5 8.1 5 12 5ZM5 7.5v9c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-9M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5',
+  stockPositions: 'M4 4h16v16H4zM4 9.5h16M4 15h16M9.5 4v16M15 4v16',
+  scorecard: 'M6 3h12v18l-3-1.5L12 21l-3-1.5L6 21V3ZM9 8h6M9 12h6M9 16h3',
+  backtest: 'M4 19 9 13l3.5 3.5L20 8M20 8h-4.5M20 8v4.5',
+}
+
+function NavIcon({ name }) {
+  const d = NAV_ICON_PATHS[name]
+  if (!d) return null
+  return (
+    <svg
+      className="nav-icon-svg"
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
+  )
+}
+
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
 // Açıldığında AdSlot bileşenleri yayın kodunu render edecek.
 const ADS_ENABLED = false
@@ -54,44 +104,44 @@ const BACKTEST_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.key === 'daily' || tf.k
 const NAV_SECTIONS = [
   {
     titleKey: null, // açılış — başlıksız
-    items: [{ key: 'today', i18nKey: 'tabToday', icon: '📅' }],
+    items: [{ key: 'today', i18nKey: 'tabToday' }],
   },
   {
     titleKey: 'navSecMarket',
     items: [
-      { key: 'screener', i18nKey: 'tabScreener', icon: '🔍' },
-      { key: 'map', i18nKey: 'tabMap', icon: '🗺️' },
-      { key: 'bubbles', i18nKey: 'tabBubbles', icon: '🫧' },
-      { key: 'rotation', i18nKey: 'tabRotation', icon: '🔄' },
-      { key: 'macro', i18nKey: 'tabMacro', icon: '🌍' },
-      { key: 'news', i18nKey: 'tabNews', icon: '📰' },
+      { key: 'screener', i18nKey: 'tabScreener' },
+      { key: 'map', i18nKey: 'tabMap' },
+      { key: 'bubbles', i18nKey: 'tabBubbles' },
+      { key: 'rotation', i18nKey: 'tabRotation' },
+      { key: 'macro', i18nKey: 'tabMacro' },
+      { key: 'news', i18nKey: 'tabNews' },
     ],
   },
   {
     titleKey: 'navSecFunds',
     items: [
-      { key: 'funds', i18nKey: 'tabFunds', icon: '🏦' },
-      { key: 'fundLeague', i18nKey: 'tabFundLeague', icon: '🏆' },
-      { key: 'fundCompare', i18nKey: 'tabFundCompare', icon: '⚖️' },
+      { key: 'funds', i18nKey: 'tabFunds' },
+      { key: 'fundLeague', i18nKey: 'tabFundLeague' },
+      { key: 'fundCompare', i18nKey: 'tabFundCompare' },
     ],
   },
   {
     titleKey: 'navSecMine',
     items: [
-      { key: 'watchlist', i18nKey: 'tabWatchlist', icon: '⭐' },
-      { key: 'strategy', i18nKey: 'tabStrategy', icon: '🎯' },
-      { key: 'portfolio', i18nKey: 'tabPortfolio', icon: '💼' },
-      { key: 'alerts', i18nKey: 'tabAlerts', icon: '🔔' },
+      { key: 'watchlist', i18nKey: 'tabWatchlist' },
+      { key: 'strategy', i18nKey: 'tabStrategy' },
+      { key: 'portfolio', i18nKey: 'tabPortfolio' },
+      { key: 'alerts', i18nKey: 'tabAlerts' },
     ],
   },
   {
     titleKey: 'navSecAnalysis',
     items: [
-      { key: 'stockCompare', i18nKey: 'tabStockCompare', icon: '📊' },
-      { key: 'dividends', i18nKey: 'tabDividends', icon: '💰' },
-      { key: 'stockPositions', i18nKey: 'tabStockPositions', icon: '▦' },
-      { key: 'scorecard', i18nKey: 'tabScorecard', icon: '🧾' },
-      { key: 'backtest', i18nKey: 'tabBacktest', icon: '📈' },
+      { key: 'stockCompare', i18nKey: 'tabStockCompare' },
+      { key: 'dividends', i18nKey: 'tabDividends' },
+      { key: 'stockPositions', i18nKey: 'tabStockPositions' },
+      { key: 'scorecard', i18nKey: 'tabScorecard' },
+      { key: 'backtest', i18nKey: 'tabBacktest' },
     ],
   },
 ]
@@ -212,6 +262,9 @@ function convertSeries(points, currency, fx, symbol) {
  * "Yatırım tavsiyesi değildir" ibaresi karta gömülüdür — görsel siteden koparak
  * dolaştığında uyarının onunla birlikte gitmesi gerekir. */
 
+// Kartta en fazla kaç satır gösterilir (yüksekliğe sığan sayı).
+const SHARE_CARD_ROWS = 8
+const SHARE_SITE_LABEL = 'keremcan534.github.io/borsa-tarama'
 const SHARE_CARD_W = 1080
 const SHARE_CARD_H = 1080
 
@@ -544,11 +597,18 @@ function scoreTone(score) {
 }
 
 // Ticker/isimden üretilen tutarlı renkli monogram rozeti (harici logo servisi gerektirmez)
+/**
+ * Sembol rozeti: gerçek şirket logosu DEĞİL, koddan türetilen iki harf.
+ *
+ * Eskiden her sembole isminden türetilen rastgele doygun bir renk atanıyordu;
+ * ekranda yan yana onlarca farklı renk "yapay zekaya çizdirilmiş" bir izlenim
+ * bırakıyordu. Artık tek nötr yüzey kullanılıyor — rozet bir dekor değil,
+ * satırı taramayı kolaylaştıran tipografik bir işaret.
+ */
 function TickerLogo({ symbol }) {
   const t = displaySymbol(symbol)
-  const hue = [...t].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
   return (
-    <span className="ticker-logo" style={{ background: `hsl(${hue} 52% 42%)` }} aria-hidden="true">
+    <span className="ticker-logo" aria-hidden="true">
       {t.slice(0, 2).toUpperCase()}
     </span>
   )
@@ -959,6 +1019,219 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/* ---------------------------- Paylaşım altyapısı ----------------------------
+ * Amaç: bir ekranı görsel olarak X'te paylaşmak ya da veriyi Excel'de açmak.
+ * Kart, DOM'un ekran görüntüsü DEĞİL, canvas'a çizilen amaca özel bir görsel:
+ * html2canvas gibi bir bağımlılık eklemeden her temada aynı görünür ve
+ * yatırım tavsiyesi uyarısı görselden koparılamaz.
+ */
+
+/** Metni verilen piksel genişliğine sığdırır, taşarsa sonuna … koyar. */
+function ellipsize(ctx, text, maxWidth) {
+  const value = String(text ?? '')
+  if (maxWidth <= 0 || ctx.measureText(value).width <= maxWidth) return value
+  let cut = value
+  while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) {
+    cut = cut.slice(0, -1)
+  }
+  return `${cut}…`
+}
+
+/** Başlık + satır listesi taşıyan genel paylaşım kartı (tek hisse kartıyla aynı kimlik). */
+function drawListCard(canvas, { title, subtitle, rows, lang }) {
+  const ctx = canvas.getContext('2d')
+  canvas.width = SHARE_CARD_W
+  canvas.height = SHARE_CARD_H
+
+  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_W, SHARE_CARD_H)
+  bg.addColorStop(0, '#12141a')
+  bg.addColorStop(1, '#1c2030')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, SHARE_CARD_W, SHARE_CARD_H)
+
+  const accent = ctx.createLinearGradient(0, 0, SHARE_CARD_W, 0)
+  accent.addColorStop(0, '#7c3aed')
+  accent.addColorStop(1, '#a855f7')
+  ctx.fillStyle = accent
+  ctx.fillRect(0, 0, SHARE_CARD_W, 10)
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.font = '600 28px system-ui, sans-serif'
+  ctx.fillText(t(lang, 'brand').toUpperCase(), 80, 100)
+
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '800 62px system-ui, sans-serif'
+  ctx.fillText(title, 80, 190)
+
+  if (subtitle) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.font = '400 30px system-ui, sans-serif'
+    ctx.fillText(subtitle, 80, 240)
+  }
+
+  // Satır sayısı kartın yüksekliğine göre sınırlı: sığmayanı küçültüp
+  // okunmaz hale getirmektense hiç göstermemek daha dürüst.
+  const visible = (rows || []).slice(0, SHARE_CARD_ROWS)
+  const rowInnerW = SHARE_CARD_W - 160 - 60
+  let y = 300
+  for (const row of visible) {
+    ctx.fillStyle = 'rgba(255,255,255,0.06)'
+    ctx.fillRect(80, y, SHARE_CARD_W - 160, 78)
+
+    ctx.font = '700 36px system-ui, sans-serif'
+    const valueW = ctx.measureText(row.value).width
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '700 34px system-ui, sans-serif'
+    // Etiket, değerin üstüne binmesin: veri kaynaklı uzun bir isim (fon adı gibi)
+    // geldiğinde iki metin çakışıp kartı okunmaz hale getirirdi.
+    ctx.fillText(ellipsize(ctx, row.label, rowInnerW - valueW - 24), 110, y + 50)
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = row.tone === 'pos' ? '#4ade80' : row.tone === 'neg' ? '#f87171' : '#ffffff'
+    ctx.font = '700 36px system-ui, sans-serif'
+    ctx.fillText(row.value, SHARE_CARD_W - 110, y + 50)
+
+    if (row.note) {
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'
+      ctx.font = '400 24px system-ui, sans-serif'
+      ctx.fillText(row.note, SHARE_CARD_W - 110, y + 50 - 40)
+    }
+    ctx.textAlign = 'left'
+    y += 88
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'
+  ctx.font = '400 28px system-ui, sans-serif'
+  ctx.fillText(new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR'), 80, SHARE_CARD_H - 118)
+  ctx.textAlign = 'right'
+  ctx.fillText(SHARE_SITE_LABEL, SHARE_CARD_W - 80, SHARE_CARD_H - 118)
+  ctx.textAlign = 'left'
+
+  ctx.fillStyle = 'rgba(255,255,255,0.38)'
+  ctx.font = '400 24px system-ui, sans-serif'
+  ctx.fillText(t(lang, 'shareDisclaimer'), 80, SHARE_CARD_H - 68)
+}
+
+function cardToBlob(draw) {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas')
+    draw(canvas)
+    canvas.toBlob((blob) => resolve(blob), 'image/png')
+  })
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * X paylaşım penceresi. Görsel intent ile EKLENEMEZ (X'in web intent'i dosya
+ * kabul etmez); bu yüzden akış "önce kartı indir, sonra paylaş" şeklinde
+ * kurgulandı ve buton metni bunu söylüyor. Bağlantı olarak o anki derin
+ * bağlantı gider — karşı taraf tam olarak aynı ekranı açar.
+ */
+function shareToX({ text, url }) {
+  const params = new URLSearchParams({ text, url })
+  window.open(`https://x.com/intent/post?${params.toString()}`, '_blank', 'noopener,noreferrer')
+}
+
+/** Telefonun yerel paylaş menüsü; destekliyorsa görseli de ekler. */
+async function nativeShare({ title, text, url, blob, filename }) {
+  if (!navigator.share) return false
+  try {
+    if (blob && navigator.canShare) {
+      const file = new File([blob], filename, { type: 'image/png' })
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] })
+        return true
+      }
+    }
+    await navigator.share({ title, text, url })
+    return true
+  } catch {
+    return false // kullanıcı vazgeçti ya da tarayıcı reddetti: sessizce geç
+  }
+}
+
+/**
+ * Sayfaların üstünde duran paylaş/indir şeridi.
+ * `csv`: { filename, header, rows } · `card`: { title, subtitle, rows, filename }
+ * `shareText`: X'e önerilen metin. Verilmeyen yetenek için düğme hiç çıkmaz.
+ */
+function ShareBar({ lang, csv, card, shareText, onMessage }) {
+  const [busy, setBusy] = useState(false)
+  const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share
+
+  async function saveCard() {
+    setBusy(true)
+    const blob = await cardToBlob((c) => drawListCard(c, { ...card, lang }))
+    setBusy(false)
+    if (!blob) return null
+    downloadBlob(blob, card.filename)
+    return blob
+  }
+
+  return (
+    <div className="share-bar">
+      {csv && (
+        <button className="btn small" type="button" onClick={() => downloadCsv(csv.filename, csv.header, csv.rows())}>
+          ⬇ {t(lang, 'exportCsv')}
+        </button>
+      )}
+      {card && (
+        <button className="btn small" type="button" disabled={busy} onClick={saveCard} title={t(lang, 'shareCardHint2')}>
+          🖼 {t(lang, 'shareCard')}
+        </button>
+      )}
+      {shareText && (
+        <button
+          className="btn small"
+          type="button"
+          disabled={busy}
+          title={t(lang, 'shareXHint')}
+          onClick={async () => {
+            // Kart varsa önce indirilir: X intent'i dosya taşıyamadığından
+            // kullanıcının görseli tweete elle eklemesi gerekiyor.
+            if (card) await saveCard()
+            shareToX({ text: shareText, url: window.location.href })
+            onMessage?.(t(lang, 'shareXDone'))
+          }}
+        >
+          𝕏 {t(lang, 'shareX')}
+        </button>
+      )}
+      {canNativeShare && shareText && (
+        <button
+          className="btn small"
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            const blob = card ? await cardToBlob((c) => drawListCard(c, { ...card, lang })) : null
+            setBusy(false)
+            await nativeShare({
+              title: t(lang, 'brand'),
+              text: shareText,
+              url: window.location.href,
+              blob,
+              filename: card?.filename || 'borsa-tarama.png',
+            })
+          }}
+        >
+          📤 {t(lang, 'shareNative')}
+        </button>
       )}
     </div>
   )
@@ -4553,7 +4826,7 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, navItems, 
       name: f.name || f.symbol,
       fund: f,
     }))
-    const pages = (navItems || []).map((it) => ({ type: 'page', key: it.key, name: t(lang, it.i18nKey), icon: it.icon }))
+    const pages = (navItems || []).map((it) => ({ type: 'page', key: it.key, name: t(lang, it.i18nKey) }))
     return { stocks, funds: fundItems, pages }
   }, [overview, funds, allMarkets, navItems, lang])
 
@@ -4632,7 +4905,9 @@ function CommandPalette({ open, onClose, overview, funds, allMarkets, navItems, 
         onClick={() => choose(item)}
       >
         {item.type === 'page' ? (
-          <span className="cmdk-page-icon" aria-hidden="true">{item.icon}</span>
+          <span className="cmdk-page-icon" aria-hidden="true">
+            <NavIcon name={item.key} />
+          </span>
         ) : (
           <TickerLogo symbol={item.symbol} />
         )}
@@ -5788,6 +6063,33 @@ function MacroView({ data, loading, lang }) {
         <h2 className="today-title">{t(lang, 'macroTitle')}</h2>
         <p className="today-note">{t(lang, 'macroIntro')}</p>
 
+        <ShareBar
+          lang={lang}
+          csv={{
+            filename: 'makro.csv',
+            header: ['Gösterge', 'Son', '1g %', '1h %', '1a %', '3a %', 'YBB %', '1y %', 'BIST korelasyon'],
+            rows: () =>
+              (data.items || []).map((i) => [
+                lang === 'en' ? i.name_en : i.name,
+                i.last,
+                ...['change_1d', 'change_1w', 'change_1m', 'change_3m', 'ytd', 'change_1y'].map((k) =>
+                  i[k] == null ? '' : (i[k] * 100).toFixed(2),
+                ),
+                i.corr_bist ?? '',
+              ]),
+          }}
+          card={{
+            title: t(lang, 'macroTitle'),
+            subtitle: periodLabel,
+            filename: `makro-${new Date().toISOString().slice(0, 10)}.png`,
+            rows: (data.items || []).slice(0, SHARE_CARD_ROWS).map((i) => ({
+              label: lang === 'en' ? i.name_en : i.name,
+              value: i[period] == null ? '—' : formatPct(i[period], 2),
+              tone: pctTone(i[period]),
+            })),
+          }}
+          shareText={t(lang, 'macroShareText', periodLabel)}
+        />
         <div className="macro-periods" role="group" aria-label={t(lang, 'macroTitle')}>
           {MACRO_PERIODS.map((p) => (
             <button
@@ -5971,6 +6273,45 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
       </section>
 
       <section className="today-section">
+        <ShareBar
+          lang={lang}
+          csv={{
+            filename: `temettu-${scope}.csv`,
+            header: [
+              t(lang, 'dvdColSymbol'),
+              t(lang, 'dvdColYield'),
+              t(lang, 'dvdColTtm'),
+              t(lang, 'dvdColLast'),
+              t(lang, 'dvdColNext'),
+              t(lang, 'dvdColPayout'),
+              t(lang, 'dvdColYears'),
+            ],
+            rows: () =>
+              items.map((i) => [
+                displaySymbol(i.symbol),
+                i.yield_ttm == null ? '' : (i.yield_ttm * 100).toFixed(2),
+                i.ttm ?? '',
+                i.last_date || '',
+                i.next_ex_date || '',
+                i.payout_ratio == null ? '' : (i.payout_ratio * 100).toFixed(0),
+                i.years_paid,
+              ]),
+          }}
+          card={{
+            title: t(lang, 'dvdTitle'),
+            subtitle: t(lang, 'dvdColYield'),
+            filename: `temettu-${scope}-${new Date().toISOString().slice(0, 10)}.png`,
+            rows: items
+              .filter((i) => i.yield_ttm != null)
+              .slice(0, SHARE_CARD_ROWS)
+              .map((i) => ({
+                label: displaySymbol(i.symbol),
+                value: formatRatioPct(i.yield_ttm, 2),
+                tone: 'pos',
+              })),
+          }}
+          shareText={t(lang, 'dvdShareText', items.filter((i) => i.yield_ttm != null).length)}
+        />
         <div className="div-toolbar">
           {/* Sayaç seçili kapsamı anlatmalı: toplam sayı, ekranda görülenle
               uyuşmayınca "hani nerede?" sorusunu doğuruyordu. */}
@@ -6842,6 +7183,8 @@ function App() {
   const overview = overviewCache.daily || null
   const marketOverview = overviewCache[todayTimeframe] || null
   const activeTimeframe = TIMEFRAMES.find((t) => t.key === timeframe)
+  // Paylaşım kartında marketin adı yazsın (sekme etiketiyle aynı, dile duyarlı).
+  const activeMarket = activeMarkets.find((m) => m.key === market) || MARKETS.find((m) => m.key === market)
   const chartNews = useMemo(() => {
     if (!news) return null
     const sym = chartFund?.symbol || chartSymbol
@@ -6963,27 +7306,30 @@ function App() {
     )
   }
 
-  // Görünen (filtrelenmiş/sıralı) tabloları CSV'ye aktar. Yüzdeler okunur olsun
-  // diye 100 ile çarpılır; sembol arayüzdeki gösterim koduyla yazılır.
-  function exportScreenerCsv() {
-    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
-    const header = ['Sembol', 'Puan', 'Kapanış', 'Değişim %', 'Piyasa Değeri', 'Göreli Güç %', 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K']
-    const dataRows = rows.map((r) => [
-      displaySymbol(r.symbol), r.score ?? '', r.close ?? '', pct(r.change), r.market_cap ?? '',
-      pct(r.relative_strength), r.rsi ?? '', r.macd_line ?? '', r.stoch_k ?? '', r.stoch_rsi_k ?? '',
-    ])
-    downloadCsv(`tarama-${market}-${timeframe}.csv`, header, dataRows)
+  // Görünen (filtrelenmiş/sıralı) tabloların CSV karşılığı. Yüzdeler okunur olsun
+  // diye 100 ile çarpılır; sembol arayüzdeki gösterim koduyla yazılır. Satırlar
+  // tembel üretilir (fonksiyon): kullanıcı indirmedikçe hesaplanmaz.
+  const screenerCsv = {
+    header: ['Sembol', 'Puan', 'Kapanış', 'Değişim %', 'Piyasa Değeri', 'Göreli Güç %', 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K'],
+    rows: () => {
+      const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+      return rows.map((r) => [
+        displaySymbol(r.symbol), r.score ?? '', r.close ?? '', pct(r.change), r.market_cap ?? '',
+        pct(r.relative_strength), r.rsi ?? '', r.macd_line ?? '', r.stoch_k ?? '', r.stoch_rsi_k ?? '',
+      ])
+    },
   }
 
-  function exportFundsCsv() {
-    const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
-    const header = ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Max Düşüş %', 'Büyüklük']
-    const dataRows = fundRows.map((f) => [
-      f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
-      pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
-      pct(f.volatility), f.sharpe ?? '', pct(f.max_drawdown), f.portfolio_size ?? '',
-    ])
-    downloadCsv('fonlar.csv', header, dataRows)
+  const fundsCsv = {
+    header: ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Max Düşüş %', 'Büyüklük'],
+    rows: () => {
+      const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+      return fundRows.map((f) => [
+        f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
+        pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
+        pct(f.volatility), f.sharpe ?? '', pct(f.max_drawdown), f.portfolio_size ?? '',
+      ])
+    },
   }
 
   // Yeni sinyal bilgisi results üzerinde gelir; stocks listesinde göstermek için haritalanır
@@ -7052,6 +7398,12 @@ function App() {
 
   function shareCurrentScreen() {
     copyLink(window.location.href)
+  }
+
+  /** Paylaşım şeridinden gelen bilgilendirmeler aynı toast'ı kullanır. */
+  function flashShareMsg(message) {
+    setShareMsg(message)
+    window.setTimeout(() => setShareMsg(null), 3500)
   }
 
   function shareWatchlist() {
@@ -7124,7 +7476,7 @@ function App() {
                   onClick={() => selectView(item.key)}
                 >
                   <span className="nav-icon" aria-hidden="true">
-                    {item.icon}
+                    <NavIcon name={item.key} />
                   </span>
                   {t(lang, item.i18nKey)}
                   {item.key === 'alerts' && alertTriggeredCount > 0 && (
@@ -7342,9 +7694,23 @@ function App() {
                 {fundWatchlist.size ? ` (${fundWatchlist.size})` : ''}
               </button>
               {fundRows.length > 0 && (
-                <button className="btn" onClick={exportFundsCsv}>
-                  ⬇ {t(lang, 'exportCsv')}
-                </button>
+                <ShareBar
+                  lang={lang}
+                  csv={{ filename: 'fonlar.csv', header: fundsCsv.header, rows: () => fundsCsv.rows() }}
+                  card={{
+                    title: t(lang, 'tabFunds'),
+                    subtitle: t(lang, 'colScore'),
+                    filename: `fonlar-${new Date().toISOString().slice(0, 10)}.png`,
+                    rows: fundRows.slice(0, SHARE_CARD_ROWS).map((f) => ({
+                      label: f.symbol,
+                      value: f.score != null ? String(f.score) : '—',
+                      note: f.return_1y == null ? undefined : formatPct(f.return_1y, 1),
+                      tone: pctTone(f.return_1y),
+                    })),
+                  }}
+                  shareText={t(lang, 'shareFundsText', fundRows.length)}
+                  onMessage={flashShareMsg}
+                />
               )}
               <button
                 className="btn"
@@ -7697,9 +8063,23 @@ function App() {
             {watchlist.size ? ` (${watchlist.size})` : ''}
           </button>
           {rows.length > 0 && (
-            <button className="btn" onClick={exportScreenerCsv}>
-              ⬇ {t(lang, 'exportCsv')}
-            </button>
+            <ShareBar
+              lang={lang}
+              csv={{ filename: `tarama-${market}-${timeframe}.csv`, header: screenerCsv.header, rows: () => screenerCsv.rows() }}
+              card={{
+                title: t(lang, 'shareScreenerTitle'),
+                subtitle: `${mLabel(activeMarket, lang)} · ${tfLabel(activeTimeframe, lang)}`,
+                filename: `tarama-${market}-${timeframe}-${new Date().toISOString().slice(0, 10)}.png`,
+                rows: rows.slice(0, SHARE_CARD_ROWS).map((r) => ({
+                  label: displaySymbol(r.symbol),
+                  value: r.score != null ? String(r.score) : '—',
+                  note: r.change == null ? undefined : formatPct(r.change, 2),
+                  tone: pctTone(r.change),
+                })),
+              }}
+              shareText={t(lang, 'shareScreenerText', rows.length, mLabel(activeMarket, lang))}
+              onMessage={flashShareMsg}
+            />
           )}
           {STATIC_MODE ? (
             <button className="btn" disabled={loading} onClick={() => load(false)}>
