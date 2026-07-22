@@ -23,6 +23,7 @@ from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.data.fx import fetch_fx_series
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
+from app.data.price_files import assert_unique_file_names, price_file_name
 from app.funds.screen import run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
@@ -303,18 +304,33 @@ def main() -> None:
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
 
-    stock_prices_path = out_dir / "stock_prices.json"
-    stock_prices_path.write_text(
+    # Fiyat serileri SEMBOL BAŞINA ayrı dosyalara yazılır. Eskiden tek bir
+    # stock_prices.json vardı (8,4 MB ham / 2,6 MB sıkıştırılmış) ve tek bir
+    # hisseye tıklamak bu dosyanın tamamını indiriyordu; ölçüldü, en yüksek
+    # niyetli an sitenin en yavaş anıydı. Şimdi grafik açmak ~4 KB indiriyor.
+    prices_dir = out_dir / "prices"
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    assert_unique_file_names(stock_series.keys())
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    for symbol, bars in stock_series.items():
+        path = prices_dir / f"{price_file_name(symbol)}.json"
+        path.write_text(
+            json.dumps({"symbol": symbol, "bars": bars}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    # Arayüzün "hangi sembollerin serisi var" sorusuna cevap veren küçük dizin
+    # (portföy sayfasındaki hisse listesi bunu kullanır). Seri taşımaz.
+    index_path = prices_dir / "index.json"
+    index_path.write_text(
         json.dumps(
-            {
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "series": stock_series,
-            },
+            {"generated_at": generated_at, "symbols": sorted(stock_series.keys())},
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
-    print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {stock_prices_path}")
+    print(f"[SCAN] {len(stock_series)} hisse fiyat serisi -> {prices_dir}/ (sembol başına dosya)")
 
     # Temettü takvimi: ödemeler günlük fiyat isteğinden, yaklaşan ex-tarih temel
     # oran (.info) isteğinden düşer — bu adım ek istek atmaz, yalnızca hesap yapar.

@@ -1,4 +1,4 @@
-import { Component, Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   fetchAllNews,
@@ -15,7 +15,8 @@ import {
   fetchStockPositions,
   fetchFx,
   fetchSignalLog,
-  fetchStockPrices,
+  fetchPriceIndex,
+  fetchStockSeriesMany,
   STATIC_MODE,
 } from './api'
 import FundCompare from './FundCompare'
@@ -84,6 +85,18 @@ function NavIcon({ name }) {
 // Reklam altyapısı: bir reklam ağı (AdSense vb.) bağlanana kadar kapalı.
 // Açıldığında AdSlot bileşenleri yayın kodunu render edecek.
 const ADS_ENABLED = false
+
+/* Tablo mini grafikleri için peşin çekilen satır sayısı (~60 x 3,3 KB ≈ 200 KB).
+ * İki katmanlı bir çözüm:
+ *   1) Bu sayıya kadar peşin çekilir — tipik tablolar (sinyal listesi, BIST 100)
+ *      tamamen kapsanır ve hiçbir şeye bağlı olmadan çalışır.
+ *   2) Gerisi kaydırıldıkça Sparkline'daki IntersectionObserver ile gelir.
+ * Katman (2) tek başına bırakılmadı: bu ortamda doğrulanamadı (tarayıcı paneli
+ * kare derlemediğinden gözlemci geri çağrıları hiç tetiklenmiyor), dolayısıyla
+ * ona bel bağlayan bir tasarım "çalıştığını sandığım" bir tasarım olurdu.
+ * 500 satırlık "tüm hisseler" görünümünde hepsini peşin çekmek ise kullanıcının
+ * verisini boşa harcardı — bu yüzden sınır var. */
+const SPARKLINE_LIMIT = 60
 
 const MARKETS = [
   { key: 'bist100', label: 'BIST 100', labelEn: 'BIST 100' },
@@ -1256,8 +1269,35 @@ const EMA_DEFS = [
   { n: 200, color: '#7c3aed' },
 ]
 
-/** Tablo satırı için minik trend çizgisi (son ~3 ay). Eksen/etiket yok. */
-function Sparkline({ points, days = 90 }) {
+/** Tablo satırı için minik trend çizgisi (son ~3 ay). Eksen/etiket yok.
+ *
+ * `symbol` + `onNeed` verilirse veri YOKKEN görünür alana girdiğinde kendi verisini
+ * ister. Seriler sembol başına indiğinden (bkz. api.js) 500 satırlık bir tabloda
+ * hepsini peşin çekmek kullanıcının verisini boşa harcardı; ekranda görülmeyen
+ * satır istek üretmez. */
+function Sparkline({ points, days = 90, symbol, onNeed }) {
+  const holderRef = useRef(null)
+
+  useEffect(() => {
+    if (points || !symbol || !onNeed) return
+    const el = holderRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      onNeed?.(symbol) // gözlemci yoksa (eski tarayıcı/test) doğrudan iste
+      return
+    }
+    const gozlemci = new IntersectionObserver(
+      (girisler) => {
+        if (girisler.some((g) => g.isIntersecting)) {
+          onNeed(symbol)
+          gozlemci.disconnect()
+        }
+      },
+      { rootMargin: '200px' }, // biraz önden yükle ki kaydırırken hazır olsun
+    )
+    gozlemci.observe(el)
+    return () => gozlemci.disconnect()
+  }, [points, symbol, onNeed])
+
   const line = useMemo(() => {
     const full = cleanFundPoints(points)
     if (full.length < 2) return null
@@ -1279,7 +1319,7 @@ function Sparkline({ points, days = 90 }) {
     return { d, up, W, H }
   }, [points, days])
 
-  if (!line) return <span className="spark-empty">—</span>
+  if (!line) return <span className="spark-empty" ref={holderRef}>—</span>
   return (
     <svg className="sparkline" viewBox={`0 0 ${line.W} ${line.H}`} width={line.W} height={line.H} aria-hidden="true">
       <path d={line.d} fill="none" className={line.up ? 'up' : 'down'} />
@@ -1942,6 +1982,7 @@ function WatchlistView({
   onCompareStocks,
   onCompareFunds,
   onShare,
+  onNeedSeries,
 }) {
   const stockRows = useMemo(() => {
     const bySymbol = new Map()
@@ -2031,7 +2072,7 @@ function WatchlistView({
                     <td>{r.missing ? '—' : formatNum(r.close, 2)}</td>
                     <td className={`pct ${pctTone(r.change)}`}>{r.missing ? '—' : formatPct(r.change, 2)}</td>
                     <td className="spark-col">
-                      <Sparkline points={stockPrices?.series?.[r.symbol]} />
+                      <Sparkline points={stockPrices?.series?.[r.symbol]} symbol={r.symbol} onNeed={onNeedSeries} />
                     </td>
                   </tr>
                 ))}
@@ -2740,7 +2781,7 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
   )
 }
 
-function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, onOpenFund, onOpenStock }) {
+function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -2950,11 +2991,14 @@ function PortfolioView({ funds, prices, stockPrices, stockMap, lang, loading, on
                 {f.name}
               </option>
             ))}
-            {Object.keys(stockPrices?.series || {})
-              .filter((s) => s.endsWith('.IS'))
-              .map((s) => (
-                <option key={s} value={s.replace('.IS', '')}>
-                  {s.replace('.IS', '')}
+            {/* Sembol listesi küçük dizinden gelir: eskiden yüklü TÜM serilerin
+                anahtarlarındandı ve bu, listenin dolması için 2,6 MB'lık dosyanın
+                inmesini şart koşuyordu. */}
+            {(priceIndex?.symbols || [])
+              .filter((sym) => sym.endsWith('.IS'))
+              .map((sym) => (
+                <option key={sym} value={sym.replace('.IS', '')}>
+                  {sym.replace('.IS', '')}
                 </option>
               ))}
           </datalist>
@@ -6296,7 +6340,7 @@ function App() {
   const [macroReady, setMacroReady] = useState(false)
   const [macroLoading, setMacroLoading] = useState(false)
   const [stockPrices, setStockPrices] = useState(null)
-  const [stockPricesReady, setStockPricesReady] = useState(false)
+  const [priceIndex, setPriceIndex] = useState(null)
   // Döviz/altın serileri (TL / $ / gram altın anahtarı)
   const [fx, setFx] = useState(null)
   const [fxReady, setFxReady] = useState(false)
@@ -6622,34 +6666,46 @@ function App() {
     }
   }, [view, chartFund, fundPricesReady])
 
-  // Hisse fiyat serileri: BIST grafiği açıldığında (modal) ya da tarama/portföy/
-  // izlediklerim sekmelerinde (sparkline, hisse portföyü/karşılaştırma) bir kez yüklenir.
-  useEffect(() => {
-    const wantsPrices =
-      chartSymbol?.endsWith('.IS') ||
-      view === 'screener' ||
-      view === 'watchlist' ||
-      view === 'portfolio' ||
-      view === 'stockCompare' ||
-      view === 'strategy' // çeşitlilik paneli korelasyonu fiyat serilerinden hesaplar
-    if (!wantsPrices || stockPricesReady) return
-    let cancelled = false
+  /* Hisse fiyat serileri artık SEMBOL BAŞINA yükleniyor (bkz. api.js). Eskiden tek
+   * bir dosya vardı ve tek bir hisseye tıklamak 2,6 MB indiriyordu. Şekil aynı
+   * kaldı (`{ series: { SEMBOL: [...] } }`) ki tüm tüketiciler değişmeden çalışsın;
+   * değişen yalnızca ne zaman NE KADARININ indiği. */
+  const requestedSeries = useRef(new Set())
+
+  const ensureSeries = useCallback((symbols) => {
+    const eksik = [...new Set(symbols)].filter(
+      (sym) => sym && !requestedSeries.current.has(sym),
+    )
+    if (!eksik.length) return
+    // İstenen semboller hemen işaretlenir: aynı sembol için ikinci bir istek atılmasın
+    // (tablo her render'da aynı listeyi isteyecek).
+    for (const sym of eksik) requestedSeries.current.add(sym)
+
     setStockPricesLoading(true)
-    fetchStockPrices()
-      .then((result) => {
-        if (!cancelled) setStockPrices(result)
+    fetchStockSeriesMany(eksik)
+      .then((gelen) => {
+        if (!Object.keys(gelen).length) return
+        setStockPrices((prev) => ({ series: { ...(prev?.series || {}), ...gelen } }))
       })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setStockPricesReady(true)
-          setStockPricesLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [chartSymbol, view, stockPricesReady])
+      .finally(() => setStockPricesLoading(false))
+  }, [])
+
+  // Mini grafikler görünür alana girdikçe tek tek ister (Sparkline -> onNeed).
+  const ensureOneSeries = useCallback((sym) => ensureSeries([sym]), [ensureSeries])
+
+  // Grafik penceresi: yalnızca açılan sembolün serisi (~4 KB).
+  useEffect(() => {
+    if (chartSymbol) ensureSeries([chartSymbol])
+  }, [chartSymbol, ensureSeries])
+
+  // Portföy sayfasındaki hisse listesi için sembol dizini (seri taşımaz, birkaç KB).
+  useEffect(() => {
+    if (view !== 'portfolio' || priceIndex) return
+    fetchPriceIndex()
+      .then((result) => setPriceIndex(result))
+      .catch(() => {})
+  }, [view, priceIndex])
 
   // Sinyal karnesi arşivi: yalnızca Karne sekmesinde gerekir.
   useEffect(() => {
@@ -7053,6 +7109,23 @@ function App() {
     return list
   }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks, onlyNew])
 
+  /* Liste görünümlerinde yalnızca EKRANDA duran satırların serisi istenir.
+   * `rows` bu satırdan önce tanımlı olmalı — effect'i yukarı taşımak
+   * "Cannot access before initialization" hatası verirdi. */
+  useEffect(() => {
+    if (view === 'screener') {
+      ensureSeries(rows.slice(0, SPARKLINE_LIMIT).map((r) => r.symbol))
+    } else if (view === 'watchlist') {
+      ensureSeries([...watchlist])
+    } else if (view === 'portfolio') {
+      ensureSeries(loadPortfolio().map((p) => p.symbol))
+    } else if (view === 'strategy') {
+      ensureSeries(loadStrategyPositions().map((p) => p.symbol))
+    } else if (view === 'stockCompare' && compareSeed?.length) {
+      ensureSeries(compareSeed)
+    }
+  }, [view, rows, watchlist, compareSeed, ensureSeries])
+
   const fundRows = useMemo(() => {
     if (!funds?.results) return []
     let list = [...funds.results]
@@ -7417,6 +7490,7 @@ function App() {
               selectView('fundCompare')
             }}
             onShare={shareWatchlist}
+            onNeedSeries={ensureOneSeries}
           />
         </>
       )}
@@ -7427,6 +7501,7 @@ function App() {
             funds={funds}
             prices={fundPrices}
             stockPrices={stockPrices}
+            priceIndex={priceIndex}
             stockMap={stockMap}
             lang={lang}
             loading={fundsLoading || fundPricesLoading}
@@ -8043,7 +8118,7 @@ function App() {
                   <td>{formatNum(r.stoch_k, 1)}</td>
                   <td>{formatNum(r.stoch_rsi_k, 1)}</td>
                   <td className="spark-col">
-                    <Sparkline points={stockPrices?.series?.[r.symbol]} />
+                    <Sparkline points={stockPrices?.series?.[r.symbol]} symbol={r.symbol} onNeed={ensureOneSeries} />
                   </td>
                 </tr>
               ))}

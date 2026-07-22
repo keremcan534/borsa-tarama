@@ -60,12 +60,65 @@ export async function fetchFundPrices() {
   return res.json();
 }
 
-/** Hisse kapanış serileri: BIST grafikleri kendi verimizden çizilir
- * (TradingView anonim embed'de BIST verisi vermiyor). İlk taramaya kadar 404 normaldir. */
-export async function fetchStockPrices() {
-  const res = await fetch(`${import.meta.env.BASE_URL}data/stock_prices.json`);
+/* ---------------------------- Hisse fiyat serileri ----------------------------
+ * Seriler SEMBOL BAŞINA ayrı dosyalarda durur. Eskiden tek bir stock_prices.json
+ * vardı ve tek bir hisseye tıklamak **2,6 MB** indiriyordu (611 sembol x 270 mum);
+ * ölçüldü, en yüksek niyetli an sitenin en yavaş anıydı. Artık grafik açmak ~4 KB.
+ *
+ * Dosya adı eşlemesi backend'deki `app/data/price_files.py::price_file_name` ile
+ * AYNI olmalı — biri değişirse diğeri de değişmeli. */
+
+/** `THYAO.IS` -> `THYAO_IS`, `GC=F` -> `GC_F`, `^GSPC` -> `_GSPC` */
+export function priceFileName(symbol) {
+  return String(symbol).replace(/[^A-Za-z0-9-]/g, "_");
+}
+
+/** Tek bir sembolün fiyat serisi. Yoksa null (hata değil: o sembol taranmamış olabilir). */
+export async function fetchStockSeries(symbol) {
+  const res = await fetch(
+    `${import.meta.env.BASE_URL}data/prices/${priceFileName(symbol)}.json`,
+  );
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Hisse fiyat verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw new Error(`Fiyat serisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  const data = await res.json();
+  return data?.bars || null;
+}
+
+/**
+ * Birden çok sembolü paralel çeker. Eş zamanlı istek sayısı sınırlıdır: tarama
+ * tablosunda 60 satır varken 60 isteği aynı anda açmak tarayıcı kuyruğunu kilitler
+ * ve asıl istenen (kullanıcının tıkladığı hisse) arkada kalırdı.
+ */
+const SERIES_CONCURRENCY = 6;
+
+export async function fetchStockSeriesMany(symbols) {
+  const out = {};
+  const queue = [...symbols];
+
+  async function worker() {
+    while (queue.length) {
+      const symbol = queue.shift();
+      try {
+        const bars = await fetchStockSeries(symbol);
+        if (bars) out[symbol] = bars;
+      } catch {
+        /* tek sembolün hatası diğerlerini düşürmesin */
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(SERIES_CONCURRENCY, queue.length) }, worker),
+  );
+  return out;
+}
+
+/** Serisi olan semboller (portföy sayfasındaki hisse listesi). Seri taşımaz. */
+export async function fetchPriceIndex() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/prices/index.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Fiyat dizini yüklenemedi (${res.status})`);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }

@@ -431,6 +431,37 @@ Tarama, Fonlar, Temettü ve Makro sayfalarında aynı şerit durur: **CSV indir*
   service worker güncellemesi sayfayı yeniden yüklüyor (`main.jsx`) ve parametre
   senkron sırasında silinince paylaşılan liste sessizce kayboluyordu.
 
+## Fiyat Serileri: Sembol Başına Dosya
+Grafik verisi eskiden TEK bir `stock_prices.json` dosyasındaydı: **8,4 MB ham /
+2,6 MB sıkıştırılmış** (611 sembol x 270 mum). Kullanıcı tek bir hisseye
+tıkladığında bu dosyanın TAMAMI iniyordu — yani en yüksek niyetli an (grafiği
+açmak) sitenin en yavaş anıydı. Canlıda ölçüldü: 604 ms hızlı bağlantıda, mobil
+4G'de 4-10 saniye.
+
+Artık her sembol kendi dosyasında: `data/prices/{SEMBOL}.json` (~13 KB ham /
+~3,3 KB sıkıştırılmış). Ölçülen sonuç:
+
+| Senaryo | Önce | Sonra |
+|---|---|---|
+| Bir hissenin grafiğini açmak | 2.615 KB | **3 KB** |
+| Tarama (sinyal listesi, 5 satır) | 2.615 KB | **16 KB** |
+| Tarama ("tüm hisseler", 99 satır) | 2.615 KB | **197 KB** |
+
+- Dosya adı eşlemesi iki yerde: `app/data/price_files.py::price_file_name` ve
+  `frontend/src/api.js::priceFileName` — **biri değişirse diğeri de değişmeli.**
+  `assert_unique_file_names` iki sembolün aynı dosyaya düşmesini taramayı
+  durdurarak engeller: sessizce üzerine yazmak, bir hissenin grafiğinde BAŞKA bir
+  hissenin fiyatını göstermek olurdu.
+- Arayüzdeki veri şekli (`{ series: { SEMBOL: [...] } }`) bilerek korundu; değişen
+  yalnızca ne zaman ne kadarının indiği, bu yüzden tüm tüketiciler dokunulmadan çalışıyor.
+- Eş zamanlı istek sayısı 6 ile sınırlı: 60 isteği aynı anda açmak tarayıcı
+  kuyruğunu kilitler ve kullanıcının tıkladığı hisse arkada kalırdı.
+- Mini grafikler iki katmanlı yükleniyor: ilk `SPARKLINE_LIMIT` (60) satır peşin,
+  gerisi kaydırıldıkça `IntersectionObserver` ile. İkinci katman tek başına
+  bırakılmadı çünkü **bu geliştirme ortamında doğrulanamıyor** (tarayıcı paneli
+  kare derlemediğinden gözlemci geri çağrıları hiç tetiklenmiyor); ona bel bağlayan
+  bir tasarım "çalıştığını sandığım" bir tasarım olurdu.
+
 ## Veri Kalitesi: Bölünme (Split) Onarımı
 `app/data/repair.py`, Yahoo'nun uygulamadığı bölünmeleri düzeltir. Gerçek örnek:
 CCOLA.IS'in 11:1 bölünmesi Yahoo'da **2024-08-13** kayıtlı ama fiyat serisi **2024-08-01**'de
