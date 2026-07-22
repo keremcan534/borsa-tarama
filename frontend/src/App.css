@@ -4223,3 +4223,74 @@ tr.alert-hit td {
 .today-section > .share-bar {
   margin: 10px 0 4px;
 }
+
+/* ---------- Fon karşılaştırma: risk dağılımı + matrisler ---------- */
+
+.fc-scatter-wrap {
+  overflow-x: auto;
+}
+
+.fc-scatter {
+  width: 100%;
+  min-width: 460px;
+  height: auto;
+}
+
+.fc-scatter-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* Sıfır getiri çizgisi: altı kaybettiren bölge */
+.fc-scatter-zero {
+  stroke: var(--down);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+}
+
+.fc-dot {
+  fill: var(--text);
+  opacity: 0.22;
+}
+
+.fc-dot.on {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+.fc-dot-label {
+  fill: var(--text-h);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fc-axis-label {
+  fill: var(--text);
+  font-size: 11px;
+}
+
+.fc-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fc-matrix th,
+.fc-matrix td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fc-matrix th.left,
+.fc-matrix td.left {
+  text-align: left;
+}
+
+.fc-matrix th {
+  color: var(--text);
+  font-weight: 600;
+}

@@ -215,6 +215,29 @@ KAP tarafında fon OID'leri `fundOid` alanından batch halinde sorgulanır (byCr
 2000 satır tavanı); düzeltme bildirimleri (`DUZELTILMIS`) orijinal rapora tercih
 edilir. PDF indirmelerinde Java sarmalayıcısı otomatik soyulur.
 
+## Fon Karşılaştırma
+`frontend/src/FundCompare.jsx`. Metrik tablosu "ne kadar kazandırdı"yı söylüyordu ama
+üç soruyu cevaplamıyordu; her biri için bir panel eklendi:
+
+- **Risk – getiri dağılımı**: x volatilite, y 1 yıllık getiri. Tüm fon evreni soluk
+  noktalarla, seçilenler vurgulu çizilir — amaç seçimin evrende NEREDE durduğunu
+  göstermek. Sol üst "az riskle çok kazandıran", sağ alt "çok riskle kaybettiren".
+- **Korelasyon matrisi**: seçili fonların ortak günlerdeki **günlük getiri**
+  korelasyonu (fiyat seviyesi değil — iki yükselen seri seviyede her zaman ~1 verir,
+  bu sahte ilişkidir; makro panelindeki kuralın aynısı). Alttaki örtüşme tablosu
+  "aynı HİSSELERİ mi taşıyorlar" sorusunu KAP verisinden cevaplar; korelasyon ise
+  "farklı hisse taşısalar bile birlikte mi hareket ediyorlar" sorusunu fiyattan
+  cevaplar — ikisi ayrı bilgidir ve yan yana durmaları bilinçlidir.
+- **Ay ay getiri ısı haritası**: son 12 ay. Getiri istikrarlı mı, yoksa tek bir
+  patlama ayından mı geliyor? `MIN_MONTH_DAYS = 10`: yarım aylar (verinin başladığı
+  ilk günler gibi) tam ay gibi gösterilirse harita yanlış okunur, boş bırakılır.
+
+Rakamlar tarayıcıda bağımsız bir uygulamayla karşılaştırılarak doğrulandı
+(TMV/PBR korelasyonu 0,1801 ve TMV Temmuz 2026 getirisi %14,2 — ekrandakiyle birebir).
+
+Sayfada ayrıca `ShareBar` var: metrik tablosunun CSV'si ve seçili fonların dönem
+getirilerini taşıyan paylaşım kartı.
+
 ## Strateji Backtest'i
 `app/backtest/` stratejinin geçmiş verideki performansını ölçer; arayüzde **Strateji**
 sekmesi gösterir. Backtest, canlı taramanın **aynı** `compute_indicators` + `passes_filters`

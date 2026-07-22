@@ -108,6 +108,18 @@ const STRINGS = {
     fcUsdBase: 'USD bazında',
     fcUsdBaseHint:
       'Eğrileri günlük USD/TRY kuruna bölerek dolar cinsinden gösterir: nominal TL getirisi yerine reel performans.',
+    fcRiskTitle: 'Risk – getiri dağılımı',
+    fcRiskHint:
+      'Her nokta bir fon: sağa gidince risk (dalgalanma), yukarı çıkınca 1 yıllık getiri artar. Seçtiğin fonlar vurgulanır — sol üst köşe "az riskle çok kazandıran", sağ alt "çok riskle kaybettiren" bölgedir. Geçmiş dalgalanma geleceği garanti etmez.',
+    fcRiskX: 'Yıllık dalgalanma (volatilite) →',
+    fcRiskY: '↑ 1 yıllık getiri',
+    fcCorrTitle: 'Fonlar birlikte mi hareket ediyor?',
+    fcCorrHint:
+      "Günlük getirilerin korelasyonu. +1'e yakın: neredeyse aynı fon — ikisini birden almak riski dağıtmaz. 0 civarı: bağımsız hareket ederler. Aşağıdaki örtüşme tablosu aynı HİSSELERİ taşıyıp taşımadıklarını söyler; bu tablo ise farklı hisse taşısalar bile birlikte hareket edip etmediklerini gösterir.",
+    fcMonthlyTitle: 'Ay ay getiri',
+    fcMonthlyHint:
+      'Son 12 ayın aylık getirileri. Amaç: getirinin istikrarlı mı yoksa tek bir patlama ayından mı geldiğini görmek. Verisi eksik olan aylar boş bırakılır.',
+    fcShareText: (f) => `Fon karşılaştırması: ${f} — getiri, risk ve örtüşme yan yana.`,
     fcOverlapTitle: 'Portföy örtüşmesi (KAP)',
     fcOverlapHint:
       'İki fonun son açıklanan portföylerinde aynı hisselere verdiği ortak ağırlık. Yüksek örtüşme, iki fonu birden almanın çeşitlendirme sağlamadığı anlamına gelir.',
@@ -825,6 +837,18 @@ const STRINGS = {
     fcUsdBase: 'In USD',
     fcUsdBaseHint:
       'Divides the curves by the daily USD/TRY rate to show dollar-based (real) performance instead of nominal TL returns.',
+    fcRiskTitle: 'Risk vs return',
+    fcRiskHint:
+      'Each dot is a fund: further right means more risk (volatility), higher up means more 1-year return. Your selection is highlighted — the top-left corner is "high return for low risk", bottom-right is "high risk, losing money". Past volatility does not guarantee the future.',
+    fcRiskX: 'Annualised volatility →',
+    fcRiskY: '↑ 1-year return',
+    fcCorrTitle: 'Do these funds move together?',
+    fcCorrHint:
+      'Correlation of daily returns. Near +1: almost the same fund — holding both does not spread risk. Around 0: they move independently. The overlap table below tells you whether they hold the same STOCKS; this one tells you whether they move together even when they do not.',
+    fcMonthlyTitle: 'Month-by-month return',
+    fcMonthlyHint:
+      'Monthly returns over the last 12 months. The point is to see whether the return is steady or comes from a single explosive month. Months with incomplete data are left blank.',
+    fcShareText: (f) => `Fund comparison: ${f} — return, risk and overlap side by side.`,
     fcOverlapTitle: 'Portfolio overlap (KAP)',
     fcOverlapHint:
       'Shared weight the funds give to the same stocks in their latest disclosed portfolios. High overlap means holding both funds adds little diversification.',

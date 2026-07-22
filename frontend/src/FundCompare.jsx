@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { t } from './i18n'
+import { SHARE_CARD_ROWS, ShareBar } from './share'
 
 const MAX_FUNDS = 5
 
@@ -337,6 +338,148 @@ function formatMetric(fund, row, lang) {
   return '—'
 }
 
+/* ----------------------- Risk / korelasyon / aylık getiri -----------------------
+ * Metrik tablosu "ne kadar kazandırdı"yı söylüyordu ama üç soruyu cevaplamıyordu:
+ * (1) bu getiri ne kadar riskle alındı, (2) seçtiğim fonlar aslında aynı bahsin
+ * kopyası mı, (3) getiri istikrarlı mı yoksa tek bir aydan mı geliyor.
+ */
+
+/** [[date, price]] → günlük getiri haritası {YYYY-MM-DD: getiri}. */
+function dailyReturns(points) {
+  const out = new Map()
+  if (!points?.length) return out
+  let prev = null
+  for (const [day, raw] of points) {
+    const px = Number(raw)
+    if (!(px > 0)) continue
+    if (prev != null) out.set(day, px / prev - 1)
+    prev = px
+  }
+  return out
+}
+
+/**
+ * İki getiri serisinin ortak günlerdeki Pearson korelasyonu.
+ * Fiyat SEVİYESİ değil GETİRİ kullanılır: iki yükselen seri seviyede neredeyse
+ * her zaman ~1 korelasyon verir ve bu sahte bir ilişkidir (makro panelinde de
+ * aynı kural geçerli).
+ */
+function correlationOf(a, b, minDays = 20) {
+  const xs = []
+  const ys = []
+  for (const [day, va] of a) {
+    const vb = b.get(day)
+    if (vb != null) {
+      xs.push(va)
+      ys.push(vb)
+    }
+  }
+  if (xs.length < minDays) return null
+  const n = xs.length
+  const mx = xs.reduce((s, v) => s + v, 0) / n
+  const my = ys.reduce((s, v) => s + v, 0) / n
+  let num = 0
+  let dx = 0
+  let dy = 0
+  for (let i = 0; i < n; i += 1) {
+    const a1 = xs[i] - mx
+    const b1 = ys[i] - my
+    num += a1 * b1
+    dx += a1 * a1
+    dy += b1 * b1
+  }
+  const den = Math.sqrt(dx * dy)
+  if (!(den > 0)) return null
+  return num / den
+}
+
+/** Ay ay getiri: {'2026-03': 0.041, ...}. Yarım aylar atılır (bkz. MIN_MONTH_DAYS). */
+const MIN_MONTH_DAYS = 10
+
+function monthlyReturns(points) {
+  const byMonth = new Map()
+  for (const [day, raw] of points || []) {
+    const px = Number(raw)
+    if (!(px > 0)) continue
+    const key = day.slice(0, 7)
+    if (!byMonth.has(key)) byMonth.set(key, [])
+    byMonth.get(key).push(px)
+  }
+  const out = new Map()
+  for (const [key, pxs] of byMonth) {
+    // Kısmi ay (ör. verinin başladığı ilk birkaç gün) tam bir ay gibi
+    // gösterilirse ısı haritası yanlış okunur; boş bırakmak dürüst olan.
+    if (pxs.length < MIN_MONTH_DAYS) continue
+    out.set(key, pxs[pxs.length - 1] / pxs[0] - 1)
+  }
+  return out
+}
+
+/** Korelasyon/ısı haritası hücresinin rengi (yeşil-kırmızı, 0 = nötr). */
+function heatColor(value, max = 1) {
+  if (value == null) return 'transparent'
+  const ratio = Math.max(-1, Math.min(1, value / max))
+  const alpha = 0.12 + Math.abs(ratio) * 0.5
+  return ratio >= 0 ? `rgba(22, 163, 74, ${alpha})` : `rgba(220, 38, 38, ${alpha})`
+}
+
+/** Risk-getiri dağılımı: x = volatilite, y = 1 yıllık getiri. */
+function RiskReturnScatter({ universe, selected, lang }) {
+  const pts = useMemo(
+    () =>
+      (universe || [])
+        .filter((f) => f.volatility != null && f.return_1y != null)
+        .map((f) => ({ symbol: f.symbol, x: f.volatility, y: f.return_1y, on: selected.includes(f.symbol) })),
+    [universe, selected],
+  )
+
+  if (pts.length < 3) return null
+
+  const W = 640
+  const H = 320
+  const pad = { l: 54, r: 16, t: 14, b: 34 }
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  const x0 = 0
+  const x1 = Math.max(...xs) * 1.05
+  const y0 = Math.min(0, Math.min(...ys)) * 1.05
+  const y1 = Math.max(...ys) * 1.05
+  const px = (v) => pad.l + ((v - x0) / (x1 - x0 || 1)) * (W - pad.l - pad.r)
+  const py = (v) => H - pad.b - ((v - y0) / (y1 - y0 || 1)) * (H - pad.t - pad.b)
+
+  return (
+    <div className="fc-scatter-wrap">
+      <svg className="fc-scatter" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'fcRiskTitle')}>
+        {/* Sıfır getiri çizgisi: üstü kazandıran, altı kaybettiren bölge */}
+        {y0 < 0 && (
+          <line x1={pad.l} x2={W - pad.r} y1={py(0)} y2={py(0)} className="fc-scatter-zero" />
+        )}
+        <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} className="fc-scatter-axis" />
+        <line x1={pad.l} x2={pad.l} y1={pad.t} y2={H - pad.b} className="fc-scatter-axis" />
+        {pts
+          .slice()
+          .sort((a, b) => Number(a.on) - Number(b.on)) // seçililer en üstte çizilsin
+          .map((p) => (
+            <g key={p.symbol}>
+              <circle cx={px(p.x)} cy={py(p.y)} r={p.on ? 6 : 3} className={p.on ? 'fc-dot on' : 'fc-dot'} />
+              {p.on && (
+                <text x={px(p.x) + 9} y={py(p.y) + 4} className="fc-dot-label">
+                  {p.symbol}
+                </text>
+              )}
+            </g>
+          ))}
+        <text x={W - pad.r} y={H - 8} className="fc-axis-label" textAnchor="end">
+          {t(lang, 'fcRiskX')}
+        </text>
+        <text x={4} y={pad.t + 8} className="fc-axis-label">
+          {t(lang, 'fcRiskY')}
+        </text>
+      </svg>
+    </div>
+  )
+}
+
 /**
  * Fonaly tarzı yan yana karşılaştırma: fon seçimi, normalize getiri eğrisi,
  * benchmark katmanları ve metrik tablosu.
@@ -471,7 +614,42 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
   }, [selected, fundHoldings])
 
   const selectedFunds = selected.map((s) => bySymbol.get(s)).filter(Boolean)
+  const activePeriod = PERIODS.find((p) => p.key === period)
   const benchmarks = Object.entries(prices?.benchmarks || {})
+
+  // Korelasyon: seçili fonların ortak günlerdeki GÜNLÜK GETİRİ ilişkisi.
+  // Örtüşme tablosu "aynı hisseleri mi taşıyorlar" sorusunu KAP verisinden
+  // cevaplıyor; bu ise "farklı hisse taşısalar bile birlikte mi hareket
+  // ediyorlar" sorusunu fiyattan cevaplıyor — ikisi ayrı bilgi.
+  const correlations = useMemo(() => {
+    if (selected.length < 2) return null
+    const rets = new Map()
+    for (const sym of selected) {
+      const pts = prices?.series?.[sym]
+      if (pts?.length) rets.set(sym, dailyReturns(pts))
+    }
+    const syms = selected.filter((sym) => rets.has(sym))
+    if (syms.length < 2) return null
+    const grid = syms.map((a) => syms.map((b) => (a === b ? 1 : correlationOf(rets.get(a), rets.get(b)))))
+    return { syms, grid }
+  }, [selected, prices])
+
+  // Aylık getiri ısı haritası: getiri istikrarlı mı, yoksa tek bir aydan mı geliyor?
+  const monthly = useMemo(() => {
+    if (!selected.length) return null
+    const perFund = new Map()
+    const monthSet = new Set()
+    for (const sym of selected) {
+      const pts = prices?.series?.[sym]
+      if (!pts?.length) continue
+      const m = monthlyReturns(pts)
+      if (!m.size) continue
+      perFund.set(sym, m)
+      for (const key of m.keys()) monthSet.add(key)
+    }
+    if (!perFund.size) return null
+    return { months: [...monthSet].sort().slice(-12), perFund }
+  }, [selected, prices])
 
   if (loading) return <div className="empty-box">{t(lang, 'fundCompareLoading')}</div>
   if (error) return <div className="error-box">{error}</div>
@@ -591,6 +769,29 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
       {selectedFunds.length > 0 && (
         <section className="fc-section">
           <h2 className="today-title">{t(lang, 'fundCompareMetrics')}</h2>
+          <ShareBar
+            lang={lang}
+            csv={{
+              filename: `fon-karsilastirma-${selected.join('-')}.csv`,
+              header: ['Metrik', ...selectedFunds.map((f) => f.symbol)],
+              rows: () =>
+                METRIC_ROWS.map((row) => [
+                  row.i18nKey ? t(lang, row.i18nKey) : row.label,
+                  ...selectedFunds.map((f) => f[row.key] ?? ''),
+                ]),
+            }}
+            card={{
+              title: t(lang, 'tabFundCompare'),
+              subtitle: `${t(lang, 'fundCompareChartTitle')} · ${lang === 'en' ? activePeriod?.labelEn : activePeriod?.label}`,
+              filename: `fon-karsilastirma-${new Date().toISOString().slice(0, 10)}.png`,
+              rows: chartLines.slice(0, SHARE_CARD_ROWS).map((line) => ({
+                label: line.label,
+                value: line.ret == null ? '—' : formatPct(line.ret, 1),
+                tone: pctTone(line.ret),
+              })),
+            }}
+            shareText={t(lang, 'fcShareText', selectedFunds.map((f) => f.symbol).join(', '))}
+          />
           <div className="table-wrap">
             <table className="fc-table">
               <thead>
@@ -619,6 +820,80 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
                     {selectedFunds.map((f) => (
                       <td key={f.symbol}>{formatMetric(f, row, lang)}</td>
                     ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="fc-section">
+        <h2 className="today-title">{t(lang, 'fcRiskTitle')}</h2>
+        <p className="fc-overlap-hint">{t(lang, 'fcRiskHint')}</p>
+        <RiskReturnScatter universe={list} selected={selected} lang={lang} />
+      </section>
+
+      {correlations && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fcCorrTitle')}</h2>
+          <p className="fc-overlap-hint">{t(lang, 'fcCorrHint')}</p>
+          <div className="table-wrap">
+            <table className="fc-matrix">
+              <thead>
+                <tr>
+                  <th className="left" />
+                  {correlations.syms.map((sym) => (
+                    <th key={sym}>{sym}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {correlations.syms.map((rowSym, i) => (
+                  <tr key={rowSym}>
+                    <td className="left"><strong>{rowSym}</strong></td>
+                    {correlations.grid[i].map((v, j) => (
+                      <td
+                        key={correlations.syms[j]}
+                        style={{ background: i === j ? 'transparent' : heatColor(v) }}
+                      >
+                        {v == null ? '—' : v.toFixed(2)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {monthly && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fcMonthlyTitle')}</h2>
+          <p className="fc-overlap-hint">{t(lang, 'fcMonthlyHint')}</p>
+          <div className="table-wrap">
+            <table className="fc-matrix">
+              <thead>
+                <tr>
+                  <th className="left" />
+                  {monthly.months.map((m) => (
+                    <th key={m}>{`${m.slice(5)}/${m.slice(2, 4)}`}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...monthly.perFund.entries()].map(([sym, map]) => (
+                  <tr key={sym}>
+                    <td className="left"><strong>{sym}</strong></td>
+                    {monthly.months.map((m) => {
+                      const v = map.get(m)
+                      return (
+                        <td key={m} style={{ background: heatColor(v, 0.15) }}>
+                          {v == null ? '' : formatPct(v, 1)}
+                        </td>
+                      )
+                    })}
                   </tr>
                 ))}
               </tbody>
