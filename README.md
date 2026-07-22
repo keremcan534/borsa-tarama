@@ -348,6 +348,26 @@ ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu 
   listeleri değişince). S&P 500 için de çalıştırılabilir ama şimdilik yalnızca BIST
   indirildi (ana pazar; 500 ABD logosu repoyu ~1 MB büyütür).
 
+## Fon Logoları
+`scripts/build_fund_logos.py` -> `frontend/public/fund-logos/*.png` + manifest ->
+arayüzde aynı `TickerLogo`. Hisse logolarıyla aynı felsefe, farklı anahtar: bir
+fonun kendi logosu yoktur, onu YÖNETEN portföy şirketinin logosu vardır. "PUSULA
+PORTFÖY BİRİNCİ DEĞİŞKEN FON" ve "PUSULA PORTFÖY HİSSE FONU" ikisi de Pusula
+Portföy'ün logosunu gösterir — bir bankanın tüm fonlarının banka logosunu
+göstermesi gibi. Böylece 120 fon için yalnızca ~41 logo iner.
+
+- Manifest FON KODU değil ŞİRKET SLUG'ı ile anahtarlanır (`{ "pusulaportfoy":
+  "pusulaportfoy.png" }`). Arayüz fon ADINDAN şirketi çıkarıp (`fundCompanySlug`,
+  backend'deki `company_slug` ile aynı) slug'a çevirir. Fon kodu -> slug haritası
+  fon listesi yüklenince kurulur ve `LogoContext`'e konur; böylece `TickerLogo`
+  bir fon kodu görünce (adı elinde olmadan) doğru logoya ulaşır, çağrı yerleri
+  değişmez.
+- Domain tahmini: TEFAS şirketleri neredeyse istisnasız `{slug}.com.tr` ya da
+  `{slug}.com`. Uymayanlar `DOMAIN_OVERRIDES` ile (ör. Garanti Portföy ->
+  garantibbvaportfoy.com.tr — marka değişimi). **37/41 şirkette** logo bulundu
+  (~90 KB); kalan 4 (Astra/Deniz/Nurol/Piramit) faviconu bulunamadığından o
+  şirketin fonları monograma düşer.
+
 ## Sektör Dağılımı
 Tarama tablosunun üstünde sinyallerin sektör dağılımı chip'lerle gösterilir (filtreye
 göre canlı güncellenir). Amacı süs değil: sinyaller tek sektörde yoğunlaşmışsa liste

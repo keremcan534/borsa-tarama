@@ -147,6 +147,43 @@ export function logoUrl(manifest, symbol) {
   return file ? `${import.meta.env.BASE_URL}logos/${file}` : null;
 }
 
+/**
+ * Fon logosu: bir fonun kendi logosu yoktur, onu yöneten PORTFÖY ŞİRKETİNİN
+ * logosu vardır (Pusula Portföy'ün tüm fonları aynı logoyu gösterir). Manifest
+ * şirket slug'ıyla anahtarlanır (scripts/build_fund_logos.py); slug fon adından
+ * çıkarılır. Bu fonksiyonun AYNISI backend'de var (company_slug); değişirse ikisi de.
+ */
+export function fundCompanySlug(fundName) {
+  if (!fundName) return null;
+  const m = /^(.*?portf[öo]y)\b/i.exec(fundName);
+  if (!m) return null;
+  return m[1]
+    .replace(/İ/g, "i").replace(/I/g, "i").replace(/ı/g, "i")
+    .replace(/Ş/g, "s").replace(/ş/g, "s").replace(/Ğ/g, "g").replace(/ğ/g, "g")
+    .replace(/Ü/g, "u").replace(/ü/g, "u").replace(/Ö/g, "o").replace(/ö/g, "o")
+    .replace(/Ç/g, "c").replace(/ç/g, "c")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+export async function fetchFundLogoManifest() {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}fund-logos/index.json`);
+    if (!res.ok) return {};
+    if (!(res.headers.get("content-type") || "").includes("json")) return {};
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+
+/** Fon şirketi logosunun URL'i (slug manifestte varsa), yoksa null. */
+export function fundLogoUrl(manifest, slug) {
+  const file = slug ? manifest?.[slug] : null;
+  return file ? `${import.meta.env.BASE_URL}fund-logos/${file}` : null;
+}
+
 /** Sinyal karnesi arşivi: her taramanın taze sinyalleri, fiyatıyla mühürlenmiş.
  * Arşiv birikene kadar 404/az gün normaldir (kayıt ileriye doğru dolar). */
 export async function fetchSignalLog() {

@@ -15,8 +15,11 @@ import {
   fetchStockPositions,
   fetchFx,
   fetchSignalLog,
+  fetchFundLogoManifest,
   fetchLogoManifest,
   fetchPriceIndex,
+  fundCompanySlug,
+  fundLogoUrl,
   logoUrl,
   fetchStockSeriesMany,
   STATIC_MODE,
@@ -623,10 +626,13 @@ function scoreTone(score) {
  * bırakıyordu. Artık tek nötr yüzey kullanılıyor — rozet bir dekor değil,
  * satırı taramayı kolaylaştıran tipografik bir işaret.
  */
-/* Logo manifesti tüm ağaca Context ile dağıtılır: TickerLogo onlarca yerde
- * prop'suz çağrılıyor, prop drilling anlamsız olurdu. Varsayılan boş obje —
- * sağlayıcı yüklemeden önce (veya logo hiç üretilmemişse) herkes monograma düşer. */
-const LogoContext = createContext({})
+/* Logo manifestleri tüm ağaca Context ile dağıtılır: TickerLogo onlarca yerde
+ * prop'suz çağrılıyor, prop drilling anlamsız olurdu. Değer:
+ *   { stocks: {SEMBOL: dosya}, fundCompanies: {slug: dosya}, fundCodeToSlug: {KOD: slug} }
+ * Hisse logosu doğrudan sembolden; fon logosu ise fon kodu -> şirket slug -> logo
+ * zinciriyle bulunur (bir fonun kendi logosu yok, yöneten portföy şirketininki var).
+ * Varsayılan boş — manifestler yüklenmeden herkes monograma düşer. */
+const LogoContext = createContext({ stocks: {}, fundCompanies: {}, fundCodeToSlug: {} })
 
 /**
  * Sembol rozeti: manifestte gerçek logosu varsa onu, yoksa koddan türetilen iki
@@ -643,10 +649,15 @@ const LogoContext = createContext({})
  * net: satır render olunca logosu iner.
  */
 function TickerLogo({ symbol }) {
-  const manifest = useContext(LogoContext)
+  const { stocks, fundCompanies, fundCodeToSlug } = useContext(LogoContext)
   const label = displaySymbol(symbol)
   const [failed, setFailed] = useState(false)
-  const url = logoUrl(manifest, symbol)
+
+  // Önce fon mu diye bakılır: sembol bir fon koduysa (PBR gibi) şirket slug'ından
+  // logo aranır. Değilse hisse manifestinde sembolle aranır. Fon kodları hisse
+  // sembolleriyle çakışmaz (fonlar 3 harf, BIST'te .IS eki var).
+  const fundSlug = fundCodeToSlug?.[symbol]
+  const url = fundSlug ? fundLogoUrl(fundCompanies, fundSlug) : logoUrl(stocks, symbol)
 
   if (url && !failed) {
     return (
@@ -6443,6 +6454,10 @@ function App() {
   const [funds, setFunds] = useState(null)
   const [fundsLoading, setFundsLoading] = useState(false)
   const [fundsError, setFundsError] = useState(null)
+  // Logo manifestleri bir kez, açılışta yüklenir (birkaç KB). Hisse: sembol->dosya.
+  // Fon şirketi: slug->dosya. Yüklenene kadar boş; TickerLogo'lar monogram gösterir.
+  const [stockLogos, setStockLogos] = useState({})
+  const [fundLogos, setFundLogos] = useState({})
   const [fundPrices, setFundPrices] = useState(null)
   const [fundPricesReady, setFundPricesReady] = useState(false)
   const [fundPricesLoading, setFundPricesLoading] = useState(false)
@@ -6987,6 +7002,35 @@ function App() {
     }
   }, [view, chartSymbol, dividendsReady])
 
+  // Logo manifestleri: açılışta bir kez (birkaç KB). Hem hisse hem fon şirketi.
+  useEffect(() => {
+    let iptal = false
+    Promise.all([fetchLogoManifest(), fetchFundLogoManifest()]).then(([hisse, fon]) => {
+      if (iptal) return
+      setStockLogos(hisse || {})
+      setFundLogos(fon || {})
+    })
+    return () => {
+      iptal = true
+    }
+  }, [])
+
+  // Fon kodu -> şirket slug haritası: fon listesi yüklenince adlardan türetilir.
+  // TickerLogo bir fon kodu görünce (adı elinde olmadan) şirketini bununla bulur.
+  const fundCodeToSlug = useMemo(() => {
+    const map = {}
+    for (const f of funds?.results || []) {
+      const slug = fundCompanySlug(f.name)
+      if (slug) map[f.symbol] = slug
+    }
+    return map
+  }, [funds])
+
+  const logoCtx = useMemo(
+    () => ({ stocks: stockLogos, fundCompanies: fundLogos, fundCodeToSlug }),
+    [stockLogos, fundLogos, fundCodeToSlug],
+  )
+
   // Makro panel: yalnızca kendi sekmesinde.
   useEffect(() => {
     if (view !== 'macro' || macroReady) return
@@ -7380,6 +7424,7 @@ function App() {
   }
 
   return (
+    <LogoContext.Provider value={logoCtx}>
     <div className="layout">
       {/* Ambient aurora arka plan: içeriğin arkasında yavaşça süzülen bulanık
           renk lekeleri (mesh gradient). Kartların gerisinde kalır, okunabilirliği
@@ -8286,29 +8331,14 @@ function App() {
       {shareMsg && <div className="toast" role="status">{shareMsg}</div>}
       </main>
     </div>
+    </LogoContext.Provider>
   )
 }
 
 export default function Root() {
-  // Logo manifesti bir kez, açılışta yüklenir (birkaç KB) ve tüm ağaca Context ile
-  // dağıtılır. Yüklenene kadar boş obje: TickerLogo'lar önce monogram gösterir,
-  // manifest gelince gerçek logosu olanlar kendiliğinden logoya döner.
-  const [logos, setLogos] = useState({})
-  useEffect(() => {
-    let iptal = false
-    fetchLogoManifest().then((m) => {
-      if (!iptal) setLogos(m || {})
-    })
-    return () => {
-      iptal = true
-    }
-  }, [])
-
   return (
     <ErrorBoundary>
-      <LogoContext.Provider value={logos}>
-        <App />
-      </LogoContext.Provider>
+      <App />
     </ErrorBoundary>
   )
 }
