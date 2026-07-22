@@ -660,6 +660,7 @@ const STRINGS = {
     dvdWhatBody:
       'Verim = son 12 ayda ödenen toplam temettü ÷ bugünkü fiyat. Örnek: fiyat 100 ₺, yıl içinde 8 ₺ temettü ödendiyse verim %8. Bu GEÇMİŞ ödemedir, gelecek yıl aynısı ödenecek diye bir garanti yoktur.',
     dvdYieldNone: 'ödeme yok',
+    dvdUpcomingMore: (n) => `+${n} tarih daha (tabloda)`,
     // Makro panel
     tabMacro: 'Makro',
     macroTitle: 'Makro Panel',
@@ -1339,6 +1340,7 @@ const STRINGS = {
     dvdWhatBody:
       'Yield = total dividends paid in the last 12 months ÷ today\'s price. Example: price 100, 8 paid during the year → 8% yield. This is a PAST payment; there is no guarantee next year matches it.',
     dvdYieldNone: 'no payment',
+    dvdUpcomingMore: (n) => `+${n} more dates (in the table)`,
     // Macro panel
     tabMacro: 'Macro',
     macroTitle: 'Macro Panel',

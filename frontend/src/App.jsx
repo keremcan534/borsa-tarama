@@ -5859,23 +5859,44 @@ function MacroView({ data, loading, lang }) {
  * Satır açıldığında ödemelerin kendisi gösterilir: rakamın doğrulanabilir
  * olması, hazır bir "verim" alanını olduğu gibi basmaktan daha değerli. */
 
+// Yaklaşan temettü şeridinde en fazla bu kadar kart gösterilir. Canlıda ölçüldü:
+// 99 yaklaşan ödeme yatay bir kaydırma canavarına dönüşüyordu; şerit "sıradaki
+// birkaç tarih" içindir, tam liste zaten aşağıdaki tabloda.
+const DIVIDEND_UPCOMING_LIMIT = 20
+
 function DividendsView({ data, loading, lang, onOpenChart }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(() => new Set())
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
 
+  // BIST / Global ayrımı — haber akışıyla aynı sebep: taranan hisselerin çoğu ABD
+  // (S&P 500: 409, BIST: 61) olduğundan tek liste, BIST yatırımcısını kendi
+  // hisselerini bulamadığı bir ABD akışında bırakıyordu. Seçim hatırlanır.
+  const [scope, setScopeState] = useState(() => {
+    const saved = localStorage.getItem('dividends_scope')
+    return saved === 'global' || saved === 'bist' ? saved : 'bist'
+  })
+  const setScope = (next) => {
+    setScopeState(next)
+    localStorage.setItem('dividends_scope', next)
+  }
+
+  const scoped = useMemo(
+    () => (data?.items || []).filter((i) => (scope === 'bist') === isBistSymbol(i.symbol)),
+    [data, scope],
+  )
+
   const items = useMemo(() => {
     const q = query.trim().toUpperCase()
-    const rows = data?.items || []
-    return q ? rows.filter((r) => r.symbol.toUpperCase().includes(q)) : rows
-  }, [data, query])
+    return q ? scoped.filter((r) => r.symbol.toUpperCase().includes(q)) : scoped
+  }, [scoped, query])
 
   const upcoming = useMemo(
     () =>
-      (data?.items || [])
+      scoped
         .filter((i) => i.next_ex_date)
         .sort((a, b) => a.next_ex_date.localeCompare(b.next_ex_date)),
-    [data],
+    [scoped],
   )
 
   const toggle = (symbol) =>
@@ -5895,13 +5916,29 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
         <h2 className="today-title">{t(lang, 'dvdTitle')}</h2>
         <p className="today-note">{t(lang, 'dvdIntro')}</p>
 
+        <div className="tabs news-scope-tabs" role="group" aria-label={t(lang, 'dvdTitle')}>
+          {[
+            { key: 'bist', i18nKey: 'todayScopeBist' },
+            { key: 'global', i18nKey: 'todayScopeGlobal' },
+          ].map((sc) => (
+            <button
+              key={sc.key}
+              type="button"
+              className={`tab ${scope === sc.key ? 'active' : ''}`}
+              onClick={() => setScope(sc.key)}
+            >
+              {t(lang, sc.i18nKey)}
+            </button>
+          ))}
+        </div>
+
         <h3 className="div-sub">{t(lang, 'dvdUpcoming')}</h3>
         <p className="today-note">{t(lang, 'dvdUpcomingHint', 90)}</p>
         {upcoming.length === 0 ? (
           <p className="flow-empty">{t(lang, 'dvdNoUpcoming')}</p>
         ) : (
           <div className="div-upcoming">
-            {upcoming.map((i) => (
+            {upcoming.slice(0, DIVIDEND_UPCOMING_LIMIT).map((i) => (
               <button key={i.symbol} type="button" className="div-up-card" onClick={() => onOpenChart(i.symbol)}>
                 <TickerLogo symbol={i.symbol} />
                 <span className="div-up-code">{displaySymbol(i.symbol)}</span>
@@ -5909,13 +5946,20 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
                 <span className="div-up-days">{t(lang, 'dvdDays', i.days_to_ex)}</span>
               </button>
             ))}
+            {upcoming.length > DIVIDEND_UPCOMING_LIMIT && (
+              <span className="div-up-more">
+                {t(lang, 'dvdUpcomingMore', upcoming.length - DIVIDEND_UPCOMING_LIMIT)}
+              </span>
+            )}
           </div>
         )}
       </section>
 
       <section className="today-section">
         <div className="div-toolbar">
-          <span className="div-count">{t(lang, 'dvdCount', data.count, data.upcoming_count)}</span>
+          {/* Sayaç seçili kapsamı anlatmalı: toplam sayı, ekranda görülenle
+              uyuşmayınca "hani nerede?" sorusunu doğuruyordu. */}
+          <span className="div-count">{t(lang, 'dvdCount', scoped.length, upcoming.length)}</span>
           <input
             className="search-input"
             type="search"

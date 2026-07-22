@@ -4171,3 +4171,13 @@ tr.alert-hit td {
     max-width: none;
   }
 }
+
+.div-up-more {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}

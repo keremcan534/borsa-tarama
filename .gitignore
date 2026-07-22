@@ -20,3 +20,6 @@ frontend/public/robots.txt
 
 # Claude Code local-only settings
 .claude/settings.local.json
+
+# Geçici çalışma dosyaları (canlı JSON kopyaları vb.)
+.tmp/
