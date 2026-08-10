@@ -72,6 +72,68 @@ def fetch_previous_flows() -> dict:
 
 
 # Skor/sinyal geçmişi (değişim raporu) için gün sayısı tavanı
+# Bir ons = 31.1034768 gram (gram altın fiyatı buradan türetilir)
+GRAM_PER_OUNCE = 31.1034768
+
+
+def build_macro_payload(benchmarks: dict) -> dict:
+    """Makro şerit verisi: son değer + günlük değişim (döviz, altın, endeks).
+
+    Kaynak, karşılaştırma için zaten çekilmiş olan benchmark serileridir; ek ağ
+    isteği yoktur. Gram altın piyasada doğrudan sembolü olmayan ama TR'de en çok
+    bakılan büyüklük — ons fiyatı x USD/TRY / 31.1 ile hesaplanır.
+    """
+
+    def last_two(symbol: str) -> tuple[float, float] | None:
+        pts = (benchmarks.get(symbol) or {}).get("points") or []
+        if len(pts) < 2:
+            return None
+        return float(pts[-1][1]), float(pts[-2][1])
+
+    items = []
+
+    def add(key: str, name: str, unit: str, cur: float, prev: float) -> None:
+        if not (cur > 0 and prev > 0):
+            return
+        items.append(
+            {
+                "key": key,
+                "name": name,
+                "unit": unit,
+                "value": round(cur, 4),
+                "change": round(cur / prev - 1, 6),
+            }
+        )
+
+    usd = last_two("USDTRY=X")
+    eur = last_two("EURTRY=X")
+    gold = last_two("GC=F")
+
+    if usd:
+        add("USDTRY", "Dolar", "₺", *usd)
+    if eur:
+        add("EURTRY", "Euro", "₺", *eur)
+    # Gram altın: ons(USD) x USD/TRY / 31.1 — iki serinin de aynı günleri olması
+    # şart değil, her iki serinin son ve bir önceki kapanışı yeterli.
+    if gold and usd:
+        add(
+            "XAUTRY",
+            "Gram Altın",
+            "₺",
+            gold[0] * usd[0] / GRAM_PER_OUNCE,
+            gold[1] * usd[1] / GRAM_PER_OUNCE,
+        )
+    if gold:
+        add("XAUUSD", "Ons Altın", "$", *gold)
+    # Endeksler (BIST/S&P) bilinçli olarak yok: "Piyasa nabzı" kartları zaten
+    # onları gösteriyor, şeritte tekrar etmesinler.
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "items": items,
+    }
+
+
 SCORE_HISTORY_DAYS = 30
 
 
@@ -256,6 +318,7 @@ def main() -> None:
     for symbol, name in (
         ("XU100.IS", "BIST 100"),
         ("USDTRY=X", "USD/TRY"),
+        ("EURTRY=X", "EUR/TRY"),
         ("GC=F", "Altın (ons)"),
     ):
         try:
@@ -284,6 +347,15 @@ def main() -> None:
     print(
         f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
     )
+
+    # Makro şerit ("Bugün" sayfasının en üstü): döviz, altın, endeks. Ayrı ve
+    # küçük bir dosya — açılış sayfası bunun için koca fund_prices.json'ı
+    # indirmesin. Veriler yukarıdaki benchmark serilerinden türetilir, ek istek yok.
+    macro_path = out_dir / "macro.json"
+    macro_path.write_text(
+        json.dumps(build_macro_payload(benchmarks), ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"[MAKRO] -> {macro_path}")
 
     # Fon akışı arşivi: günlük yatırımcı sayıları birikir; arayüz bundan
     # "son 7/30 günde en çok yatırımcı kazanan/kaybeden" listesini üretir.

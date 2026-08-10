@@ -3471,3 +3471,70 @@ tr.alert-hit td {
   bottom: 8px;
   color: var(--down);
 }
+
+/* ---------- makro şerit (döviz / altın / endeks) ---------- */
+
+.macro-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.macro-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  /* Grid/flex öğelerinin varsayılan min-width:auto'su, içerideki nowrap
+     metinlerle birlikte kutuyu izinden taşırıyordu. */
+  min-width: 0;
+}
+
+.macro-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.macro-value {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+.macro-change {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Dar ekranda ad, değerin yanında sıkışıp kırpılıyordu ("D…", "G…"):
+   iki satıra ayırıp adı tam okunur bırak. */
+@media (max-width: 560px) {
+  .macro-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .macro-item {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    padding: 8px 11px;
+  }
+  /* Ad kendi satırına geçer; değer + değişim altta yan yana kalır */
+  .macro-name {
+    flex-basis: 100%;
+    font-size: 11px;
+  }
+  .macro-value {
+    margin-left: 0;
+    font-size: 15px;
+  }
+}

@@ -6,6 +6,7 @@ import {
   fetchDailyOverview,
   fetchEnabledMarkets,
   fetchFundFlows,
+  fetchMacro,
   fetchScoreHistory,
   fetchFundPrices,
   fetchFunds,
@@ -2763,6 +2764,34 @@ function SectorHeatmap({ overview, allMarkets, lang }) {
 }
 
 /**
+ * Makro şerit: dolar, euro, gram altın, ons altın, BIST — TR'de bir finans
+ * sayfasına girildiğinde ilk bakılan rakamlar. Sayfanın en üstünde, tek satır.
+ * Veri küçük ayrı bir dosyadan (macro.json) gelir.
+ */
+function MacroStrip({ macro, lang }) {
+  const items = macro?.items || []
+  if (!items.length) return null
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+  const fmt = (v, unit) => {
+    // Kur/gram gibi küçük sayılarda 2 hane, endeks gibi büyüklerde 0 hane okunur
+    const digits = v >= 1000 ? 0 : 2
+    const n = v.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    return unit ? `${n} ${unit}` : n
+  }
+  return (
+    <div className="macro-strip">
+      {items.map((it) => (
+        <div key={it.key} className="macro-item">
+          <span className="macro-name">{it.name}</span>
+          <strong className="macro-value">{fmt(it.value, it.unit)}</strong>
+          <span className={`macro-change pct ${pctTone(it.change)}`}>{formatPct(it.change, 2)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
  * "Bugün": kullanıcıyı doğrudan ham tabloya düşürmek yerine günün özetini veren
  * açılış sayfası. Buradaki her blok, detayı olan bir sekmeye kapı açar.
  */
@@ -2772,6 +2801,7 @@ function TodayView({
   funds,
   news,
   scores,
+  macro,
   lang,
   loading,
   error,
@@ -2860,6 +2890,7 @@ function TodayView({
 
   return (
     <div className="today">
+      <MacroStrip macro={macro} lang={lang} />
       <div className="status-bar">
         <span>{t(lang, 'todayIntro')}</span>
         {generatedAt && (
@@ -4370,6 +4401,8 @@ function App() {
   const [onlyFundWatchlist, setOnlyFundWatchlist] = useState(false)
   const [fundFlows, setFundFlows] = useState(null)
   const [fundFlowsReady, setFundFlowsReady] = useState(false)
+  const [macro, setMacro] = useState(null)
+  const [macroReady, setMacroReady] = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false)
   const [stockPrices, setStockPrices] = useState(null)
@@ -4733,6 +4766,23 @@ function App() {
       cancelled = true
     }
   }, [view, fundFlowsReady])
+
+  // Makro şerit yalnızca "Bugün" sayfasında gerekir; dosya küçük, bir kez yüklenir.
+  useEffect(() => {
+    if (view !== 'today' || macroReady) return
+    let cancelled = false
+    fetchMacro()
+      .then((result) => {
+        if (!cancelled) setMacro(result)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setMacroReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, macroReady])
 
   // Skor geçmişi: Bugün sayfasında (değişim raporu) ve bir hisse grafiği açılınca
   // (detaydaki skor geçmişi sparkline'ı) gerekir.
@@ -5189,6 +5239,7 @@ function App() {
             funds={funds}
             news={news}
             scores={scoreHistory}
+            macro={macro}
             lang={lang}
             allMarkets={activeMarkets}
             loading={overviewLoading}
