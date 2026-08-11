@@ -458,11 +458,11 @@ const STRINGS = {
     colAlphaPct: 'Alfa %',
     colBeta: 'Beta',
     colSortinoTitle:
-      'Sortino: Sharpe gibi, ama paydada yalnızca düşüş günleri var. Yukarı yönlü oynaklık ceza değildir; yatırımcıyı rahatsız eden aşağı yönlü olandır. Yüksek olması iyidir.',
+      'Sortino: Sharpe gibi, ama paydada yalnızca düşüş günleri var ve getiri para piyasası fonlarının (risksiz) getirisine göre ölçülür. Yukarı yönlü oynaklık ceza değildir; yatırımcıyı rahatsız eden aşağı yönlü olandır. Yüksek olması iyidir.',
     colCalmarTitle:
       'Calmar: yıllık bileşik getiri / en büyük düşüş. "Bu getiri için yolda ne kadar acı çektim" sorusunun cevabı. En az 6 aylık geçmiş gerektirir.',
     colAlphaTitle:
-      "Jensen alfası: fonun BIST 100'e göre betasının hak ettiği getirinin ÜSTÜNDE ürettiği yıllık fazla getiri. Pozitif alfa, piyasa riskiyle açıklanamayan katkıdır.",
+      "Jensen alfası: fonun BIST 100'e göre betasının hak ettiği getirinin ÜSTÜNDE ürettiği yıllık fazla getiri. Pozitif alfa, piyasa riskiyle açıklanamayan katkıdır. Risksiz getiri olarak para piyasası fonlarının medyan getirisi alınır.",
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
     // Değişim kolonu her zaman diliminde SON KAPANMIŞ mumun değişimidir; günlükte
     // bu "bugün"dür ama haftalıkta son tamamlanan haftadır — "Bugün" yazamayız.
@@ -1284,11 +1284,11 @@ const STRINGS = {
     colAlphaPct: 'Alpha %',
     colBeta: 'Beta',
     colSortinoTitle:
-      'Sortino: like Sharpe, but only downside days count in the denominator. Upside volatility is not a punishment — the downside is what hurts. Higher is better.',
+      'Sortino: like Sharpe, but only downside days count in the denominator and returns are measured against the (risk-free) return of money-market funds. Upside volatility is not a punishment — the downside is what hurts. Higher is better.',
     colCalmarTitle:
       'Calmar: compound annual return / worst drawdown. It answers "how much pain did this return cost along the way". Needs at least 6 months of history.',
     colAlphaTitle:
-      'Jensen alpha: the annual excess return the fund produced ABOVE what its beta to the BIST 100 deserved. Positive alpha is the part market risk cannot explain.',
+      'Jensen alpha: the annual excess return the fund produced ABOVE what its beta to the BIST 100 deserved. Positive alpha is the part market risk cannot explain. The risk-free rate is the median return of money-market funds.',
     colChangeTitle: 'Change of the last close versus the previous close.',
     changeColLabels: { daily: 'Today', weekly: 'Last Week', monthly: 'Last Month', quarterly: 'Last Quarter' },
     rsColPeriods: { daily: '3m', weekly: '6m', monthly: '1y', quarterly: '1y' },

@@ -156,15 +156,11 @@ def sortino_ratio(series: pd.Series, min_obs: int = 40, risk_free: float = 0.0) 
     return float((excess.mean() / deviation) * math.sqrt(TRADING_DAYS))
 
 
-def calmar_ratio(series: pd.Series, min_days: int = MIN_CALMAR_DAYS) -> float | None:
-    """Yıllık bileşik getiri (CAGR) / maksimum düşüş.
+def annualized_return(series: pd.Series, min_days: int = MIN_CALMAR_DAYS) -> float | None:
+    """Serinin ilk ve son fiyatı arasındaki yıllık bileşik getiri (CAGR).
 
-    "Bu getiriyi elde etmek için yolda ne kadar acı çektim?" sorusunun tek
-    sayılık cevabı. Volatilite yerine yaşanmış en kötü düşüşü payda alır, bu
-    yüzden Sharpe/Sortino'nun kaçırdığı tek seferlik çöküşleri yakalar.
-
-    Kısa geçmişte (< `min_days`) CAGR anlamsız şekilde şişer; None döner.
-    Hiç düşüş yaşamamış seride oran tanımsızdır (payda 0) — o da None.
+    Kısa pencerede (< `min_days`) yıllığa taşımak yanıltıcıdır — 2 aylık %10'u
+    "yılda %77" diye sunmak gibi; o durumda None döner.
     """
     if len(series) < 2:
         return None
@@ -175,7 +171,22 @@ def calmar_ratio(series: pd.Series, min_days: int = MIN_CALMAR_DAYS) -> float | 
     last = float(series.iloc[-1])
     if first <= 0 or last <= 0:
         return None
-    cagr = (last / first) ** (365.25 / span_days) - 1.0
+    return float((last / first) ** (365.25 / span_days) - 1.0)
+
+
+def calmar_ratio(series: pd.Series, min_days: int = MIN_CALMAR_DAYS) -> float | None:
+    """Yıllık bileşik getiri (CAGR) / maksimum düşüş.
+
+    "Bu getiriyi elde etmek için yolda ne kadar acı çektim?" sorusunun tek
+    sayılık cevabı. Volatilite yerine yaşanmış en kötü düşüşü payda alır, bu
+    yüzden Sharpe/Sortino'nun kaçırdığı tek seferlik çöküşleri yakalar.
+
+    Kısa geçmişte (< `min_days`) CAGR anlamsız şekilde şişer; None döner.
+    Hiç düşüş yaşamamış seride oran tanımsızdır (payda 0) — o da None.
+    """
+    cagr = annualized_return(series, min_days=min_days)
+    if cagr is None:
+        return None
     mdd = max_drawdown(series)
     if mdd is None or abs(mdd) < 1e-9:
         return None

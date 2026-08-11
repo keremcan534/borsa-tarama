@@ -210,9 +210,24 @@ yaktı?" ve "getirinin ne kadarı zaten piyasadan geliyordu?". `app/funds/metric
   ikisi de `None` kalır, tarama durmaz. TEFAS tarihleri tz'siz, yfinance endeksi
   tz'li geldiği için seriler gün bazına normalize edilip kesiştirilir.
 
-Risksiz faiz varsayılan olarak 0'dır (mevcut Sharpe hesabıyla tutarlı). TR
-mevduat getirisine göre "gerçek" alfa isteyen kod değiştirmeden
-`RISK_FREE_RATE=0.40` ortam değişkeniyle ezebilir.
+#### Risksiz getiri neden ölçülüyor da sabit yazılmıyor?
+Sortino ve alfa "risksiz getirinin ÜSTÜNDE ne kazandırdı"yı ölçer. TL'de bu oran
+sıfır değil: %40 faiz varken risk almadan da %40 kazanılıyor. Sıfır kabul edilseydi
+bir para piyasası fonu — neredeyse hiç oynaklığı olmadığı için — devasa Sortino ve
+"yılda %40 alfa" ile listenin tepesine çıkardı; oysa ürettiği şey beceri değil,
+sadece faiz.
+
+Sabit bir oran yazmak da (örn. `0.40`) çözüm değil: TR'de faiz sık değişiyor,
+tarama her gün kendi başına koşuyor ve birkaç ay sonra sessizce yanlış bir sayıyla
+çalışmaya devam ederdi. Bu yüzden oran **veriden ölçülüyor**: taramanın zaten
+indirdiği TEFAS verisinde para piyasası fonlarının (`PARA PİYASASI|LİKİT`) yıllık
+bileşik getirilerinin **medyanı** vekil olarak alınıyor. Medyan, tek bir bozuk
+fiyat serisinin oranı kaydırmasını engelliyor; %5–150 aralığı dışındaki değerler
+ve 3'ten az fon bulunması durumu elenip 0'a düşülüyor.
+
+Bu vekil, politika faizinden de dürüst bir ölçü: fon ücretlerinden SONRAKİ getiriyi
+verir, yani bir fon yatırımcısının gerçek alternatifidir. `RISK_FREE_RATE=0.40`
+ortam değişkeni verilirse ölçüm devre dışı kalır ve o oran kullanılır.
 
 Yeni metrikler **0-100 puana girmiyor**: puan formülü (1y getiri + Sharpe + düşük
 max düşüş) sabit tutuldu ki sıralamanın anlamı sürüm sürüm değişmesin. Kolon

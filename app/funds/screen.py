@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import re
+import statistics
 from datetime import date, timedelta
 
 import pandas as pd
 
 from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS
-from app.funds.metrics import compute_fund_metrics
+from app.funds.metrics import annualized_return, compute_fund_metrics
 
 # Arayüzün kolon olarak gösterdiği metrikler. API ve statik JSON aynı listeyi
 # yayınlamalı; tanım tek yerde dursun ki ikisi ayrışmasın.
@@ -31,6 +33,19 @@ FUND_METRIC_KEYS = [
 # Fonların beta/alfa hesabında ölçüldüğü endeks. TEFAS YAT evreninin çoğunluğu
 # TL bazlı ve BIST ağırlıklı; tek endeks seçmek gerekiyorsa BIST 100.
 BENCHMARK_SYMBOL = BENCHMARKS["bist100"]
+
+# --- Risksiz getiri vekili ---
+# TL'de "risk almadan ne kazanırdım" sorusunun cevabı para piyasası fonlarıdır:
+# TEFAS zaten indirdiğimiz veride duruyorlar, mevduat/politika faizini yakından
+# takip ediyorlar ve fon ücretlerinden SONRAKİ getiriyi veriyorlar — yani bir fon
+# yatırımcısının gerçek alternatifi. Sabit bir oran yazmak yerine bunu ölçüyoruz;
+# faiz değiştiğinde kod dokunulmadan kendi kendine güncelleniyor.
+# (Ad bazlı tespit arayüzdeki FUND_CATEGORY_RULES 'money' kuralının aynısı.)
+MONEY_MARKET_RE = re.compile(r"PARA P[İI]YASASI|L[İI]K[İI]T")
+# Medyanın anlamlı olması için asgari fon sayısı
+MIN_MONEY_MARKET_FUNDS = 3
+# Vekil oranın makul aralığı: bunun dışındakiler veri artefaktıdır, oranı bozmasın
+RISK_FREE_SANITY = (0.05, 1.50)  # yıllık %5 – %150
 
 # En az bu kadar günlük geçmişi olan fonlar metrik alır
 MIN_HISTORY_DAYS = 60
@@ -108,6 +123,32 @@ def _fetch_benchmark(lookback_days: int) -> pd.Series | None:
     return df["close"].astype(float)
 
 
+def estimate_risk_free_rate(
+    series_by_code: dict[str, pd.Series], name_map: dict[str, str]
+) -> float | None:
+    """Para piyasası fonlarının medyan yıllık getirisi = TL risksiz getiri vekili.
+
+    Medyan (ortalama değil) bilinçli: tek bir bozuk fiyat serisi ya da agresif
+    ücretli bir fon oranı kaydırmasın. Yeterli sayıda fon bulunamazsa None döner
+    ve çağıran taraf 0'a düşer.
+    """
+    rates = []
+    for code, series in series_by_code.items():
+        name = (name_map.get(code) or "").upper()
+        if not MONEY_MARKET_RE.search(name):
+            continue
+        rate = annualized_return(series)
+        if rate is None:
+            continue
+        if not (RISK_FREE_SANITY[0] <= rate <= RISK_FREE_SANITY[1]):
+            continue
+        rates.append(rate)
+
+    if len(rates) < MIN_MONEY_MARKET_FUNDS:
+        return None
+    return float(statistics.median(rates))
+
+
 def _series_to_points(series: pd.Series) -> list[list]:
     """Karşılaştırma grafiği için [[YYYY-MM-DD, price], ...] listesi."""
     clean = series.dropna().sort_index()
@@ -127,6 +168,7 @@ def run_fund_screener(
     max_funds: int = MAX_FUNDS,
     df: pd.DataFrame | None = None,
     benchmark: pd.Series | None = None,
+    risk_free: float | None = None,
     include_series: bool = False,
 ) -> list[dict] | tuple[list[dict], dict[str, list]]:
     """TEFAS YAT fonlarını tara; getiri/risk skoruna göre sıralı liste döner.
@@ -137,6 +179,9 @@ def run_fund_screener(
 
     `include_series=True` ise `(results, series_by_code)` döner; series_by_code
     yalnızca listedeki fonların günlük fiyat noktalarını taşır (karşılaştırma UI).
+
+    `risk_free` (yıllık oran) verilmezse `settings.risk_free_rate`, o da
+    ayarlanmamışsa para piyasası fonlarından ölçülen vekil oran kullanılır.
     """
     end = as_of or date.today()
     start = end - timedelta(days=lookback_days)
@@ -193,6 +238,24 @@ def run_fund_screener(
             if pd.notna(getattr(row, "investor_count", None))
         }
 
+    if risk_free is None:
+        risk_free = settings.risk_free_rate
+    if risk_free is None:
+        money_market = {
+            code: group.set_index("date")["price"].astype(float)
+            for code, group in work.groupby("fund_code")
+            if code in liquid_codes and MONEY_MARKET_RE.search((name_map.get(code) or "").upper())
+        }
+        risk_free = estimate_risk_free_rate(money_market, name_map)
+        if risk_free is None:
+            print("[FON] para piyasası fonu bulunamadı; risksiz getiri 0 alınıyor")
+            risk_free = 0.0
+        else:
+            print(
+                f"[FON] risksiz getiri vekili: %{risk_free * 100:.1f} "
+                f"({len(money_market)} para piyasası fonunun medyanı)"
+            )
+
     results: list[dict] = []
     series_by_code: dict[str, list] = {}
     for code, group in work.groupby("fund_code"):
@@ -207,9 +270,7 @@ def run_fund_screener(
         if investor_map and investor_map.get(code, 0) < MIN_INVESTORS:
             continue
         series = group.set_index("date")["price"].astype(float)
-        metrics = compute_fund_metrics(
-            series, benchmark=benchmark, risk_free=settings.risk_free_rate
-        )
+        metrics = compute_fund_metrics(series, benchmark=benchmark, risk_free=risk_free)
         if metrics["history_days"] < MIN_HISTORY_DAYS:
             continue
         if metrics["return_1y"] is None and metrics["return_3m"] is None:

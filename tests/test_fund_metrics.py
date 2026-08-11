@@ -185,6 +185,90 @@ def test_compute_fund_metrics_exposes_new_ratios():
     assert without["score"] == m["score"]
 
 
+def _flat_growth_rows(code, name, annual_rate, days=400, end=datetime(2026, 7, 16)):
+    """Yıllık `annual_rate` ile düzgün büyüyen bir fon (para piyasası benzeri)."""
+    daily = (1 + annual_rate) ** (1 / 365.25) - 1
+    prices = [10.0 * ((1 + daily) ** i) for i in range(days)]
+    return _fund_rows(code, name, prices, end=end)
+
+
+def test_risk_free_rate_is_median_of_money_market_funds():
+    from app.funds.screen import estimate_risk_free_rate
+
+    idx = pd.date_range("2025-06-01", periods=400, freq="D")
+
+    def series(rate):
+        daily = (1 + rate) ** (1 / 365.25) - 1
+        return pd.Series([10.0 * ((1 + daily) ** i) for i in range(400)], index=idx)
+
+    series_by_code = {
+        "AAA": series(0.38),
+        "BBB": series(0.42),
+        "CCC": series(0.40),
+        "DDD": series(1.20),  # para piyasası DEĞİL → medyana girmemeli
+    }
+    names = {
+        "AAA": "İŞ PORTFÖY PARA PİYASASI FONU",
+        "BBB": "AK PORTFÖY LİKİT FON",
+        "CCC": "GARANTİ PORTFÖY PARA PIYASASI FONU",  # noktasız I ile yazılmış
+        "DDD": "PUSULA PORTFÖY HİSSE SENEDİ FONU",
+    }
+    rate = estimate_risk_free_rate(series_by_code, names)
+    assert rate is not None and abs(rate - 0.40) < 0.005
+
+
+def test_risk_free_rate_none_when_too_few_money_market_funds():
+    from app.funds.screen import estimate_risk_free_rate
+
+    idx = pd.date_range("2025-06-01", periods=400, freq="D")
+    one = {"AAA": pd.Series([10.0 * (1.001**i) for i in range(400)], index=idx)}
+    assert estimate_risk_free_rate(one, {"AAA": "PARA PİYASASI FONU"}) is None
+
+
+def test_risk_free_rate_ignores_absurd_series():
+    """Bozuk fiyat serisi (yılda 40 kat) vekil oranı kaçırmasın."""
+    from app.funds.screen import estimate_risk_free_rate
+
+    idx = pd.date_range("2025-06-01", periods=400, freq="D")
+
+    def series(rate):
+        daily = (1 + rate) ** (1 / 365.25) - 1
+        return pd.Series([10.0 * ((1 + daily) ** i) for i in range(400)], index=idx)
+
+    codes = {"A": series(0.40), "B": series(0.41), "C": series(0.39), "D": series(40.0)}
+    names = {c: "PARA PİYASASI FONU" for c in codes}
+    rate = estimate_risk_free_rate(codes, names)
+    assert rate is not None and 0.38 < rate < 0.42
+
+
+def test_screener_measures_risk_free_rate_from_money_market_funds():
+    """Risksiz getiri para piyasası fonlarından ölçülür; Sortino ona göre düşer.
+
+    Para piyasası fonlarıyla aynı sürükleyişe (yılda ~%40) sahip ama günlük
+    dalgalanan bir hisse fonu, risksiz getiri 0 sayılırsa "yüksek Sortino" alır.
+    Vekil oran ölçülünce fazla getirisi kaybolur — dalgalanmanın geometrik
+    aşındırması yüzünden risksiz getirinin bir tık ALTINDA kalır — ve oran
+    negatife döner. İstenen davranış budur: bu fon riski boşuna taşımıştır.
+    """
+    rows = []
+    for code in ("PPA", "PPB", "PPC"):
+        rows += _flat_growth_rows(code, f"{code} PORTFÖY PARA PİYASASI FONU", 0.40)
+
+    daily = (1 + 0.40) ** (1 / 365.25) - 1
+    prices, price = [], 10.0
+    for i in range(400):
+        prices.append(price)
+        # Aynı ortalama sürükleyiş, ama gün gün zikzak: düşüş günleri var
+        price *= 1 + daily + (0.01 if i % 2 else -0.01)
+    rows += _fund_rows("EQU", "TEST PORTFÖY HİSSE SENEDİ FONU", prices)
+    df = pd.DataFrame(rows)
+
+    measured = next(r for r in run_fund_screener(df=df) if r["symbol"] == "EQU")
+    zero_rf = next(r for r in run_fund_screener(df=df, risk_free=0.0) if r["symbol"] == "EQU")
+
+    assert measured["sortino"] < 0 < zero_rf["sortino"]
+
+
 def test_fund_score_bounds():
     assert fund_score(None, None, None) == 0
     assert 0 <= fund_score(0.5, 1.0, -0.1) <= 100
