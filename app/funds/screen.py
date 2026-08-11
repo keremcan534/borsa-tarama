@@ -6,7 +6,31 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from app.core.config import settings
+from app.data.benchmarks import BENCHMARKS
 from app.funds.metrics import compute_fund_metrics
+
+# Arayüzün kolon olarak gösterdiği metrikler. API ve statik JSON aynı listeyi
+# yayınlamalı; tanım tek yerde dursun ki ikisi ayrışmasın.
+FUND_METRIC_KEYS = [
+    "return_1m",
+    "return_3m",
+    "return_6m",
+    "return_1y",
+    "return_ytd",
+    "volatility",
+    "sharpe",
+    "sortino",
+    "calmar",
+    "max_drawdown",
+    "beta",
+    "alpha",
+    "score",
+]
+
+# Fonların beta/alfa hesabında ölçüldüğü endeks. TEFAS YAT evreninin çoğunluğu
+# TL bazlı ve BIST ağırlıklı; tek endeks seçmek gerekiyorsa BIST 100.
+BENCHMARK_SYMBOL = BENCHMARKS["bist100"]
 
 # En az bu kadar günlük geçmişi olan fonlar metrik alır
 MIN_HISTORY_DAYS = 60
@@ -65,6 +89,25 @@ def _fetch_history(start: date, end: date) -> pd.DataFrame:
     )
 
 
+def _fetch_benchmark(lookback_days: int) -> pd.Series | None:
+    """Jensen alfası için BIST 100 kapanışları.
+
+    Endeks çekilemezse tarama durmaz: beta/alfa boş kalır, diğer metrikler
+    olduğu gibi üretilir.
+    """
+    period = "2y" if lookback_days > 365 else "1y"
+    try:
+        from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+
+        df = YFinanceFetcher().fetch_ohlcv(BENCHMARK_SYMBOL, period=period, interval="1d")
+    except Exception as e:
+        print(f"[FON] endeks {BENCHMARK_SYMBOL} çekilemedi ({e}); beta/alfa boş kalacak")
+        return None
+    if df is None or df.empty or "close" not in df.columns:
+        return None
+    return df["close"].astype(float)
+
+
 def _series_to_points(series: pd.Series) -> list[list]:
     """Karşılaştırma grafiği için [[YYYY-MM-DD, price], ...] listesi."""
     clean = series.dropna().sort_index()
@@ -83,12 +126,14 @@ def run_fund_screener(
     min_portfolio_size: float = MIN_PORTFOLIO_SIZE,
     max_funds: int = MAX_FUNDS,
     df: pd.DataFrame | None = None,
+    benchmark: pd.Series | None = None,
     include_series: bool = False,
 ) -> list[dict] | tuple[list[dict], dict[str, list]]:
     """TEFAS YAT fonlarını tara; getiri/risk skoruna göre sıralı liste döner.
 
     `df` verilirse ağ çağrısı yapılmaz (testler için). Aksi halde pytefas
-    ile ~1 yıllık tüm YAT fon fiyatları çekilir (~3 dk, rate-limit'li).
+    ile ~1 yıllık tüm YAT fon fiyatları çekilir (~3 dk, rate-limit'li) ve
+    beta/alfa için endeks de indirilir; `benchmark` verilerek bu da atlanabilir.
 
     `include_series=True` ise `(results, series_by_code)` döner; series_by_code
     yalnızca listedeki fonların günlük fiyat noktalarını taşır (karşılaştırma UI).
@@ -100,6 +145,8 @@ def run_fund_screener(
         print(f"[FON] TEFAS YAT {start} → {end} çekiliyor…")
         df = _fetch_history(start, end)
         print(f"[FON] {len(df)} satır alındı")
+        if benchmark is None:
+            benchmark = _fetch_benchmark(lookback_days)
 
     empty_series: dict[str, list] = {}
     if df is None or df.empty:
@@ -160,7 +207,9 @@ def run_fund_screener(
         if investor_map and investor_map.get(code, 0) < MIN_INVESTORS:
             continue
         series = group.set_index("date")["price"].astype(float)
-        metrics = compute_fund_metrics(series)
+        metrics = compute_fund_metrics(
+            series, benchmark=benchmark, risk_free=settings.risk_free_rate
+        )
         if metrics["history_days"] < MIN_HISTORY_DAYS:
             continue
         if metrics["return_1y"] is None and metrics["return_3m"] is None:

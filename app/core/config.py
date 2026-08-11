@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # (arayüz kolonları o durumda '—' gösterir, tarama çalışmaya devam eder).
     fundamentals_enabled: bool = True
 
+    # Sortino ve Jensen alfasında kullanılan yıllık risksiz getiri. Varsayılan 0:
+    # mevcut Sharpe hesabıyla tutarlı ve göreli sıralamayı bozmayan tek değer.
+    # TR'de mevduat/para piyasası getirisi yüksek olduğundan "gerçek" alfa isteyen
+    # kod değiştirmeden RISK_FREE_RATE=0.40 gibi bir ortam değişkeniyle ezebilir.
+    risk_free_rate: float = 0.0
+
     class Config:
         env_file = ".env"
 

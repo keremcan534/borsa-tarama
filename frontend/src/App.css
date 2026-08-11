@@ -4436,3 +4436,42 @@ tr.alert-hit td {
   padding-top: 12px;
   margin-top: 20px;
 }
+
+/* --- Tahvil durasyonu hesaplayıcısı --- */
+.bd-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.bd-presets-label {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.bd-results {
+  margin: 14px 0 18px;
+}
+
+.bd-results strong {
+  font-size: 18px;
+  color: var(--text-h);
+}
+
+/* Metrik kartının altındaki açıklama satırı ve tablo içi ikincil değerler */
+.bd-sub {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.bd-note {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.8;
+  margin: 8px 0 18px;
+  max-width: 70ch;
+}

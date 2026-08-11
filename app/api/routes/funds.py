@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from app.funds.screen import run_fund_screener
+from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 
 router = APIRouter(prefix="/api/funds", tags=["funds"])
 
@@ -26,17 +26,7 @@ def get_funds(live: bool = False):
         "scanned": len(results),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "results": results,
-        "metrics": [
-            "return_1m",
-            "return_3m",
-            "return_6m",
-            "return_1y",
-            "return_ytd",
-            "volatility",
-            "sharpe",
-            "max_drawdown",
-            "score",
-        ],
+        "metrics": FUND_METRIC_KEYS,
     }
     _cache = payload
     return payload

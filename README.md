@@ -187,11 +187,36 @@ bağımlılık kalktı.
 
 ## TEFAS Fonları
 `app/funds/` altında TEFAS YAT fonları için getiri/risk taraması var (RSI/MACD yok;
-1a/3a/6a/1y/YTD getiri, volatilite, Sharpe, max düşüş, 0-100 puan). `scan_to_json.py`
+1a/3a/6a/1y/YTD getiri, volatilite, Sharpe, Sortino, Calmar, max düşüş, BIST 100'e
+göre beta / Jensen alfası, 0-100 puan). `scan_to_json.py`
 her çalıştırmada `funds.json` (liste) ve `fund_prices.json` (günlük fiyat serileri +
 BIST100/USD/altın benchmark) üretir. Arayüzde **Fonlar** listesi ve **Karşılaştır**
 sekmesi (normalize getiri eğrisi, dönem seçimi, metrik tablosu) bunları kullanır.
 API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
+
+### Risk-Ayarlı Metrikler (Sortino / Calmar / Jensen alfası)
+Sharpe tek başına iki soruyu cevaplamıyordu: "bu oynaklığın hangi tarafı canımı
+yaktı?" ve "getirinin ne kadarı zaten piyasadan geliyordu?". `app/funds/metrics.py`
+üçünü birden ekliyor:
+
+- **Sortino** — Sharpe'ın paydasında tüm oynaklık yerine yalnızca hedefin (risksiz
+  getiri) altındaki günler var. Sert yükselen bir fon artık "riskli" diye
+  cezalandırılmıyor. Hiç düşüş günü yoksa oran tanımsızdır → `None`.
+- **Calmar** — yıllık bileşik getiri / max düşüş. Volatilitenin kaçırdığı tek
+  seferlik çöküşleri yakalar. En az 180 günlük geçmiş ister (kısa pencerede CAGR
+  şişer); düşüş yaşamamış seride tanımsızdır.
+- **Beta + Jensen alfası** — fon getirileri BIST 100'e (`XU100.IS`) karşı regresyona
+  sokulur; alfa yıllıklandırılmış fazla getiri olarak döner. Endeks çekilemezse
+  ikisi de `None` kalır, tarama durmaz. TEFAS tarihleri tz'siz, yfinance endeksi
+  tz'li geldiği için seriler gün bazına normalize edilip kesiştirilir.
+
+Risksiz faiz varsayılan olarak 0'dır (mevcut Sharpe hesabıyla tutarlı). TR
+mevduat getirisine göre "gerçek" alfa isteyen kod değiştirmeden
+`RISK_FREE_RATE=0.40` ortam değişkeniyle ezebilir.
+
+Yeni metrikler **0-100 puana girmiyor**: puan formülü (1y getiri + Sharpe + düşük
+max düşüş) sabit tutuldu ki sıralamanın anlamı sürüm sürüm değişmesin. Kolon
+olarak gösterilir, sıralanabilir ve CSV'ye çıkar.
 
 ### Fon Hisse Pozisyonları
 Arayüzdeki **Hisse Pozisyonları** sayfası `fund_stock_positions.json` dosyasını
@@ -423,6 +448,24 @@ Kurallar:
 - Temettü ödemeyen ve yaklaşan tarihi de olmayan hisse listeye hiç girmez.
 - Verim/dağıtım oranı arayüzde `formatRatioPct` ile basılır (artı işaretsiz):
   `formatPct`'in `+`'sı bir DEĞİŞİMİ ima eder, oysa bunlar seviyedir.
+
+## Tahvil Durasyonu Hesaplayıcısı
+`frontend/src/bonds.js` + `BondDuration.jsx` → arayüzde **Tahvil Durasyonu** sekmesi.
+Sitedeki diğer sayfaların aksine burada piyasa verisi yok: nominal, kupon oranı,
+vade, YTM ve kupon sıklığı kullanıcıdan gelir. Bu yüzden hesap bilerek tarayıcıda
+yapılır — statik yayında (backend yokken) da çalışır ve her tuşta anında sonuç verir.
+
+Üretilenler: temiz fiyat, **Macaulay durasyon** (nakit akışlarının bugünkü değere
+göre ağırlıklı ortalama vadesi), **değiştirilmiş durasyon** (Macaulay / (1 + dönemsel
+getiri)), DV01 ve dönem dönem nakit akışı tablosu (bugünkü değer + ağırlık).
+
+±100bp senaryo tablosu, durasyonun doğrusal tahmini ile gerçek yeniden fiyatlamayı
+yan yana koyar: aradaki fark dışbükeyliktir (convexity) ve durasyonun neden yalnızca
+küçük hareketlerde iyi bir yaklaşım olduğunu tek bakışta gösterir.
+
+Formüller `node --test` ile test edilir (`cd frontend && npm test`); değerler ders
+kitabı örnekleriyle doğrulanmıştır (kuponsuz tahvilde durasyon = vade, YTM = kupon
+iken fiyat = nominal, ağırlıklar toplamı 1).
 
 ## Makro Panel
 `app/data/macro.py` → `data/macro.json` → arayüzde **Makro** sekmesi. BIST'in yönü
