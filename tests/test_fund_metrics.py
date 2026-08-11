@@ -144,11 +144,31 @@ def test_alpha_beta_recovers_known_beta_and_alpha():
     fund_rets = 0.5 * bench_rets + daily_alpha
     fund = pd.Series(10.0 * np.cumprod(1 + fund_rets), index=bench.index)
 
-    capm = alpha_beta(fund, bench)
+    # Bu seri endeksle AYNI güne hizalı üretildi; gecikme düzeltmesi kapatılmalı
+    capm = alpha_beta(fund, bench, benchmark_lag=0)
     assert capm is not None
     assert abs(capm["beta"] - 0.5) < 0.02
     # Yıllıklandırma bileşik: (1 + günlük alfa)^252 - 1
     assert abs(capm["alpha"] - ((1 + daily_alpha) ** 252 - 1)) < 0.01
+
+
+def test_alpha_beta_matches_previous_day_index_return():
+    """TEFAS gecikmesi: D tarihli fon fiyatı D-1 kapanışını yansıtır.
+
+    Fon getirisi bilerek endeksin BİR ÖNCEKİ günkü getirisinden üretiliyor.
+    Varsayılan (gecikmeli) hizalama betayı bulmalı; aynı güne hizalayan hesap
+    ise sıfıra yakın bir beta üretmeli — yayında görülen hata tam olarak buydu.
+    """
+    bench = _noisy_series(seed=13, start=100.0)
+    bench_rets = bench.pct_change().fillna(0.0)
+    # shift(1): D günündeki fon getirisi D-1'in endeks getirisine bağlı
+    fund_rets = 0.8 * bench_rets.shift(1).fillna(0.0)
+    fund = pd.Series(10.0 * np.cumprod(1 + fund_rets.to_numpy()), index=bench.index)
+
+    lagged = alpha_beta(fund, bench)
+    same_day = alpha_beta(fund, bench, benchmark_lag=0)
+    assert abs(lagged["beta"] - 0.8) < 0.02
+    assert abs(same_day["beta"]) < 0.1
 
 
 def test_alpha_beta_handles_timezone_and_missing_days():
