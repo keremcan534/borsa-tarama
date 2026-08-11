@@ -25,6 +25,15 @@ MIN_CALMAR_DAYS = 180
 # Beta/alfa regresyonu için asgari ortak işlem günü
 MIN_ALPHA_OBS = 60
 
+# TEFAS fon fiyatları BİR İŞ GÜNÜ GECİKMELİ yayınlanır: D tarihli birim pay
+# değeri, D-1 kapanışıyla hesaplanan portföy değeridir. Endeksle aynı güne
+# hizalanırsa beta çöker — 11.08.2026 yayınındaki ölçüm: BIST teknoloji endeks
+# fonlarının (TTE, YHZ) betası aynı günde -0,06 / korelasyon -0,06 iken bir gün
+# kaydırınca 0,76-0,79 / korelasyon 0,71-0,72; 120 fonun medyan |beta|'sı
+# 0,015'ten 0,204'e çıkıyor. Bu yüzden fon getirisi bir ÖNCEKİ günün endeks
+# getirisiyle eşleştirilir.
+BENCHMARK_LAG_DAYS = 1
+
 
 def _price_on_or_before(series: pd.Series, target: pd.Timestamp) -> float | None:
     """target tarihine eşit veya önceki son fiyatı döner."""
@@ -214,6 +223,7 @@ def alpha_beta(
     benchmark: pd.Series | None,
     min_obs: int = MIN_ALPHA_OBS,
     risk_free: float = 0.0,
+    benchmark_lag: int = BENCHMARK_LAG_DAYS,
 ) -> dict | None:
     """CAPM regresyonu: fonun endekse göre betası ve Jensen alfası.
 
@@ -223,7 +233,9 @@ def alpha_beta(
     oran olarak döner (0.08 = yılda %8 fazla).
 
     Getiriler basit (log değil) alınır: CAPM doğrusal ilişkiyi aritmetik
-    getiriler üzerinde tanımlar. Ortak işlem günü sayısı `min_obs`'un altındaysa
+    getiriler üzerinde tanımlar. Fon getirisi, TEFAS yayın gecikmesi yüzünden
+    `benchmark_lag` gün önceki endeks getirisiyle eşleştirilir (bkz.
+    BENCHMARK_LAG_DAYS). Ortak işlem günü sayısı `min_obs`'un altındaysa
     regresyon gürültüdür; None döner.
     """
     if series is None or benchmark is None or len(benchmark) < 2:
@@ -232,10 +244,15 @@ def alpha_beta(
     joined = pd.DataFrame(
         {"fund": _normalized_prices(series), "bench": _normalized_prices(benchmark)}
     ).dropna()
-    if len(joined) < min_obs + 1:
+    if len(joined) < min_obs + 1 + benchmark_lag:
         return None
 
-    rets = joined.pct_change().dropna()
+    rets = joined.pct_change()
+    if benchmark_lag:
+        # Kaydırma ORTAK işlem günleri üzerinde yapılır; takvim günü değil,
+        # "bir önceki işlem günü" doğru eşleşme birimidir.
+        rets["bench"] = rets["bench"].shift(benchmark_lag)
+    rets = rets.dropna()
     if len(rets) < min_obs:
         return None
 

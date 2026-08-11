@@ -210,6 +210,20 @@ yaktı?" ve "getirinin ne kadarı zaten piyasadan geliyordu?". `app/funds/metric
   ikisi de `None` kalır, tarama durmaz. TEFAS tarihleri tz'siz, yfinance endeksi
   tz'li geldiği için seriler gün bazına normalize edilip kesiştirilir.
 
+#### TEFAS bir iş günü gecikmelidir (beta'yı çökerten tuzak)
+D tarihli birim pay değeri, D-1 kapanışıyla hesaplanan portföy değeridir. Fon
+getirisi endeksin AYNI günkü getirisiyle eşleştirilirse beta sıfıra çöker; ilk
+yayında tam olarak bu oldu. Ölçüm (11.08.2026 yayını, 120 fon):
+
+| Hizalama | BIST teknoloji endeks fonları (TTE / YHZ) | 120 fonun medyan \|beta\| |
+|---|---|---|
+| Aynı gün | beta -0,05 / -0,05 · korelasyon -0,06 | 0,015 |
+| **Bir gün gecikmeli** | **beta 0,76 / 0,79 · korelasyon 0,71 / 0,72** | **0,204** |
+
+Bu yüzden `alpha_beta`, fon getirisini bir ÖNCEKİ işlem gününün endeks
+getirisiyle eşleştirir (`BENCHMARK_LAG_DAYS = 1`). Kaydırma takvim günü değil
+ORTAK işlem günü üzerinden yapılır — tatil delikleri hizalamayı bozmasın diye.
+
 #### Risksiz getiri neden ölçülüyor da sabit yazılmıyor?
 Sortino ve alfa "risksiz getirinin ÜSTÜNDE ne kazandırdı"yı ölçer. TL'de bu oran
 sıfır değil: %40 faiz varken risk almadan da %40 kazanılıyor. Sıfır kabul edilseydi
