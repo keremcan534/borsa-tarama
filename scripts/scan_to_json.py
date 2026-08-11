@@ -24,7 +24,7 @@ from app.data.fx import fetch_fx_series
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.data.price_files import assert_unique_file_names, price_file_name
-from app.funds.screen import run_fund_screener
+from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
 from app.screener.engine import run_analysis
@@ -406,17 +406,7 @@ def main() -> None:
             "scanned": len(fund_results),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "results": fund_results,
-            "metrics": [
-                "return_1m",
-                "return_3m",
-                "return_6m",
-                "return_1y",
-                "return_ytd",
-                "volatility",
-                "sharpe",
-                "max_drawdown",
-                "score",
-            ],
+            "metrics": FUND_METRIC_KEYS,
         }
     except Exception as e:
         print(f"[FON] tarama başarısız ({e}); boş payload yazılıyor")

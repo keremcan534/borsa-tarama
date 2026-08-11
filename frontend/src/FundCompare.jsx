@@ -25,7 +25,11 @@ const METRIC_ROWS = [
   { key: 'return_1y', label: '1Y %', format: 'pct' },
   { key: 'volatility', label: 'Vol %', format: 'vol' },
   { key: 'sharpe', label: 'Sharpe', format: 'num' },
+  { key: 'sortino', label: 'Sortino', format: 'num' },
+  { key: 'calmar', label: 'Calmar', format: 'num' },
   { key: 'max_drawdown', label: 'Max DD %', format: 'pct' },
+  { key: 'alpha', i18nKey: 'colAlpha', format: 'pct' },
+  { key: 'beta', i18nKey: 'colBeta', format: 'num' },
   { key: 'investor_count', i18nKey: 'colInvestors', format: 'int' },
   { key: 'portfolio_size', i18nKey: 'colSize', format: 'mcap' },
 ]

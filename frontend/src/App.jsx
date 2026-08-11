@@ -24,6 +24,7 @@ import {
   fetchStockSeriesMany,
   STATIC_MODE,
 } from './api'
+import BondDuration from './BondDuration'
 import FundCompare from './FundCompare'
 import StockCompare from './StockCompare'
 import StockPositions from './StockPositions'
@@ -166,6 +167,7 @@ const NAV_SECTIONS = [
     items: [
       { key: 'stockCompare', i18nKey: 'tabStockCompare' },
       { key: 'dividends', i18nKey: 'tabDividends' },
+      { key: 'bonds', i18nKey: 'tabBonds' },
       { key: 'stockPositions', i18nKey: 'tabStockPositions' },
       { key: 'scorecard', i18nKey: 'tabScorecard' },
       { key: 'backtest', i18nKey: 'tabBacktest' },
@@ -711,7 +713,10 @@ const FUND_COLUMNS = [
   { key: 'return_ytd', label: 'YTD %' },
   { key: 'volatility', label: 'Vol %' },
   { key: 'sharpe', label: 'Sharpe' },
+  { key: 'sortino', label: 'Sortino', titleKey: 'colSortinoTitle' },
+  { key: 'calmar', label: 'Calmar', titleKey: 'colCalmarTitle' },
   { key: 'max_drawdown', label: 'Max DD %' },
+  { key: 'alpha', label: 'Alfa %', i18nKey: 'colAlphaPct', titleKey: 'colAlphaTitle' },
   { key: 'portfolio_size', label: 'Büyüklük', i18nKey: 'colSize' },
 ]
 
@@ -1760,6 +1765,22 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
             <div className="fund-metric">
               <span className="fund-metric-label">Sharpe</span>
               <strong>{fund.sharpe != null ? fund.sharpe.toFixed(2) : '—'}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">Sortino</span>
+              <strong>{fund.sortino != null ? fund.sortino.toFixed(2) : '—'}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">Calmar</span>
+              <strong>{fund.calmar != null ? fund.calmar.toFixed(2) : '—'}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">{t(lang, 'colAlpha')}</span>
+              <strong className={`pct ${pctTone(fund.alpha)}`}>{formatPct(fund.alpha)}</strong>
+            </div>
+            <div className="fund-metric">
+              <span className="fund-metric-label">{t(lang, 'colBeta')}</span>
+              <strong>{fund.beta != null ? fund.beta.toFixed(2) : '—'}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Vol</span>
@@ -4188,6 +4209,7 @@ const FUND_LEAGUE_METRICS = [
   { key: 'score', i18nKey: 'flMetricScore' },
   { key: 'return_1y', i18nKey: 'flMetricReturn' },
   { key: 'sharpe', i18nKey: 'flMetricSharpe' },
+  { key: 'sortino', i18nKey: 'flMetricSortino' },
 ]
 
 /**
@@ -4232,7 +4254,8 @@ function FundLeague({ funds, lang, loading, onOpenFund }) {
 
   const metricCell = (f) => {
     if (metric === 'score') return <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
-    if (metric === 'sharpe') return <span className="fl-metric-num">{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</span>
+    if (metric === 'sharpe' || metric === 'sortino')
+      return <span className="fl-metric-num">{f[metric] != null ? f[metric].toFixed(2) : '—'}</span>
     return <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
   }
 
@@ -7390,13 +7413,14 @@ function App() {
   }
 
   const fundsCsv = {
-    header: ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Max Düşüş %', 'Büyüklük'],
+    header: ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Sortino', 'Calmar', 'Max Düşüş %', 'Alfa %', 'Beta', 'Büyüklük'],
     rows: () => {
       const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
       return fundRows.map((f) => [
         f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
         pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
-        pct(f.volatility), f.sharpe ?? '', pct(f.max_drawdown), f.portfolio_size ?? '',
+        pct(f.volatility), f.sharpe ?? '', f.sortino ?? '', f.calmar ?? '',
+        pct(f.max_drawdown), pct(f.alpha), f.beta ?? '', f.portfolio_size ?? '',
       ])
     },
   }
@@ -7844,6 +7868,7 @@ function App() {
                       <th
                         key={c.key}
                         className={`sortable ${c.align === 'left' ? 'left' : ''} ${fundSort.key === c.key ? 'sorted' : ''}`}
+                        title={c.titleKey ? t(lang, c.titleKey) : undefined}
                         onClick={() => toggleFundSort(c.key)}
                       >
                         {c.i18nKey ? t(lang, c.i18nKey) : c.label}
@@ -7904,10 +7929,15 @@ function App() {
                       </td>
                       <td>{f.volatility != null ? `${(f.volatility * 100).toFixed(1)}%` : '—'}</td>
                       <td>{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</td>
+                      <td>{f.sortino != null ? f.sortino.toFixed(2) : '—'}</td>
+                      <td>{f.calmar != null ? f.calmar.toFixed(2) : '—'}</td>
                       <td>
                         <span className={`pct ${pctTone(f.max_drawdown)}`}>
                           {formatPct(f.max_drawdown)}
                         </span>
+                      </td>
+                      <td title={f.beta != null ? `Beta ${f.beta.toFixed(2)}` : undefined}>
+                        <span className={`pct ${pctTone(f.alpha)}`}>{formatPct(f.alpha)}</span>
                       </td>
                       <td>{formatMarketCap(f.portfolio_size)}</td>
                     </tr>
@@ -7956,6 +7986,8 @@ function App() {
           onOpenChart={setChartSymbol}
         />
       )}
+
+      {view === 'bonds' && <BondDuration lang={lang} />}
 
       {view === 'macro' && <MacroView data={macro} loading={macroLoading} lang={lang} />}
 

@@ -36,9 +36,9 @@ const STRINGS = {
       'Haber başlıkları kaynaklarına aittir ve kaynağa yönlendirir. Yatırım tavsiyesi değildir.',
     fundsHowTitle: 'TEFAS fon listesi nasıl oluşuyor?',
     fundsHowBody1:
-      "Veriler resmi TEFAS (Türkiye Elektronik Fon Alım Satım Platformu) API'sinden çekilir. Listede portföy büyüklüğü 100M TRY üzeri yatırım fonları (YAT) yer alır; getiri, volatilite, Sharpe ve maksimum düşüş hesaplanır.",
+      "Veriler resmi TEFAS (Türkiye Elektronik Fon Alım Satım Platformu) API'sinden çekilir. Listede portföy büyüklüğü 100M TRY üzeri yatırım fonları (YAT) yer alır; getiri, volatilite, Sharpe, Sortino, Calmar, maksimum düşüş ve BIST 100'e göre beta / Jensen alfası hesaplanır.",
     fundsHowBody2:
-      '1 yıllık getiri (45) + Sharpe oranı (40) + düşük max düşüş (15). Hisse tarayıcısındaki RSI/MACD burada kullanılmaz — fonlar için asıl anlamlı olan getiri/risk metrikleridir.',
+      '1 yıllık getiri (45) + Sharpe oranı (40) + düşük max düşüş (15). Sortino, Calmar ve alfa kolon olarak gösterilir ama puana girmez: sıralamanın anlamı sürüm sürüm değişmesin diye formül sabit tutuluyor.',
     fundsHowBody3:
       'Fon koduna tıklayınca sitede getiri grafiği ve haberler açılır; TEFAS sayfasına modal içinden geçebilirsin. Bu liste yatırım tavsiyesi değildir.',
     fundsStatus: (count, when) =>
@@ -454,6 +454,15 @@ const STRINGS = {
       'Fiyat grafiği bir sonraki taramayla birlikte burada görünecek. Şimdilik TradingView bağlantısını kullanabilirsin.',
     colChange: 'Bugün',
     colInvestors: 'Yatırımcı',
+    colAlpha: 'Alfa',
+    colAlphaPct: 'Alfa %',
+    colBeta: 'Beta',
+    colSortinoTitle:
+      'Sortino: Sharpe gibi, ama paydada yalnızca düşüş günleri var ve getiri para piyasası fonlarının (risksiz) getirisine göre ölçülür. Yukarı yönlü oynaklık ceza değildir; yatırımcıyı rahatsız eden aşağı yönlü olandır. Yüksek olması iyidir.',
+    colCalmarTitle:
+      'Calmar: yıllık bileşik getiri / en büyük düşüş. "Bu getiri için yolda ne kadar acı çektim" sorusunun cevabı. En az 6 aylık geçmiş gerektirir.',
+    colAlphaTitle:
+      "Jensen alfası: fonun BIST 100'e göre betasının hak ettiği getirinin ÜSTÜNDE ürettiği yıllık fazla getiri. Pozitif alfa, piyasa riskiyle açıklanamayan katkıdır. Risksiz getiri olarak para piyasası fonlarının medyan getirisi alınır.",
     colChangeTitle: 'Son kapanışın bir önceki kapanışa göre değişimi.',
     // Değişim kolonu her zaman diliminde SON KAPANMIŞ mumun değişimidir; günlükte
     // bu "bugün"dür ama haftalıkta son tamamlanan haftadır — "Bugün" yazamayız.
@@ -574,6 +583,7 @@ const STRINGS = {
     flMetricScore: 'Puan',
     flMetricReturn: '1Y Getiri',
     flMetricSharpe: 'Sharpe',
+    flMetricSortino: 'Sortino',
     flCount: (n) => `${n} fon`,
     flMedian: (v) => `Medyan 1Y ${v}`,
     flMore: (n) => `+${n} fon daha →`,
@@ -627,6 +637,51 @@ const STRINGS = {
     navSecFunds: 'Fonlar',
     navSecMine: 'Bana Özel',
     navSecAnalysis: 'Analiz',
+    // --- Tahvil durasyonu hesaplayıcısı ---
+    tabBonds: 'Tahvil Durasyonu',
+    bdIntro:
+      'Tahvil/bono girdilerini ver: fiyat, Macaulay ve değiştirilmiş durasyon anında hesaplanır. Piyasa verisi kullanılmaz, her şey senin girdiklerinden çıkar.',
+    bdPresets: 'Hazır örnekler:',
+    bdPresetZero: 'Kuponsuz 2Y',
+    bdPresetGov: '5Y devlet tahvili',
+    bdPresetCorp: '10Y $ şirket tahvili',
+    bdFace: 'Nominal değer',
+    bdCoupon: 'Yıllık kupon oranı (%)',
+    bdYears: 'Vadeye kalan (yıl)',
+    bdYtm: 'Getiri / YTM (%)',
+    bdFreq: 'Kupon sıklığı',
+    bdFreqOption: (n) =>
+      n === 1 ? 'Yılda 1 (yıllık)' : n === 2 ? 'Yılda 2 (6 aylık)' : n === 4 ? 'Yılda 4 (3 aylık)' : 'Yılda 12 (aylık)',
+    bdInvalid: 'Girdileri kontrol et: nominal ve vade pozitif olmalı, getiri -%100 üzerinde kalmalı.',
+    bdPrice: 'Fiyat',
+    bdVsPar: 'nominale göre',
+    bdMacaulay: 'Macaulay durasyon',
+    bdYearsUnit: 'yıl (ağırlıklı ort. vade)',
+    bdModified: 'Değiştirilmiş durasyon',
+    bdModifiedSub: (d) => `getiri +1 puan → fiyat ≈ -%${d}`,
+    bdDv01Sub: '1 baz puanlık faiz hareketinin fiyat karşılığı',
+    bdScenarioTitle: 'Faiz şoku: durasyon ne kadar iyi tahmin ediyor?',
+    bdScenario: 'Senaryo',
+    bdEstimated: 'Durasyon tahmini',
+    bdActual: 'Gerçek yeniden fiyatlama',
+    bdConvexityGap: 'Fark (dışbükeylik)',
+    bdShiftLabel: (bp) => `${bp > 0 ? '+' : ''}${Math.round(bp)} bp`,
+    bdConvexityNote:
+      'Durasyon doğrusal bir tahmindir; gerçek fiyat-getiri ilişkisi eğridir (dışbükeylik). Bu yüzden faiz düştüğünde kazanç, aynı büyüklükte yükseldiğinde oluşan kayıptan biraz fazladır ve tahmin büyük hareketlerde sapar.',
+    bdFlowsTitle: 'Nakit akışları',
+    bdPeriod: 'Dönem',
+    bdTime: 'Yıl',
+    bdCashFlow: 'Nakit akışı',
+    bdPv: 'Bugünkü değer',
+    bdWeight: 'Ağırlık',
+    bdFlowsTrimmed: (shown, total) => `İlk ${shown} dönem gösteriliyor (toplam ${total}).`,
+    bdHowTitle: 'Durasyon ne anlatır?',
+    bdHowBody1:
+      'Macaulay durasyon, tahvilin nakit akışlarının bugünkü değerlerine göre ağırlıklı ortalama vadesidir (yıl): "paranı ortalama kaç yıl sonra geri alıyorsun". Kuponsuz bir tahvilde durasyon tam olarak vadesine eşittir; kupon ödendikçe paranın bir kısmı erken geldiği için durasyon vadenin altına iner.',
+    bdHowBody2:
+      'Değiştirilmiş durasyon = Macaulay / (1 + dönemsel getiri). Faiz duyarlılığının ölçüsüdür: getiri 1 puan (100bp) artarsa fiyat yaklaşık "değiştirilmiş durasyon" kadar yüzde düşer. DV01 ise aynı şeyin para cinsinden ve 1 baz puanlık hâlidir.',
+    bdHowBody3:
+      'Pratikte: faizlerin düşmesini bekliyorsan uzun durasyon kazandırır, faiz artışı riskine karşı korunmak istiyorsan kısa durasyon seçersin. Hesap temiz fiyat üzerinden yapılır (ödeme tarihinde olduğun, birikmiş faiz bulunmadığı varsayılır) ve vergi/komisyon dikkate alınmaz.',
     // Klavye kısayolları yardımı (?)
     helpTitle: 'Klavye kısayolları',
     helpSearch: 'Arama paletini aç (hisse, fon, sayfa)',
@@ -821,9 +876,9 @@ const STRINGS = {
       'Headlines belong to their sources and link out. Not investment advice.',
     fundsHowTitle: 'How is the TEFAS fund list built?',
     fundsHowBody1:
-      'Data is pulled from the official TEFAS API. The list includes investment funds (YAT) with portfolio size over 100M TRY; returns, volatility, Sharpe and max drawdown are computed.',
+      'Data is pulled from the official TEFAS API. The list includes investment funds (YAT) with portfolio size over 100M TRY; returns, volatility, Sharpe, Sortino, Calmar, max drawdown and beta / Jensen alpha versus the BIST 100 are computed.',
     fundsHowBody2:
-      '1y return (45) + Sharpe (40) + low max drawdown (15). Stock RSI/MACD are not used — return/risk metrics matter for funds.',
+      '1y return (45) + Sharpe (40) + low max drawdown (15). Sortino, Calmar and alpha are shown as columns but do not feed the score: the formula is kept stable so the ranking does not shift from release to release.',
     fundsHowBody3:
       'Click a fund code to open its return chart and news on this site; TEFAS is available from the modal. This list is not investment advice.',
     fundsStatus: (count, when) =>
@@ -1225,6 +1280,15 @@ const STRINGS = {
       'The price chart will appear here after the next scan. Use the TradingView link in the meantime.',
     colChange: 'Today',
     colInvestors: 'Investors',
+    colAlpha: 'Alpha',
+    colAlphaPct: 'Alpha %',
+    colBeta: 'Beta',
+    colSortinoTitle:
+      'Sortino: like Sharpe, but only downside days count in the denominator and returns are measured against the (risk-free) return of money-market funds. Upside volatility is not a punishment — the downside is what hurts. Higher is better.',
+    colCalmarTitle:
+      'Calmar: compound annual return / worst drawdown. It answers "how much pain did this return cost along the way". Needs at least 6 months of history.',
+    colAlphaTitle:
+      'Jensen alpha: the annual excess return the fund produced ABOVE what its beta to the BIST 100 deserved. Positive alpha is the part market risk cannot explain. The risk-free rate is the median return of money-market funds.',
     colChangeTitle: 'Change of the last close versus the previous close.',
     changeColLabels: { daily: 'Today', weekly: 'Last Week', monthly: 'Last Month', quarterly: 'Last Quarter' },
     rsColPeriods: { daily: '3m', weekly: '6m', monthly: '1y', quarterly: '1y' },
@@ -1335,6 +1399,7 @@ const STRINGS = {
     flMetricScore: 'Score',
     flMetricReturn: '1Y Return',
     flMetricSharpe: 'Sharpe',
+    flMetricSortino: 'Sortino',
     flCount: (n) => `${n} funds`,
     flMedian: (v) => `Median 1Y ${v}`,
     flMore: (n) => `+${n} more funds →`,
@@ -1388,6 +1453,51 @@ const STRINGS = {
     navSecFunds: 'Funds',
     navSecMine: 'My Space',
     navSecAnalysis: 'Analysis',
+    // --- Bond duration calculator ---
+    tabBonds: 'Bond Duration',
+    bdIntro:
+      'Enter the bond terms: price, Macaulay and modified duration are computed instantly. No market data is used — everything comes from your inputs.',
+    bdPresets: 'Presets:',
+    bdPresetZero: 'Zero-coupon 2Y',
+    bdPresetGov: '5Y government bond',
+    bdPresetCorp: '10Y USD corporate',
+    bdFace: 'Face value',
+    bdCoupon: 'Annual coupon rate (%)',
+    bdYears: 'Years to maturity',
+    bdYtm: 'Yield / YTM (%)',
+    bdFreq: 'Coupon frequency',
+    bdFreqOption: (n) =>
+      n === 1 ? 'Annual (1×)' : n === 2 ? 'Semi-annual (2×)' : n === 4 ? 'Quarterly (4×)' : 'Monthly (12×)',
+    bdInvalid: 'Check the inputs: face value and maturity must be positive, and the yield above -100%.',
+    bdPrice: 'Price',
+    bdVsPar: 'vs par',
+    bdMacaulay: 'Macaulay duration',
+    bdYearsUnit: 'years (weighted avg. maturity)',
+    bdModified: 'Modified duration',
+    bdModifiedSub: (d) => `yield +1 pt → price ≈ -${d}%`,
+    bdDv01Sub: 'price impact of a 1 basis point move',
+    bdScenarioTitle: 'Rate shock: how good is the duration estimate?',
+    bdScenario: 'Scenario',
+    bdEstimated: 'Duration estimate',
+    bdActual: 'Actual repricing',
+    bdConvexityGap: 'Gap (convexity)',
+    bdShiftLabel: (bp) => `${bp > 0 ? '+' : ''}${Math.round(bp)} bp`,
+    bdConvexityNote:
+      'Duration is a linear approximation; the real price-yield relationship is curved (convexity). That is why a rate drop gains slightly more than an equal-sized rise loses, and why the estimate drifts on large moves.',
+    bdFlowsTitle: 'Cash flows',
+    bdPeriod: 'Period',
+    bdTime: 'Years',
+    bdCashFlow: 'Cash flow',
+    bdPv: 'Present value',
+    bdWeight: 'Weight',
+    bdFlowsTrimmed: (shown, total) => `Showing the first ${shown} periods (of ${total}).`,
+    bdHowTitle: 'What does duration tell you?',
+    bdHowBody1:
+      'Macaulay duration is the present-value weighted average maturity of the bond\'s cash flows, in years: "on average, how many years until you get your money back". For a zero-coupon bond it equals the maturity exactly; coupons pull it below the maturity because part of the money arrives early.',
+    bdHowBody2:
+      'Modified duration = Macaulay / (1 + periodic yield). It measures rate sensitivity: if the yield rises by 1 point (100bp), the price falls by roughly the modified duration in percent. DV01 is the same idea in currency terms for a single basis point.',
+    bdHowBody3:
+      'In practice: long duration pays off when you expect rates to fall, short duration protects you when they rise. The calculation uses the clean price (it assumes you are on a payment date with no accrued interest) and ignores taxes and fees.',
     // Keyboard shortcuts help (?)
     helpTitle: 'Keyboard shortcuts',
     helpSearch: 'Open the search palette (stocks, funds, pages)',

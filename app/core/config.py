@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # (arayüz kolonları o durumda '—' gösterir, tarama çalışmaya devam eder).
     fundamentals_enabled: bool = True
 
+    # Sortino ve Jensen alfasında kullanılan YILLIK risksiz getiri. None = otomatik:
+    # tarama, para piyasası fonlarının medyan yıllık getirisini vekil olarak ölçer
+    # (bkz. app/funds/screen.py). Sabit bir oran (örn. RISK_FREE_RATE=0.40) vermek
+    # ölçümü devre dışı bırakır. TR'de faiz sık değiştiği için varsayılan otomatiktir;
+    # sabit yazılan bir oran birkaç ay içinde sessizce yanlışa döner.
+    risk_free_rate: float | None = None
+
     class Config:
         env_file = ".env"
 
