@@ -621,6 +621,9 @@ Bu yüzden onarım önce eşleşmeleri toplar, yalnızca gerçekten onarım vars
 float'a çevirir. `tests/test_repair.py` bu durumu int64 hacimle kilitler.
 
 ## Büyüme / Ürünleşme Fikirleri (öncelik sırası netleşecek)
+- **Rakip taraması ve eksik listesi: [`docs/eksikler.md`](docs/eksikler.md)** —
+  Türkçe borsa platformlarıyla karşılaştırma, önceliklendirilmiş eksikler ve
+  önerilen sıra (2026-08-24).
 - Google Play yayını (aşağıdaki yol haritası; Play hesabı mevcut)
 - Telegram/X botları (yukarıda — sadece token bekliyor)
 - Gelir modeli seçenekleri: web'de AdSense, sponsorluk, premium filtreler/uyarılar
