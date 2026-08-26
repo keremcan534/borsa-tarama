@@ -651,6 +651,11 @@ const STRINGS = {
     kapLate: 'GEÇ',
     kapNoSubject: 'Konu belirtilmemiş',
     kapMore: (n) => `${n} bildirim daha var — aramayla daralt.`,
+    // --- Ekonomik takvim ---
+    calTitle: 'Ekonomik takvim',
+    calIntro:
+      'Piyasayı hareket ettiren yaklaşan olaylar. Tarihler TCMB ve Fed\'in kendi yayımladığı takvimlerden alınmıştır.',
+    calDaysUntil: (n) => (n === 0 ? 'bugün' : n === 1 ? 'yarın' : `${n} gün`),
     // --- Kapsam ve endeks filtresi ---
     onlyBist100: 'Yalnızca BIST 100',
     onlyBist100Hint: 'Tarama borsanın tamamını kapsıyor; bu filtre listeyi endeks bileşenlerine indirir.',
@@ -1517,6 +1522,11 @@ const STRINGS = {
     kapLate: 'LATE',
     kapNoSubject: 'No subject given',
     kapMore: (n) => `${n} more disclosures — narrow with search.`,
+    // --- Economic calendar ---
+    calTitle: 'Economic calendar',
+    calIntro:
+      'Upcoming events that move the market. Dates come from the calendars published by the CBRT and the Fed.',
+    calDaysUntil: (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : `${n} days`),
     // --- Coverage and index filter ---
     onlyBist100: 'BIST 100 only',
     onlyBist100Hint: 'The scan covers the whole exchange; this filter narrows it to index members.',

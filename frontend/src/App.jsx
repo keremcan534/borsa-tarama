@@ -3,6 +3,7 @@ import './App.css'
 import {
   fetchAllNews,
   fetchBacktest,
+  fetchCalendar,
   fetchFinancials,
   fetchInflation,
   fetchKap,
@@ -6073,7 +6074,46 @@ function corrTone(value) {
   return ''
 }
 
-function MacroView({ data, loading, lang }) {
+/**
+ * Ekonomik takvim şeridi.
+ *
+ * Makro panelin İÇİNDE duruyor, ayrı bir sekmede değil: panel fiyat SEVİYELERİNİ
+ * gösteriyor ("dolar kaç"), takvim ise o seviyeleri hareket ettirecek OLAYLARI
+ * ("perşembe faiz kararı"). İkisi aynı soruyu farklı yönden cevapladığından ayrı
+ * sekmeye bölmek kullanıcıyı iki yere bakmaya zorlardı.
+ */
+function EconomicCalendar({ data, lang }) {
+  const events = data?.events || []
+  if (!events.length) return null
+
+  const label = (e) => (lang === 'en' ? e.title_en : e.title)
+  const when = (e) =>
+    new Date(`${e.date}T00:00:00`).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR', {
+      day: '2-digit',
+      month: 'short',
+    })
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'calTitle')}</h2>
+      <p className="today-note">{t(lang, 'calIntro')}</p>
+      <ul className="cal-list">
+        {events.slice(0, 8).map((e) => (
+          <li key={`${e.date}-${e.title}`} className="cal-item">
+            <span className={`cal-flag ${e.region}`}>{e.region === 'tr' ? '🇹🇷' : '🇺🇸'}</span>
+            <span className="cal-date">{when(e)}</span>
+            <span className="cal-title">{label(e)}</span>
+            {/* "3 gün sonra" backend'de hesaplanıyor: arayüzün tarih aritmetiği
+                yapmasına gerek yok ve iki yerde farklı sonuç çıkma riski kalkıyor. */}
+            <span className="cal-days">{t(lang, 'calDaysUntil', e.days_until)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function MacroView({ data, loading, lang, calendar }) {
   // Kartların üstündeki dönem anahtarı: "her yüzde dönemini taşır" kuralının
   // panel karşılığı — hangi dönemin gösterildiği tek yerden, açıkça seçilir.
   const [period, setPeriod] = useState('change_1d')
@@ -6093,6 +6133,8 @@ function MacroView({ data, loading, lang }) {
 
   return (
     <>
+      <EconomicCalendar data={calendar} lang={lang} />
+
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'macroTitle')}</h2>
         <p className="today-note">{t(lang, 'macroIntro')}</p>
@@ -6681,6 +6723,7 @@ function App() {
   // ikisi de yalnızca belirli ekranlarda kullanılıyor ve açılışı yavaşlatmamalı.
   const [inflation, setInflation] = useState(null)
   const [financials, setFinancials] = useState(null)
+  const [calendar, setCalendar] = useState(null)
   const [funds, setFunds] = useState(null)
   const [fundsLoading, setFundsLoading] = useState(false)
   const [fundsError, setFundsError] = useState(null)
@@ -7329,6 +7372,22 @@ function App() {
       ignore = true
     }
   }, [view, chartSymbol, kap])
+
+  // Ekonomik takvim: yalnızca makro sayfasında lazım.
+  useEffect(() => {
+    if (view !== 'macro' || calendar) return
+    let ignore = false
+    fetchCalendar()
+      .then((result) => {
+        if (!ignore) setCalendar(result || { events: [] })
+      })
+      .catch(() => {
+        if (!ignore) setCalendar({ events: [] })
+      })
+    return () => {
+      ignore = true
+    }
+  }, [view, calendar])
 
   // TÜFE serisi: reel getiri gösteren ekranlar (portföy, fonlar) açılınca çekilir.
   useEffect(() => {
@@ -8165,7 +8224,9 @@ function App() {
 
       {view === 'bonds' && <BondDuration lang={lang} />}
 
-      {view === 'macro' && <MacroView data={macro} loading={macroLoading} lang={lang} />}
+      {view === 'macro' && (
+        <MacroView data={macro} loading={macroLoading} lang={lang} calendar={calendar} />
+      )}
 
       {view === 'about' && <AboutView lang={lang} />}
 

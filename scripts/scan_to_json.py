@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
 from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.calendars import build_calendar_payload
 from app.data.financials import load_financials
 from app.data.fx import fetch_fx_series
 from app.data.inflation import load_cpi
@@ -462,6 +463,19 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[TÜFE] {len(cpi['series'])} ay ({cpi['source'] or 'kaynak yok'}) -> {inflation_path}")
+
+    # Ekonomik takvim: makro panel fiyat SEVİYELERİNİ gösteriyor, bu ise OLAYLARI.
+    # Statik dosyadan okunur (bkz. app/data/calendars.py), istek atılmaz.
+    calendar_payload = build_calendar_payload()
+    calendar_path = out_dir / "calendar.json"
+    calendar_path.write_text(
+        json.dumps(
+            {"generated_at": datetime.now(timezone.utc).isoformat(), **calendar_payload},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[TAKVİM] {calendar_payload['count']} yaklaşan olay -> {calendar_path}")
 
     # Çeyreklik finansallar repoda statik durur (bilanço çeyrekte bir değişir,
     # tarama günde iki kez çalışır); burada yalnızca siteye kopyalanır, istek atılmaz.

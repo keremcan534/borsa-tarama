@@ -352,3 +352,12 @@ export function realReturn(nominal, startDate, endDate, cpi) {
   if (!start || !end || start <= 0) return null;
   return (1 + nominal) / (end / start) - 1;
 }
+
+/** Ekonomik takvim: faiz kararları ve enflasyon raporları. */
+export async function fetchCalendar() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/calendar.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Takvim yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
