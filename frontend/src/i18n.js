@@ -675,6 +675,8 @@ const STRINGS = {
       'Enflasyondan arındırılmış getiri. Nominal getiri ile aynı dönemin TÜFE artışı oranlanır.',
     cpiSource: (src, month) => `TÜFE kaynağı: ${src} (son veri ${month})`,
     cpiMissing: 'TÜFE verisi olmadığı için reel getiri gösterilemiyor.',
+    realReturnPartial: (covered, total) =>
+      `${total} pozisyonun ${covered}'i TÜFE serisinde kapsanıyor; hesap yalnızca onları içerir.`,
     cpiUncovered: 'Bu dönem TÜFE serisinde yok — reel getiri hesaplanmadı.',
     // --- Finansallar ---
     finTitle: 'Finansallar (çeyreklik)',
@@ -1556,6 +1558,8 @@ const STRINGS = {
       'Return adjusted for inflation: nominal return divided by CPI growth over the same period.',
     cpiSource: (src, month) => `CPI source: ${src} (latest ${month})`,
     cpiMissing: 'Real return cannot be shown because CPI data is unavailable.',
+    realReturnPartial: (covered, total) =>
+      `${covered} of ${total} positions are covered by the CPI series; only those are included.`,
     cpiUncovered: 'This period is not covered by the CPI series — real return not computed.',
     // --- Financials ---
     finTitle: 'Financials (quarterly)',

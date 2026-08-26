@@ -30,6 +30,7 @@ import {
 } from './api'
 import BondDuration from './BondDuration'
 import FundFlows from './FundFlows'
+import { portfolioRealReturn } from './inflation'
 import Kap from './Kap'
 import FundCompare from './FundCompare'
 import StockCompare from './StockCompare'
@@ -2899,7 +2900,7 @@ function Donut({ segments, size = 168 }) {
  * sektör/fon-kategorisi dağılım çubukları. Tümü mevcut pozisyon verisinden;
  * hisse sektörü günlük özetten, fon kategorisi ad çıkarımından gelir.
  */
-function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
+function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
   const known = useMemo(() => rows.filter((r) => r.value != null && r.value > 0), [rows])
 
   const alloc = useMemo(() => {
@@ -2937,6 +2938,8 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
   const worst = known.reduce((a, b) => ((b.plPct ?? Infinity) < (a.plPct ?? Infinity) ? b : a))
   const totalVal = totals.value || 1
 
+  const realReturn = useMemo(() => portfolioRealReturn(rows, inflation), [rows, inflation])
+
   return (
     <section className="watch-section pa">
       <h2 className="today-title">{t(lang, 'paTitle')}</h2>
@@ -2953,6 +2956,21 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
           <span className="today-card-label">K/Z</span>
           <strong className={`today-card-value pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</strong>
         </div>
+        {/* Reel getiri: TL'de %40 nominal, enflasyon %45'se KAYIPTIR. Kart yalnızca
+            TÜFE serisi o dönemi kapsıyorsa çıkar; kapsamıyorsa hiç gösterilmez. */}
+        {realReturn?.realPct != null && (
+          <div className="today-card" title={t(lang, 'realReturnHint')}>
+            <span className="today-card-label">{t(lang, 'realReturn')}</span>
+            <strong className={`today-card-value pct ${pctTone(realReturn.realPct)}`}>
+              {formatPct(realReturn.realPct)}
+            </strong>
+            <span className="today-card-note">
+              {realReturn.covered < realReturn.total
+                ? t(lang, 'realReturnPartial', realReturn.covered, realReturn.total)
+                : t(lang, 'cpiSource', inflation.source || '—', inflation.as_of || '—')}
+            </span>
+          </div>
+        )}
         <div className="today-card">
           <span className="today-card-label">{t(lang, 'paPositions')}</span>
           <strong className="today-card-value">{rows.length}</strong>
@@ -3008,7 +3026,7 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
   )
 }
 
-function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock }) {
+function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock, inflation }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -3369,7 +3387,13 @@ function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang,
       )}
 
       {positions.length > 0 && (
-        <PortfolioAnalytics rows={rows} totals={totals} stockMap={stockMap} lang={lang} />
+        <PortfolioAnalytics
+          rows={rows}
+          totals={totals}
+          stockMap={stockMap}
+          lang={lang}
+          inflation={inflation}
+        />
       )}
 
       {pfChartLines && (
@@ -7999,6 +8023,7 @@ function App() {
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
             onOpenStock={setChartSymbol}
+            inflation={inflation}
           />
         </>
       )}

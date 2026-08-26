@@ -4722,3 +4722,13 @@ tr.alert-hit td {
   .flow-in { color: #4ade80; }
   .flow-out { color: #f87171; }
 }
+
+/* Kart altı not: reel getiri kartında TÜFE kaynağı/kapsamı yazılıyor. Küçük ve
+   soluk, çünkü rakamın kendisi değil güvenilirliğinin sınırı bilgisi. */
+.today-card-note {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.35;
+}
