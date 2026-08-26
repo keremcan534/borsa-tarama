@@ -30,6 +30,7 @@ from app.data.price_files import assert_unique_file_names, price_file_name
 from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
+from app.reports.symbol_pages import build_symbol_index, build_symbol_page, symbol_slug, symbol_url
 from app.screener.engine import run_analysis
 from app.screener.filters import passes_filters
 from app.screener.score import technical_score
@@ -131,6 +132,67 @@ def merge_with_previous_macro(fresh: dict, previous: dict) -> dict:
     fresh["count"] = len(filled)
     fresh.setdefault("correlation_bars", previous.get("correlation_bars", CORRELATION_BARS))
     return fresh
+
+
+SYMBOL_NAMES_PATH = Path(__file__).resolve().parents[1] / "app" / "data" / "symbols" / "bist_all_names.json"
+
+
+def load_symbol_names() -> dict[str, str]:
+    """Hisse kodu -> şirket adı (sayfa başlıkları için). Dosya yoksa boş."""
+    try:
+        return json.loads(SYMBOL_NAMES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_symbol_pages(public_dir: Path, market_payloads: dict, financials: dict, kap_items: list[dict]) -> None:
+    """Her taranan hisse için bağımsız HTML sayfası + dizin + manifest üretir.
+
+    Sayfa GÜNLÜK zaman diliminin verisiyle basılır: kullanıcı bir hisseyi
+    aradığında beklediği şey son kapanış ve güncel görünümdür, aylık mum değil.
+    Manifest (`index.json`) yalnızca URL taşır; site haritasını `build_site_meta`
+    ondan üretir, böylece iki script birbirinin veri yapısını bilmek zorunda kalmaz.
+    """
+    names = load_symbol_names()
+    fin_by_symbol = financials.get("symbols") or {}
+
+    kap_by_symbol: dict[str, list[dict]] = {}
+    for item in kap_items:
+        kap_by_symbol.setdefault(item["symbol"], []).append(item)
+
+    symbol_dir = public_dir / "hisse"
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    entries: list[tuple[str, str | None]] = []
+
+    for market, payloads in market_payloads.items():
+        # Emtia/kripto sembolleri için "hisse analizi" sayfası anlamsız olurdu.
+        if market == "commodity":
+            continue
+        for stock in payloads.get("daily", {}).get("stocks") or []:
+            symbol = stock["symbol"]
+            name = names.get(symbol_slug(symbol))
+            html = build_symbol_page(
+                symbol,
+                stock,
+                name=name,
+                financials=fin_by_symbol.get(symbol),
+                kap_items=kap_by_symbol.get(symbol),
+                generated_at=generated_at,
+            )
+            (symbol_dir / f"{symbol_slug(symbol)}.html").write_text(html, encoding="utf-8")
+            entries.append((symbol, name))
+
+    (symbol_dir / "index.html").write_text(build_symbol_index(entries), encoding="utf-8")
+    (symbol_dir / "index.json").write_text(
+        json.dumps(
+            {"generated_at": generated_at, "urls": [symbol_url(sym) for sym, _ in entries]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[HİSSE SAYFASI] {len(entries)} sayfa -> {symbol_dir}")
 
 
 def main() -> None:
@@ -407,6 +469,12 @@ def main() -> None:
     financials_path = out_dir / "financials.json"
     financials_path.write_text(json.dumps(financials, ensure_ascii=False), encoding="utf-8")
     print(f"[FİNANSAL] {len(financials.get('symbols') or {})} sembol -> {financials_path}")
+
+    # Hisse başına statik sayfa: sitenin arama motorundan trafik alabilmesi için
+    # tek gerçek içerik ekseni. Sitemap'te yalnızca tarih damgalı raporlar vardı,
+    # oysa aramalar sembol adıyla yapılıyor (bkz. app/reports/symbol_pages.py).
+    write_symbol_pages(out_dir.parent, all_market_payloads, financials, kap_items)
+
 
     # Skor/sinyal geçmişi: değişim raporu (skoru en çok yükselen/düşen, sinyale
     # yeni giren/çıkan) arayüzde son iki günü karşılaştırarak üretilir.

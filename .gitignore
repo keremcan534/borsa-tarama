@@ -12,6 +12,7 @@ frontend/public/data/
 
 # Build çıktıları (CI'da reports/ arşivinden yeniden üretilir)
 frontend/public/rapor/
+frontend/public/hisse/
 frontend/public/sitemap.xml
 frontend/public/robots.txt
 
