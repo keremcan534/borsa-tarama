@@ -5,6 +5,7 @@ import yfinance as yf
 
 from app.core.config import settings
 from app.data.repair import repair_split_artifacts
+from app.data.resample import resample_ohlcv, slice_period
 
 from .base import BaseFetcher
 
@@ -33,8 +34,32 @@ class YFinanceFetcher(BaseFetcher):
     """
 
     def fetch_ohlcv(self, symbol: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
+        """İstenen zaman diliminde OHLCV döner — ama ağdan YALNIZCA günlük çeker.
+
+        Haftalık/aylık/çeyreklik mumlar günlük veriden türetilir
+        (`app/data/resample.py`). Eskiden her zaman dilimi ayrı bir istekti; sembol
+        başına 4 istek yerine 1 istek atılmasının tek sebebi bu. Kırpma birleştirmeden
+        SONRA yapılır: önce kırpılsaydı sınırdaki hafta/ay eksik günlerle hesaplanırdı.
+        """
+        daily = self._daily_bars(symbol)
+        return slice_period(resample_ohlcv(daily, interval), period)
+
+    def _daily_bars(self, symbol: str) -> pd.DataFrame:
+        """Sembolün TÜM günlük geçmişi (tek istek, koşu boyunca cache'li).
+
+        `max` çekilir çünkü en uzun zaman dilimi en çok geçmişi ister: çeyreklik
+        EMA21'in oturması için ~60 çeyrek (~15 yıl) günlük veri gerekir. Kısa
+        periyot çekip uzun zaman dilimini beslemek mümkün değil.
+
+        Cache tarama koşusu boyunca sembol başına tek istek garantisi verir; tarama
+        döngüsü zaman dilimi eksenli olduğundan (her market için 4 tur) cache
+        olmadan aynı sembol 4 kez çekilirdi. Bellek: sembol başına ~150 KB, bir
+        market bitince `clear_price_cache()` ile boşaltılır.
+        """
+        if symbol in self._daily_cache:
+            return self._daily_cache[symbol]
+
+        df = yf.Ticker(symbol).history(period="max", interval="1d")
 
         if df.empty:
             raise ValueError(f"{symbol} için veri bulunamadı")
@@ -44,9 +69,8 @@ class YFinanceFetcher(BaseFetcher):
 
         # Temettüler fiyatla AYNI istekte geliyor: günlük mumlarda (en hassas tarih
         # çözünürlüğü) yakalayıp cache'liyoruz, böylece temettü takvimi sembol başına
-        # tek bir ek istek bile getirmiyor. Aylık/haftalık mumlarda ödeme tarihi
-        # periyoda yuvarlanacağı için bilerek atlanır.
-        if interval == "1d" and "dividends" in df.columns:
+        # tek bir ek istek bile getirmiyor.
+        if "dividends" in df.columns:
             paid = df["dividends"]
             paid = paid[paid > 0]
             self._dividends_cache[symbol] = [
@@ -54,18 +78,32 @@ class YFinanceFetcher(BaseFetcher):
             ]
 
         # Bölünme bilgisi aynı istekle geldiğinden onarım ek network maliyeti getirmez.
+        # Onarım GÜNLÜK seride çalışmalı: haftalık muma birleştirildikten sonra tek
+        # günlük sıçrama komşu günlerle ortalanıp görünmez olurdu.
         splits = df["stock splits"] if "stock splits" in df.columns else None
         df, repairs = repair_split_artifacts(df[["open", "high", "low", "close", "volume"]], splits)
         for r in repairs:
             print(f"[ONARIM] {symbol}: {r['date']} tarihinde uygulanmamış {r['split']}:1 bölünme düzeltildi")
 
+        self._daily_cache[symbol] = df
         return df
+
+    def clear_price_cache(self) -> None:
+        """Günlük fiyat cache'ini boşaltır (market bitince çağrılır).
+
+        Temettü/temel veri cache'leri KASITLI olarak durur: onlar sembol başına
+        birkaç yüz bayt ve tarama sonunda hâlâ okunuyor. Boşaltılan yalnızca
+        fiyat çerçeveleridir — bellek tüketiminin tamamı orada.
+        """
+        self._daily_cache.clear()
 
     def __init__(self) -> None:
         # Aynı tarama koşusunda sembol başına tek market-cap isteği atılsın diye
         # instance seviyesinde cache (üç zaman dilimi de aynı değeri paylaşır).
         self._market_cap_cache: dict[str, float | None] = {}
         self._fundamentals_cache: dict[str, dict] = {}
+        # Sembol başına tüm günlük geçmiş; haftalık/aylık/çeyreklik bundan türetilir.
+        self._daily_cache: dict[str, pd.DataFrame] = {}
         # Fiyat isteğinden düşen temettü ödemeleri (bkz. fetch_ohlcv) ve `.info`
         # çağrısından düşen ileriye dönük temettü alanları (bkz. fetch_fundamentals).
         self._dividends_cache: dict[str, list[list]] = {}

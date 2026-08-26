@@ -304,6 +304,13 @@ def main() -> None:
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
 
+        # Fiyat cache'i market bitince boşaltılır. Fetcher artık sembol başına TÜM
+        # günlük geçmişi bellekte tutuyor (haftalık/aylık/çeyreklik ondan türetiliyor,
+        # bkz. app/data/resample.py) — sembol başına ~150 KB, 700 sembollük bir
+        # markette ~100 MB. Tüm marketler birikirse runner'ın belleğini zorlar;
+        # döngü market eksenli olduğundan bir marketin verisine bir daha bakılmaz.
+        fetcher.clear_price_cache()
+
     # Fiyat serileri SEMBOL BAŞINA ayrı dosyalara yazılır. Eskiden tek bir
     # stock_prices.json vardı (8,4 MB ham / 2,6 MB sıkıştırılmış) ve tek bir
     # hisseye tıklamak bu dosyanın tamamını indiriyordu; ölçüldü, en yüksek
