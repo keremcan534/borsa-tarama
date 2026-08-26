@@ -5,16 +5,23 @@ class Settings(BaseSettings):
     app_name: str = "Borsa Tarama Servisi"
     cors_origins: list[str] = ["http://localhost:5173"]  # Vite dev sunucusu
 
-    # Taranacak marketler. S&P 500 açık: 503 sembol taramayı belirgin uzatır
-    # (~20 dk), ama zamanlanmış tarama ABD kapanışından sonra da çalıştığı için
-    # US hisseleri de kapsansın diye açıldı. ETF hâlâ kapalı (kod + sembol
-    # listesi duruyor; açmak için listeye "etf" eklemek yeterli).
-    enabled_markets: list[str] = ["bist100", "sp500", "commodity"]
+    # Taranacak marketler. "bist" = borsanın tamamı (610 hisse); eskiden yalnızca
+    # BIST 100 taranıyordu, yani borsanın ~%14'ü ve kullanıcı ilgilendiği hisseyi
+    # bulamıyordu. Kapsam, sembol başına 4 yerine 1 istek atan resample refaktörü
+    # sayesinde istek bütçesini artırmadan açıldı (bkz. app/data/resample.py).
+    # ETF kapalı (kod + sembol listesi duruyor; açmak için listeye "etf" eklemek yeterli).
+    enabled_markets: list[str] = ["bist", "sp500", "commodity"]
 
     # Likidite tabanı: son 20 mumun ortalama günlük cirosu (hacim x kapanış)
     # bu eşiğin altındaysa hisse listeye giremez. Birim markete göre yerel
     # para birimidir (BIST: TRY, S&P: USD). Muhafazakar/koruyucu değerlerdir.
     min_daily_turnover: dict[str, float] = {
+        # Ölçüldü (2026-08, 606 hissenin son 20 günlük ortalama cirosu): medyan 63M TRY.
+        # 50M eşiği 610 hissenin 345'ini geçiriyor, BIST 100'ün en düşük ciroluları
+        # 70M olduğundan endeksin tamamı içeride kalıyor. Eşik BIST 100 için
+        # ayarlanmıştı ve borsanın tamamına açılırken bilinçli olarak DEĞİŞTİRİLMEDİ:
+        # düşürmek (25M -> 452 hisse) listeye ince hisse sokar, bu bir ürün kararıdır.
+        "bist": 50_000_000.0,  # 50M TRY
         "bist100": 50_000_000.0,  # 50M TRY
         "sp500": 10_000_000.0,  # 10M USD
         "etf": 5_000_000.0,  # 5M USD (ETF'ler genelde çok likit)

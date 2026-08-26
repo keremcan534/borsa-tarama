@@ -9,6 +9,7 @@ import pandas as pd
 from app.data.fetchers.base import BaseFetcher
 
 BENCHMARKS: dict[str, str | None] = {
+    "bist": "XU100.IS",
     "bist100": "XU100.IS",
     "sp500": "^GSPC",
     "etf": "^GSPC",

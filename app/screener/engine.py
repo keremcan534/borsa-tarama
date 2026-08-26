@@ -1,6 +1,7 @@
 import pandas as pd
 
 from app.data.fetchers.base import BaseFetcher
+from app.data.indices import index_flags
 from app.data.sectors import sector_of
 from app.indicators.ema import calculate_multi_ema
 from app.indicators.macd import calculate_macd
@@ -137,6 +138,9 @@ def analyze_symbol(
         # Statik haritadan okunur, ek istek yok (ETF/emtiada sektör kavramı yok -> None)
         "sector": sector_of(symbol),
     }
+    # Endeks üyeliği (in_bist100): tarama artık borsanın tamamını kapsıyor, arayüz
+    # "yalnızca BIST 100" filtresini bu bayraktan üretiyor. Statik liste, ek istek yok.
+    result.update(index_flags(symbol))
     for p in ema_periods:
         result[f"ema_{p}"] = round(float(last_row[f"ema_{p}"]), 2)
     result.update(

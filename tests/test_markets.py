@@ -13,12 +13,27 @@ def set_enabled(monkeypatch):
 
 
 def test_default_enabled_markets():
-    # BIST + S&P 500 + emtia açık; ETF kapalı (tarama/strateji vizyonunda yok,
-    # ama sembol listesi ve kod duruyor — açmak tek satır).
-    assert "bist100" in enabled_markets()
+    # BIST (borsanın tamamı) + S&P 500 + emtia açık; ETF kapalı (tarama/strateji
+    # vizyonunda yok, ama sembol listesi ve kod duruyor — açmak tek satır).
+    assert "bist" in enabled_markets()
     assert "sp500" in enabled_markets()
     assert "commodity" in enabled_markets()
     assert "etf" not in enabled_markets()
+    # Endeks listesi tanımlı kalır ama taranmaz: "bist" onu zaten kapsıyor,
+    # ikisini birden taramak aynı 100 hisseyi iki kez çekerdi.
+    assert "bist100" in MARKET_FILES
+    assert "bist100" not in enabled_markets()
+
+
+def test_bist_market_covers_the_whole_exchange_and_contains_the_index():
+    """Kapsam kilitli: "bist" hem geniş hem BIST 100'ün üst kümesi olmalı.
+
+    Üst küme olmazsa endeks üyelik bayrağı (app/data/indices.py) taranmayan
+    hisselere işaret eder ve "yalnızca BIST 100" filtresi eksik liste gösterirdi.
+    """
+    everything = set(load_symbols("bist"))
+    assert len(everything) > 500
+    assert set(load_symbols("bist100")) <= everything
 
 
 def test_disabled_market_keeps_its_definition_and_symbols():

@@ -174,6 +174,13 @@ class YFinanceFetcher(BaseFetcher):
             # diğer oranlar gibi ondalığa çevrilir (0.021) ki formatPct tutarlı çalışsın.
             "dividend_yield": (lambda v: v / 100 if v is not None else None)(num("dividendYield")),
             "roe": num("returnOnEquity"),
+            # Analist konsensüsü AYNI `.info` çağrısından düşer — ek istek yok.
+            # BIST'te çoğu hissede boş gelir (kapsayan analist yok); o durumda alan
+            # None kalır ve arayüz kartı hiç göstermez. "Analist yok" ile "hedef 0"
+            # farkı korunsun diye 0'a düşürülmez.
+            "target_price": num("targetMeanPrice"),
+            "analyst_count": num("numberOfAnalystOpinions"),
+            "recommendation": info.get("recommendationKey") or None,
         }
         # İleriye dönük temettü alanları aynı `.info` çağrısından düşer; ayrı
         # sözlükte tutulur ki her hisse satırına gereksiz kolon eklenmesin
