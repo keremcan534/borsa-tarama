@@ -29,8 +29,13 @@ jobs:
       - name: Python bağımlılıklarını kur
         run: pip install -r requirements.txt
 
+      # Market listesi bilinçli olarak sabit: varsayılan (enabled_markets) artık
+      # 610 hisselik "bist"i içeriyor ve sembol başına 5-10 yıllık veri çekmek
+      # bist100'ün 6 katı istek demek — yfinance bunu GitHub IP'lerinde sık sık
+      # rate-limit'liyor. Backtest evreni BIST 100 olarak kalır; arayüz bist
+      # sekmesinde bist100 sonucunu gösterir (MARKET_ALIASES).
       - name: Backtest'i çalıştır
-        run: python scripts/backtest_to_json.py data --timeframes daily,weekly
+        run: python scripts/backtest_to_json.py data --markets bist100,sp500,commodity --timeframes daily,weekly
 
       - name: Sonucu repoya commit'le
         run: |

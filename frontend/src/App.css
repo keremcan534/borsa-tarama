@@ -1962,6 +1962,18 @@ button.today-card.fund-card:hover {
     margin-left: 0;
     width: 100%;
   }
+
+  /* Araç çubuğu düğmeleri dar ekranda içten satır kırıp dev kartlara dönüşüyordu;
+     metin tek satır kalır, düğmeler kendi aralarında sarar ve sıkılaşır. */
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .actions .btn {
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
 }
 
 /* Hareket azaltma tercihi: menü animasyonsuz açılır (görünürlük geçişe bağlı kalmasın) */

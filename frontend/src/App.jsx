@@ -196,6 +196,13 @@ const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items)
 const MARKET_ALIASES = { bist100: 'bist' }
 export const canonicalMarket = (key) => MARKET_ALIASES[key] || key
 
+// Tersi de gerekli: haftalık üretilen backtest.json gibi eski dosyalar hâlâ eski
+// anahtarı (bist100) taşıyabilir. Yeni anahtarla bulunamayan veri eskisiyle aranır;
+// yoksa market yeniden adlandığı gün BIST backtest'i arayüzden "kaybolur".
+const LEGACY_MARKET_KEYS = Object.fromEntries(
+  Object.entries(MARKET_ALIASES).map(([legacy, canonical]) => [canonical, legacy]),
+)
+
 const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
 const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
 
@@ -513,6 +520,21 @@ function seriesReturn(points) {
   const last = points[points.length - 1][1]
   if (!(first > 0)) return null
   return last / first - 1
+}
+
+/** Serinin kapsadığı süre, insan diliyle ("son 1 yıl" / "son 7 ay").
+ * Dönem etiketi kuralı: çıplak bir yüzde, bulunduğu bağlamın dönemi sanılır. */
+function seriesSpanLabel(points, lang) {
+  if (!points || points.length < 2) return null
+  const first = new Date(points[0][0])
+  const last = new Date(points[points.length - 1][0])
+  const months = Math.round((last - first) / (30.44 * 24 * 3600 * 1000))
+  if (months >= 11) {
+    const years = Math.round(months / 12)
+    return lang === 'en' ? `last ${years}y` : `son ${years} yıl`
+  }
+  if (months >= 1) return lang === 'en' ? `last ${months}mo` : `son ${months} ay`
+  return null
 }
 
 const DEFAULT_FILTERS = {
@@ -1208,9 +1230,11 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
   }, [onClose])
 
   // BIST verisi TradingView'in anonim embed widget'ında yok (abonelik istiyor);
-  // widget sembolü çözemeyince varsayılan AAPL gösteriyordu. BIST hisseleri
-  // kendi serimizden çizilir; TV iframe'i yalnızca çalıştığı yerde (ABD/emtia) kalır.
+  // widget sembolü çözemeyince varsayılan AAPL gösteriyordu. Yerel fiyat serisi
+  // olan HER sembol kendi grafiğimizle çizilir (üçüncü tarafa istek de atılmaz);
+  // TV iframe'i yalnızca yerel seri YOKSA kalan son çare (emtia dosyası eksikse vb.).
   const isBist = symbol.endsWith('.IS')
+  const hasOwnSeries = series?.length > 0
 
   // Seçili para biriminde seri + o birimdeki dönem getirisi
   const shownSeries = useMemo(
@@ -1218,11 +1242,15 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
     [series, currency, fx, symbol],
   )
   const periodReturn = useMemo(() => seriesReturn(shownSeries), [shownSeries])
-  // Kur serisi yoksa ilgili seçeneği hiç gösterme (yanlış rakam göstermektense gizle)
+  const seriesSpan = useMemo(() => seriesSpanLabel(shownSeries, lang), [shownSeries, lang])
+  // Kur serisi yoksa ilgili seçeneği hiç gösterme (yanlış rakam göstermektense gizle).
+  // Doğal birimi zaten dolar olan sembolde (ABD/emtia) "$" seçeneği gereksizdir.
   const availableCurrencies = CURRENCIES.filter(
     (c) =>
       c.key === 'native' ||
-      (c.key === 'usd' ? fx?.usdtry?.length : fx?.usdtry?.length && fx?.goldusd?.length),
+      (c.key === 'usd'
+        ? symbolCurrency(symbol) !== 'USD' && fx?.usdtry?.length
+        : fx?.usdtry?.length && fx?.goldusd?.length),
   )
 
   const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
@@ -1275,16 +1303,16 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
               target="_blank"
               rel="noreferrer"
             >
-              TradingView'da aç ↗
+              {t(lang, 'modalOpenTv')}
             </a>
             <button className="btn small" onClick={onClose}>
-              Kapat ✕
+              {t(lang, 'modalClose')}
             </button>
           </div>
         </div>
         {/* Para birimi anahtarı: yalnızca kendi çizdiğimiz grafikte anlamlı
             (TradingView iframe'i kendi verisini gösterir, çeviremeyiz). */}
-        {isBist && series?.length > 0 && availableCurrencies.length > 1 && (
+        {hasOwnSeries && availableCurrencies.length > 1 && (
           <div className="currency-row">
             <div className="tabs currency-tabs" role="group" aria-label={t(lang, 'curLabel')}>
               {availableCurrencies.map((c) => (
@@ -1294,32 +1322,33 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
                   className={`tab ${currency === c.key ? 'active' : ''}`}
                   onClick={() => setCurrency(c.key)}
                 >
-                  {t(lang, c.i18nKey)}
+                  {/* Doğal birim sembole göre değişir: ABD/emtiada "₺ TL" yazmak yanlış olurdu */}
+                  {c.key === 'native' && symbolCurrency(symbol) === 'USD'
+                    ? t(lang, 'curUsd')
+                    : t(lang, c.i18nKey)}
                 </button>
               ))}
             </div>
             {periodReturn != null && (
               <span className="currency-return">
-                {t(lang, 'curPeriodReturn')}{' '}
+                {seriesSpan ? t(lang, 'curPeriodReturnSpan', seriesSpan) : t(lang, 'curPeriodReturn')}{' '}
                 <strong className={`pct ${pctTone(periodReturn)}`}>{formatPct(periodReturn, 1)}</strong>
               </span>
             )}
           </div>
         )}
 
-        {isBist ? (
-          series?.length ? (
-            <div className="modal-own-chart">
-              <FundPriceChart points={shownSeries} lang={lang} showEma />
-              {currency !== 'native' && <p className="currency-note">{t(lang, 'curNote')}</p>}
-            </div>
-          ) : (
-            <div className="empty-box modal-chart-empty">
-              {seriesLoading ? t(lang, 'loading') : t(lang, 'stockChartPending')}
-            </div>
-          )
+        {hasOwnSeries ? (
+          <div className="modal-own-chart">
+            <FundPriceChart points={shownSeries} lang={lang} showEma />
+            {currency !== 'native' && <p className="currency-note">{t(lang, 'curNote')}</p>}
+          </div>
+        ) : seriesLoading ? (
+          <div className="empty-box modal-chart-empty">{t(lang, 'loading')}</div>
+        ) : isBist ? (
+          <div className="empty-box modal-chart-empty">{t(lang, 'stockChartPending')}</div>
         ) : (
-          <iframe title={`${symbol} grafiği`} src={src} className="chart-frame" />
+          <iframe title={t(lang, 'chartOf', symbol)} src={src} className="chart-frame" />
         )}
         <StockDetailStats
           stock={stock}
@@ -1332,7 +1361,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
         />
         {news && news.length > 0 && (
           <div className="modal-news">
-            <div className="modal-news-title">📰 Son haberler</div>
+            <div className="modal-news-title">{t(lang, 'modalNewsTitle')}</div>
             {news.slice(0, 3).map((item, i) => (
               <a
                 key={item.link + i}
@@ -1821,11 +1850,11 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
             )}
             {fund.tefas_url && (
               <a className="btn small" href={fund.tefas_url} target="_blank" rel="noreferrer noopener">
-                TEFAS'ta aç ↗
+                {t(lang, 'modalOpenTefas')}
               </a>
             )}
             <button className="btn small" onClick={onClose}>
-              Kapat ✕
+              {t(lang, 'modalClose')}
             </button>
           </div>
         </div>
@@ -3648,7 +3677,7 @@ function MarketBreadth({ overview, allMarkets, lang }) {
   return (
     <section className="today-section">
       <h2 className="today-title">{t(lang, 'breadthTitle')}</h2>
-      <p className="today-note">{t(lang, 'breadthHint')}</p>
+      <p className="today-note">{t(lang, 'breadthHint', stats.total)}</p>
       <div className="breadth">
         <svg className="breadth-gauge" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t(lang, 'breadthTitle')}>
           <path className="breadth-track" d={gaugeArc(cx, cy, r, 180, 0)} />
@@ -4204,7 +4233,9 @@ function BacktestHorizon({ lang, bars, stats }) {
 }
 
 function BacktestView({ lang, data, market, timeframe, loading, error }) {
-  const summary = data?.markets?.[market]?.[timeframe]
+  const summary =
+    data?.markets?.[market]?.[timeframe] ??
+    data?.markets?.[LEGACY_MARKET_KEYS[market]]?.[timeframe]
   const when = data?.generated_at
     ? new Date(data.generated_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
     : ''
@@ -4539,9 +4570,12 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
   const W = 1000
   const H = 560
   const layout = useMemo(() => {
-    const stocks = (overview?.[market]?.stocks || []).filter(
-      (s) => s.market_cap > 0 && s.change != null,
-    )
+    const all = (overview?.[market]?.stocks || []).filter((s) => s.change != null)
+    const capped = all.filter((s) => s.market_cap > 0)
+    // Emtia/kripto sözleşmelerinin piyasa değeri yok; harita boş kalacağına
+    // eşit alanlı kutularla çizilir (renk yine günlük değişimi gösterir).
+    const equalWeight = capped.length < 2
+    const stocks = equalWeight ? all : capped
     if (stocks.length < 2) return null
 
     // Sektöre göre grupla (sektörsüz → "Diğer")
@@ -4555,7 +4589,7 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
       .map(([sector, list]) => ({
         sector,
         list,
-        value: list.reduce((sum, s) => sum + s.market_cap, 0),
+        value: list.reduce((sum, s) => sum + (equalWeight ? 1 : s.market_cap), 0),
       }))
       .sort((a, b) => b.value - a.value)
 
@@ -4565,7 +4599,9 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
     for (const sr of sectorRects) {
       const pad = 1
       const inner = squarifyTreemap(
-        [...sr.list].sort((a, b) => b.market_cap - a.market_cap).map((s) => ({ ...s, value: s.market_cap })),
+        [...sr.list]
+          .sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0))
+          .map((s) => ({ ...s, value: equalWeight ? 1 : s.market_cap })),
         sr.x + pad,
         sr.y + pad + (sr.w > 90 && sr.h > 34 ? 16 : 0), // sektör başlığına yer
         sr.w - pad * 2,
@@ -4573,7 +4609,7 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
       )
       tiles.push({ sector: sr, cells: inner })
     }
-    return { tiles }
+    return { tiles, equalWeight }
   }, [overview, market])
 
   if (!layout) return <div className="empty-box">{t(lang, 'mapEmpty')}</div>
@@ -4589,7 +4625,7 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
       >
         {layout.tiles.map(({ sector, cells }) => (
           <g key={sector.sector}>
-            {sector.w > 90 && sector.h > 34 && (
+            {sector.sector !== '—' && sector.w > 90 && sector.h > 34 && (
               <text className="marketmap-sector" x={sector.x + 6} y={sector.y + 12}>
                 {sectorLabel(sector.sector, lang)}
               </text>
@@ -4640,7 +4676,9 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
         <span>{t(lang, 'mapLegendDown')}</span>
         <span className="marketmap-scale" />
         <span>{t(lang, 'mapLegendUp')}</span>
-        <span className="marketmap-size-note">{t(lang, 'mapSizeNote')}</span>
+        <span className="marketmap-size-note">
+          {t(lang, layout.equalWeight ? 'mapSizeNoteEqual' : 'mapSizeNote')}
+        </span>
       </div>
     </div>
   )
@@ -4667,14 +4705,15 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
 
-  const stocks = useMemo(
-    () =>
-      (overview?.[market]?.stocks || [])
-        .filter((s) => s.market_cap > 0 && s.change != null)
-        .sort((a, b) => b.market_cap - a.market_cap)
-        .slice(0, 120), // BIST 100'ün tamamı sığar; S&P'de en büyük 120 gösterilir
-    [overview, market],
-  )
+  const stocks = useMemo(() => {
+    const all = (overview?.[market]?.stocks || []).filter((s) => s.change != null)
+    const capped = all.filter((s) => s.market_cap > 0)
+    // Emtia/kriptoda piyasa değeri yok: balonlar eşit boyda çizilir (renk değişim)
+    const base = capped.length >= 2 ? capped : all
+    return base
+      .sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0))
+      .slice(0, 120) // BIST 100'ün tamamı sığar; S&P'de en büyük 120 gösterilir
+  }, [overview, market])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -4686,7 +4725,7 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const ctx = canvas.getContext('2d')
 
-    const caps = stocks.map((s) => s.market_cap)
+    const caps = stocks.map((s) => s.market_cap || 1) // piyasa değeri yoksa eşit boy
     const sMin = Math.sqrt(Math.min(...caps))
     const sMax = Math.sqrt(Math.max(...caps))
     const maxAbs = Math.max(...stocks.map((s) => Math.abs(s.change)), 0.01)
@@ -4698,7 +4737,7 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
       const rMin = Math.max(10, (W / 46) * density)
       const rMax = Math.min(70, Math.max(rMin + 8, (W / 9) * density))
       bubbles = stocks.map((s) => {
-        const tt = (Math.sqrt(s.market_cap) - sMin) / (sMax - sMin || 1)
+        const tt = (Math.sqrt(s.market_cap || 1) - sMin) / (sMax - sMin || 1)
         const r = rMin + tt * (rMax - rMin)
         return {
           s,
@@ -5463,7 +5502,13 @@ function SectorRotation({ overviews, market, lang, loading, onNavigate }) {
   const representative = rows.filter((r) => r.count >= ROTATION_MIN_STOCKS && r.values[sortKey] != null)
 
   if (loading && !rows.length) return <div className="empty-box">{t(lang, 'loading')}</div>
-  if (!rows.length) return <div className="empty-box">{t(lang, 'rotEmpty')}</div>
+  if (!rows.length) {
+    // Veri geldi ama sektör alanı yoksa (emtia/kripto) sebep tarama değil: dürüst söyle
+    const hasStocks = ROTATION_HORIZONS.some(
+      (h) => (overviews?.[h.key]?.[market]?.stocks || []).length > 0,
+    )
+    return <div className="empty-box">{t(lang, hasStocks ? 'rotNoSectors' : 'rotEmpty')}</div>
+  }
 
   const leader = representative[0]
   const laggard = representative[representative.length - 1]
@@ -7137,9 +7182,10 @@ function App() {
     }
   }, [view, signalLogReady])
 
-  // Döviz/altın serileri: BIST grafiği açıldığında (para birimi anahtarı için) yüklenir.
+  // Döviz/altın serileri: grafik açıldığında (para birimi anahtarı) ya da hisse
+  // karşılaştırmada (USD bazı) yüklenir. ABD sembolleri de gram altına çevrilebilir.
   useEffect(() => {
-    if (!chartSymbol?.endsWith('.IS') || fxReady) return
+    if ((!chartSymbol && view !== 'stockCompare') || fxReady) return
     let cancelled = false
     fetchFx()
       .then((result) => {
@@ -7152,7 +7198,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [chartSymbol, fxReady])
+  }, [chartSymbol, view, fxReady])
 
   // Fon akışı arşivi yalnızca Fonlar sekmesinde gerekir; dosya birikene kadar
   // 404 döner ve panel görünmez (fetch null döndürür).
@@ -8251,9 +8297,14 @@ function App() {
         <StockCompare
           overview={overviewCache.daily}
           prices={stockPrices}
+          fx={fx}
           lang={lang}
           loading={(overviewLoading && !overviewCache.daily) || stockPricesLoading}
           seedSymbols={compareSeed}
+          onNeedSeries={ensureSeries}
+          scoreOf={(r) =>
+            technicalScore(r, [9, 21, 50, 200].filter((p) => r[`ema_${p}`] != null))
+          }
         />
       )}
 
@@ -8457,7 +8508,7 @@ function App() {
           )}
           <button
             className={`btn ${onlyWatchlist ? 'primary' : ''}`}
-            title="Sadece favori hisseleri göster"
+            title={t(lang, 'favoritesHint')}
             onClick={() => setOnlyWatchlist((v) => !v)}
           >
             ⭐ {t(lang, 'favorites')}
@@ -8646,7 +8697,9 @@ function App() {
                       <TickerLogo symbol={r.symbol} />
                       {displaySymbol(r.symbol)}
                     </button>
-                    {newSymbols.has(r.symbol) && <span className="badge new-badge">YENİ</span>}
+                    {newSymbols.has(r.symbol) && (
+                      <span className="badge new-badge">{t(lang, 'todayNewBadge')}</span>
+                    )}
                   </td>
                   <td>
                     <span className={`badge score-${scoreTone(r.score)}`}>{r.score ?? '—'}</span>

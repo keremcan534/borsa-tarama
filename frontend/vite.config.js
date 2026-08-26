@@ -17,7 +17,14 @@ export default defineConfig({
         skipWaiting: true,
         // data/*.json tarama çıktısı — SW'ye gömülmesin (her deploy'da değişir)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        navigateFallbackDenylist: [/^\/borsa-tarama\/data\//],
+        // hisse/ (SEO sayfaları, ~600+ HTML) ve rapor/ arşivi precache'e GİRMEMELİ:
+        // her deploy'da hepsi değiştiğinden her ziyaretçi her deploy sonrası ~800
+        // dosyayı yeniden indiriyordu. Yavaş bağlantıda bu güncelleme hiç bitmiyor
+        // ve kullanıcı haftalarca eski uygulama sürümüne takılı kalıyordu.
+        globIgnores: ['hisse/**', 'rapor/**'],
+        // Precache dışı sayfalara SPA fallback uygulanmasın: /hisse/X.html ve
+        // /rapor/Y.html gerçek dosyalar, index.html değil.
+        navigateFallbackDenylist: [/\/(data|hisse|rapor)\//],
       },
       manifest: {
         name: 'Borsa Tarama',

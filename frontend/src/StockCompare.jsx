@@ -29,8 +29,9 @@ function displayCode(symbol) {
   return symbol.replace('.IS', '')
 }
 
-function formatMetric(stock, row, lang) {
-  const v = stock[row.key]
+function formatMetric(stock, row, lang, scoreOf) {
+  // Puan payload'da yoktur; tarama tablosundaki gibi tarayıcıda hesaplanır
+  const v = row.key === 'score' ? scoreOf?.(stock) : stock[row.key]
   if (row.format === 'score') return <span className={`badge score-${scoreTone(v)}`}>{v ?? '—'}</span>
   if (row.format === 'pct') return <span className={`pct ${pctTone(v)}`}>{formatPct(v)}</span>
   if (row.format === 'num1') return v == null ? '—' : Number(v).toFixed(1)
@@ -45,7 +46,16 @@ function formatMetric(stock, row, lang) {
  * USD bazı seçeneği ve teknik metrik tablosu. FundCompare'in hisse versiyonu;
  * grafik/USD altyapısı oradan yeniden kullanılır.
  */
-export default function StockCompare({ overview, prices, lang, loading, seedSymbols }) {
+export default function StockCompare({
+  overview,
+  prices,
+  fx,
+  lang,
+  loading,
+  seedSymbols,
+  onNeedSeries,
+  scoreOf,
+}) {
   // "overview": günlük tarama sonucu (results); "prices": stock_prices.json
   const list = useMemo(() => {
     const rows = []
@@ -72,6 +82,12 @@ export default function StockCompare({ overview, prices, lang, loading, seedSymb
     setSeeded(true)
   }, [list, seedSymbols, seeded])
 
+  // Seçilen sembollerin fiyat serileri sembol başına ayrı dosyada durur ve talep
+  // üzerine iner; istenmezse grafik "seri yok" sanılır (kullanıcı testinde görüldü).
+  useEffect(() => {
+    if (selected.length) onNeedSeries?.(selected)
+  }, [selected, onNeedSeries])
+
   const bySymbol = useMemo(() => {
     const m = new Map()
     for (const r of list) m.set(r.symbol, r)
@@ -92,7 +108,10 @@ export default function StockCompare({ overview, prices, lang, loading, seedSymb
     })
   }
 
-  const usdPoints = prices?.series?.['USDTRY=X'] || prices?.benchmarks?.['USDTRY=X']?.points
+  // Kur serisi fx.json'dan gelir (tarama her koşuda üretir); eski toplu fiyat
+  // dosyasındaki USDTRY anahtarı yalnızca geriye dönük uyumluluk için denenir.
+  const usdPoints =
+    fx?.usdtry || prices?.series?.['USDTRY=X'] || prices?.benchmarks?.['USDTRY=X']?.points
   const usdAvailable = Boolean(usdPoints?.length)
   const inUsd = usdBase && usdAvailable
 
@@ -233,7 +252,7 @@ export default function StockCompare({ overview, prices, lang, loading, seedSymb
                   <tr key={row.key}>
                     <td className="left">{row.i18nKey ? t(lang, row.i18nKey) : row.label}</td>
                     {selectedStocks.map((r) => (
-                      <td key={r.symbol}>{formatMetric(r, row, lang)}</td>
+                      <td key={r.symbol}>{formatMetric(r, row, lang, scoreOf)}</td>
                     ))}
                   </tr>
                 ))}

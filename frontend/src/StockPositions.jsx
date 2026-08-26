@@ -168,7 +168,7 @@ export default function StockPositions({ data, loading, error, lang }) {
           </div>
         ) : (
           <div className="empty-box">
-            <strong>{t(lang, 'stockPositionsNoDataTitle')}</strong>
+            <strong>{t(lang, 'stockPositionsNoDataTitle')}</strong>{' '}
             <span>{t(lang, 'stockPositionsNoData')}</span>
           </div>
         )}

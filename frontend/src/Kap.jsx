@@ -44,6 +44,8 @@ function displayCode(symbol) {
 export default function Kap({ items, generatedAt, loading, error, lang, onOpenChart }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState(null)
+  // Kalan bildirimler erişilebilir olmalı: sınır sabit değil, istekle genişler.
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('tr')
@@ -59,7 +61,7 @@ export default function Kap({ items, generatedAt, loading, error, lang, onOpenCh
       })
   }, [items, query, category])
 
-  const shown = filtered.slice(0, PAGE_SIZE)
+  const shown = filtered.slice(0, limit)
 
   if (loading) return <div className="status-bar">{t(lang, 'kapLoading')}</div>
   if (error) return <div className="error-box">{error}</div>
@@ -77,7 +79,10 @@ export default function Kap({ items, generatedAt, loading, error, lang, onOpenCh
             key={c.key || 'all'}
             type="button"
             className={`tab ${category === c.key ? 'active' : ''}`}
-            onClick={() => setCategory(c.key)}
+            onClick={() => {
+              setCategory(c.key)
+              setLimit(PAGE_SIZE)
+            }}
           >
             {t(lang, c.i18nKey)}
           </button>
@@ -128,7 +133,15 @@ export default function Kap({ items, generatedAt, loading, error, lang, onOpenCh
       )}
 
       {filtered.length > shown.length && (
-        <div className="status-bar muted">{t(lang, 'kapMore', filtered.length - shown.length)}</div>
+        <div className="status-bar">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setLimit((current) => current + PAGE_SIZE)}
+          >
+            {t(lang, 'kapMore', filtered.length - shown.length)}
+          </button>
+        </div>
       )}
     </div>
   )

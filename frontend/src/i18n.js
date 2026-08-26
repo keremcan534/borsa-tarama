@@ -86,7 +86,8 @@ const STRINGS = {
     changeEntered: 'Sinyale yeni girenler',
     changeDropped: 'Sinyalden çıkanlar',
     sectorHeatTitle: 'Sektör ısı haritası',
-    sectorHeatHint: 'Taranan hisselerin sektör bazında bugünkü ortalama değişimi. Koyu yeşil = güçlü sektör.',
+    sectorHeatHint:
+      'Likidite eşiğini geçen hisselerin sektör bazında bugünkü ortalama değişimi. Koyu yeşil = güçlü sektör.',
     sectorHeatCount: (n, up, down) => `${n} hisse · ${up}↑ ${down}↓`,
     todayMarkets: 'Marketlere göre sinyaller',
     todayMarketLine: (passed, scanned) => `${scanned} tarandı · ${passed} sinyal`,
@@ -288,6 +289,8 @@ const STRINGS = {
     rotHowBody2:
       'Ortalama yerine MEDYAN kullanılır: tek bir uç hisse (tavan yapan küçük bir şirket) sektörün tamamını güçlü göstermesin diye. "Sinyal" kolonu o sektörde kaç hissenin şu an teknik filtreyi geçtiğini söyler — getiri geçmişi, sinyal ise bugünkü teknik durumu anlatır.',
     rotEmpty: 'Sektör verisi yok. Tarama çalışınca burada görünecek.',
+    rotNoSectors:
+      'Emtia ve kripto için sektör kavramı yok; bu görünüm hisse piyasaları için. Üstteki sekmelerden BIST veya S&P 500 seç.',
     rotLeader: 'Öne çıkan sektör',
     rotLaggard: 'Geride kalan',
     rotColSector: 'Sektör',
@@ -342,6 +345,13 @@ const STRINGS = {
     curUsd: '$ Dolar',
     curGold: '🥇 Gram altın',
     curPeriodReturn: 'Dönem getirisi:',
+    curPeriodReturnSpan: (span) => `Getiri (${span}):`,
+    modalOpenTv: "TradingView'da aç ↗",
+    modalOpenTefas: "TEFAS'ta aç ↗",
+    modalClose: 'Kapat ✕',
+    modalNewsTitle: '📰 Son haberler',
+    chartOf: (symbol) => `${symbol} grafiği`,
+    favoritesHint: 'Sadece favori hisseleri göster',
     curNote:
       'Her gün o günün kuruyla çevrildi. TL bazlı getiri enflasyon ortamında yanıltıcı olabilir; dolar/altın bazı reel resmi gösterir.',
     tabStrategy: 'Strateji Takip',
@@ -554,6 +564,7 @@ const STRINGS = {
     mapLegendDown: 'Düşüş',
     mapLegendUp: 'Yükseliş',
     mapSizeNote: 'Kutu alanı ∝ piyasa değeri',
+    mapSizeNoteEqual: 'Eşit alan — emtia/kripto için piyasa değeri tanımlı değil',
     // Piyasa baloncukları
     tabBubbles: 'Baloncuklar',
     bubblesIntro:
@@ -650,7 +661,7 @@ const STRINGS = {
     kapCatTrade: 'Pay Alım Satım',
     kapLate: 'GEÇ',
     kapNoSubject: 'Konu belirtilmemiş',
-    kapMore: (n) => `${n} bildirim daha var — aramayla daralt.`,
+    kapMore: (n) => `${n} bildirim daha göster`,
     // --- Fon para akışı (TL) ---
     flowMoneyTitle: 'Fon para akışı (5 gün)',
     flowMoneyIntro:
@@ -768,7 +779,8 @@ const STRINGS = {
     exportCsv: 'CSV indir',
     // Piyasa genişliği
     breadthTitle: 'Piyasa genişliği',
-    breadthHint: 'Taranan hisselerin bugün yükselen / düşen dağılımı.',
+    breadthHint: (n) =>
+      `Likidite eşiğini geçen ${n} hissenin bugün yükselen / düşen dağılımı (tarama daha geniş bir listeyi kapsar).`,
     breadthUp: 'Yükselen',
     breadthDown: 'Düşen',
     breadthFlat: 'Yatay',
@@ -992,7 +1004,8 @@ const STRINGS = {
     changeEntered: 'Newly entered signals',
     changeDropped: 'Dropped from signals',
     sectorHeatTitle: 'Sector heatmap',
-    sectorHeatHint: 'Average daily change of scanned stocks by sector. Deeper green = stronger sector.',
+    sectorHeatHint:
+      'Average daily change by sector among stocks above the liquidity floor. Deeper green = stronger sector.',
     sectorHeatCount: (n, up, down) => `${n} stocks · ${up}↑ ${down}↓`,
     todayMarkets: 'Signals by market',
     todayMarketLine: (passed, scanned) => `${scanned} scanned · ${passed} signals`,
@@ -1181,6 +1194,8 @@ const STRINGS = {
     rotHowBody2:
       'We use the MEDIAN rather than the average so a single outlier (a small company limit-up) does not make the whole sector look strong. The "Signals" column shows how many stocks in that sector currently pass the technical filter — returns describe the past, signals the present.',
     rotEmpty: 'No sector data yet. It will appear after a scan.',
+    rotNoSectors:
+      'Commodities and crypto have no sectors; this view is for stock markets. Pick BIST or S&P 500 above.',
     rotLeader: 'Leading sector',
     rotLaggard: 'Lagging sector',
     rotColSector: 'Sector',
@@ -1235,6 +1250,13 @@ const STRINGS = {
     curUsd: '$ USD',
     curGold: '🥇 Gold (g)',
     curPeriodReturn: 'Period return:',
+    curPeriodReturnSpan: (span) => `Return (${span}):`,
+    modalOpenTv: 'Open in TradingView ↗',
+    modalOpenTefas: 'Open on TEFAS ↗',
+    modalClose: 'Close ✕',
+    modalNewsTitle: '📰 Latest news',
+    chartOf: (symbol) => `${symbol} chart`,
+    favoritesHint: 'Show only starred stocks',
     curNote:
       'Converted at each day’s own rate. TRY returns can mislead under inflation; the USD/gold basis shows the real picture.',
     tabStrategy: 'Strategy Tracker',
@@ -1437,6 +1459,7 @@ const STRINGS = {
     mapLegendDown: 'Down',
     mapLegendUp: 'Up',
     mapSizeNote: 'Box area ∝ market cap',
+    mapSizeNoteEqual: 'Equal area — commodities/crypto have no market cap',
     // Market bubbles
     tabBubbles: 'Bubbles',
     bubblesIntro:
@@ -1533,7 +1556,7 @@ const STRINGS = {
     kapCatTrade: 'Share Transaction',
     kapLate: 'LATE',
     kapNoSubject: 'No subject given',
-    kapMore: (n) => `${n} more disclosures — narrow with search.`,
+    kapMore: (n) => `Show ${n} more disclosures`,
     // --- Fund money flow (TRY) ---
     flowMoneyTitle: 'Fund money flow (5 days)',
     flowMoneyIntro:
@@ -1651,7 +1674,8 @@ const STRINGS = {
     exportCsv: 'Export CSV',
     // Market breadth
     breadthTitle: 'Market breadth',
-    breadthHint: "Advancers vs decliners among scanned stocks today.",
+    breadthHint: (n) =>
+      `Advancers vs decliners today among the ${n} stocks above the liquidity floor (the scan covers a wider list).`,
     breadthUp: 'Advancing',
     breadthDown: 'Declining',
     breadthFlat: 'Flat',
