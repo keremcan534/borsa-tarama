@@ -54,7 +54,7 @@ def main() -> None:
         data_dir = public_dir / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backtest_src, data_dir / "backtest.json")
-        print(f"[SITE-META] backtest.json siteye kopyalandı")
+        print("[SITE-META] backtest.json siteye kopyalandı")
     else:
         print("[SITE-META] data/backtest.json yok; Strateji sekmesi bu yayında boş görünecek")
 

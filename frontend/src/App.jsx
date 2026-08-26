@@ -2933,12 +2933,14 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
       .sort((a, b) => b.value - a.value)
   }, [known, stockMap, lang])
 
+  // Hook'lar erken return'den ÖNCE çağrılmalı: React kancaların her render'da
+  // aynı sırayla çalışmasını şart koşuyor, `known.length < 1` dalı bunu bozardı.
+  const realReturn = useMemo(() => portfolioRealReturn(rows, inflation), [rows, inflation])
+
   if (known.length < 1) return null
   const best = known.reduce((a, b) => ((b.plPct ?? -Infinity) > (a.plPct ?? -Infinity) ? b : a))
   const worst = known.reduce((a, b) => ((b.plPct ?? Infinity) < (a.plPct ?? Infinity) ? b : a))
   const totalVal = totals.value || 1
-
-  const realReturn = useMemo(() => portfolioRealReturn(rows, inflation), [rows, inflation])
 
   return (
     <section className="watch-section pa">
