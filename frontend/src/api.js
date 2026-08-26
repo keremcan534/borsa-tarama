@@ -336,3 +336,12 @@ export async function fetchFinancials() {
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
+
+/** Ekonomik takvim: faiz kararları ve enflasyon raporları. İlk taramaya kadar 404 normaldir. */
+export async function fetchCalendar() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/calendar.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Takvim yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
