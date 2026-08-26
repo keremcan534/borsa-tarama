@@ -180,8 +180,18 @@ def build_archive_index(dates: list[str]) -> str:
 """
 
 
-def build_sitemap(dates: list[str]) -> str:
-    urls = [SITE_URL, f"{SITE_URL}rapor/"] + [f"{SITE_URL}rapor/{d}.html" for d in sorted(dates, reverse=True)]
+def build_sitemap(dates: list[str], symbol_urls: list[str] | None = None) -> str:
+    """Site haritası: ana sayfa, rapor arşivi ve hisse sayfaları.
+
+    Hisse sayfaları eklenmeden önce haritada 30 URL vardı ve 28'i tarih damgalı
+    rapordu — yani "THYAO teknik analiz" gibi sorgular için hedef sayfa yoktu.
+    """
+    urls = (
+        [SITE_URL, f"{SITE_URL}rapor/"]
+        + [f"{SITE_URL}rapor/{d}.html" for d in sorted(dates, reverse=True)]
+        + ([f"{SITE_URL}hisse/"] if symbol_urls else [])
+        + sorted(symbol_urls or [])
+    )
     entries = "\n".join(f"  <url><loc>{u}</loc></url>" for u in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{entries}\n</urlset>\n'
 

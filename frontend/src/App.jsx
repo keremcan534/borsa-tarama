@@ -3,6 +3,10 @@ import './App.css'
 import {
   fetchAllNews,
   fetchBacktest,
+  fetchCalendar,
+  fetchFinancials,
+  fetchInflation,
+  fetchKap,
   fetchDailyOverview,
   fetchDividends,
   fetchEnabledMarkets,
@@ -25,6 +29,9 @@ import {
   STATIC_MODE,
 } from './api'
 import BondDuration from './BondDuration'
+import FundFlows from './FundFlows'
+import { portfolioRealReturn } from './inflation'
+import Kap from './Kap'
 import FundCompare from './FundCompare'
 import StockCompare from './StockCompare'
 import StockPositions from './StockPositions'
@@ -66,6 +73,7 @@ const NAV_ICON_PATHS = {
   scorecard: 'M6 3h12v18l-3-1.5L12 21l-3-1.5L6 21V3ZM9 8h6M9 12h6M9 16h3',
   backtest: 'M4 19 9 13l3.5 3.5L20 8M20 8h-4.5M20 8v4.5',
   about: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 11v6M12 7.5v.5',
+  kap: 'M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM14 3v5h5M9 13h6M9 17h4',
 }
 
 function NavIcon({ name }) {
@@ -106,7 +114,10 @@ const ADS_ENABLED = false
 const SPARKLINE_LIMIT = 60
 
 const MARKETS = [
-  { key: 'bist100', label: 'BIST 100', labelEn: 'BIST 100' },
+  // "bist" = borsanın tamamı (610 hisse). Eskiden yalnızca BIST 100 taranıyordu;
+  // anahtar değişti çünkü etiketin yalan söylememesi gerekiyor. Eski `?m=bist100`
+  // bağlantıları MARKET_ALIASES ile buraya yönlendirilir.
+  { key: 'bist', label: 'BIST', labelEn: 'BIST' },
   { key: 'sp500', label: 'S&P 500', labelEn: 'S&P 500' },
   { key: 'etf', label: 'ETF', labelEn: 'ETF' },
   { key: 'commodity', label: 'Emtia', labelEn: 'Commodities' },
@@ -142,6 +153,7 @@ const NAV_SECTIONS = [
       { key: 'bubbles', i18nKey: 'tabBubbles' },
       { key: 'rotation', i18nKey: 'tabRotation' },
       { key: 'macro', i18nKey: 'tabMacro' },
+      { key: 'kap', i18nKey: 'tabKap' },
       { key: 'news', i18nKey: 'tabNews' },
     ],
   },
@@ -178,6 +190,11 @@ const NAV_SECTIONS = [
 
 // Düz liste (komut paleti "Sayfalar" grubu vb. için) aynı sırayı paylaşır
 const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items)
+
+// Yayındaki bağlantılar ve yer imleri `?m=bist100` taşıyor; anahtar değişince
+// bunlar sessizce "Bugün" sayfasına düşerdi. Eşleme tek yönlüdür: eski -> yeni.
+const MARKET_ALIASES = { bist100: 'bist' }
+export const canonicalMarket = (key) => MARKET_ALIASES[key] || key
 
 const mLabel = (m, lang) => (lang === 'en' ? m.labelEn : m.label)
 const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
@@ -734,6 +751,40 @@ function formatPct(value, digits = 1) {
   return `${sign}${pct.toFixed(digits)}%`
 }
 
+/**
+ * Büyük para tutarlarını okunur kısaltır: 327108000000 -> "327,1 mlr".
+ *
+ * Finansal kalemler milyar mertebesinde ve tam sayıyla gösterildiğinde satır
+ * taşıyor; kullanıcı da o basamakları saymıyor. Eşikler TR'de konuşulan birimler
+ * (bin/mn/mlr/trl); İngilizcede K/M/B/T.
+ */
+function formatCompact(value, lang = 'tr') {
+  if (value == null || Number.isNaN(value)) return null
+  const units =
+    lang === 'en'
+      ? [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]
+      : [[1e12, 'trl'], [1e9, 'mlr'], [1e6, 'mn'], [1e3, 'bin']]
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  for (const [scale, suffix] of units) {
+    if (abs >= scale) return `${sign}${formatNum(abs / scale, 1)} ${suffix}`
+  }
+  return `${sign}${formatNum(abs, 0)}`
+}
+
+/** Yahoo'nun tavsiye anahtarını yerelleştirir; tanımadığımızı olduğu gibi gösterir. */
+function recommendationLabel(key, lang) {
+  const map = {
+    strong_buy: 'analystRecBuy',
+    buy: 'analystRecBuy',
+    hold: 'analystRecHold',
+    sell: 'analystRecSell',
+    strong_sell: 'analystRecSell',
+  }
+  const i18nKey = map[String(key).toLowerCase()]
+  return i18nKey ? t(lang, i18nKey) : String(key)
+}
+
 function pctTone(value) {
   if (value == null) return ''
   if (value > 0.02) return 'pos'
@@ -918,7 +969,7 @@ function NewsFeed({ news, loading, error, lang, onOpenChart }) {
  * aralığı, skor geçmişi ve hisseyi taşıyan fonlar. ChartModal içinde grafiğin
  * altında gösterilir; her blok verisi olmadığında sessizce gizlenir.
  */
-function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividend }) {
+function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividend, financials }) {
   const emaPeriods = stock ? [9, 21, 50, 200].filter((p) => stock[`ema_${p}`] != null) : []
   const score = stock ? technicalScore(stock, emaPeriods) : null
 
@@ -1024,6 +1075,54 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
         </div>
       )}
 
+      {/* Analist konsensüsü: taramanın temel oran isteğinden düşer, ek maliyeti yok.
+          BIST'te çoğu hissede analist yok — o durumda blok hiç görünmez. */}
+      {stock?.target_price != null && stock.close > 0 && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'analystTitle')}</div>
+          <div className="sd-metrics">
+            {metric(t(lang, 'analystTarget'), formatNum(stock.target_price, 2))}
+            {metric(
+              t(lang, 'analystUpside'),
+              formatPct(stock.target_price / stock.close - 1, 1),
+              pctTone(stock.target_price / stock.close - 1),
+            )}
+            {metric(
+              t(lang, 'sdRecommendation'),
+              stock.recommendation ? recommendationLabel(stock.recommendation, lang) : null,
+            )}
+            {metric(
+              t(lang, 'sdAnalysts'),
+              stock.analyst_count ? t(lang, 'analystCount', Math.round(stock.analyst_count)) : null,
+            )}
+          </div>
+        </div>
+      )}
+
+      {financials && (
+        <div className="sd-block">
+          <div className="sd-block-title">{t(lang, 'finTitle')}</div>
+          <div className="sd-metrics">
+            {metric(t(lang, 'finPeriod'), financials.period)}
+            {metric(t(lang, 'finRevenue'), formatCompact(financials.revenue, lang))}
+            {metric(t(lang, 'finNetIncome'), formatCompact(financials.net_income, lang))}
+            {metric(
+              t(lang, 'finQoq'),
+              financials.revenue_change_qoq == null ? null : formatPct(financials.revenue_change_qoq, 1),
+              pctTone(financials.revenue_change_qoq),
+            )}
+            {metric(
+              t(lang, 'finNetMargin'),
+              financials.net_margin == null ? null : formatPct(financials.net_margin, 1),
+            )}
+            {metric(t(lang, 'finTtm'), formatCompact(financials.ttm_revenue, lang))}
+          </div>
+          {/* Kaynak yalnızca 4 çeyrek veriyor: yıllık karşılaştırma yapılamıyor ve
+              bunu yazmak, kullanıcının olmayan bir kıyası aramasını engelliyor. */}
+          <p className="sd-funds-empty">{t(lang, 'finOnlyFourQuarters')}</p>
+        </div>
+      )}
+
       {emaPeriods.length > 0 && (
         <div className="sd-block">
           <div className="sd-block-title">{t(lang, 'sdTrendTitle')}</div>
@@ -1094,7 +1193,7 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare, dividend }) {
+function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare, dividend, financials }) {
   // TL / $ / gram altın: TL bazlı bir getirinin reelde ne olduğunu göstermek için
   const [currency, setCurrency] = useState('native')
 
@@ -1229,6 +1328,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
           series={series}
           lang={lang}
           dividend={dividend}
+          financials={financials}
         />
         {news && news.length > 0 && (
           <div className="modal-news">
@@ -2412,6 +2512,20 @@ function priceOn(series, dateStr) {
  */
 const FLOW_WINDOWS = [7, 30]
 
+/**
+ * Arşiv kaydından yatırımcı sayısını okur.
+ *
+ * Kayıt biçimi düz sayıdan sözlüğe geçti (artık fon büyüklüğü ve fiyat da
+ * saklanıyor, bkz. app/funds/flows.py). Bu panel geçmiş günleri de gösterdiğinden
+ * İKİ biçimi de okumak zorunda: yalnızca yenisini okusaydı arşivin eski kısmı
+ * sessizce kaybolur ve 30 günlük pencere aniden boşalırdı.
+ */
+function investorsOf(entry) {
+  if (entry == null) return null
+  if (typeof entry === 'number') return entry
+  return typeof entry.investors === 'number' ? entry.investors : null
+}
+
 function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
   const history = flows?.history || {}
   const dates = useMemo(() => Object.keys(history).sort(), [history])
@@ -2448,8 +2562,9 @@ function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
     const last = history[lastDate]
     const bySymbol = new Map((funds?.results || []).map((f) => [f.symbol, f]))
     const rows = []
-    for (const [sym, cur] of Object.entries(last)) {
-      const prev = base?.[sym]
+    for (const [sym, rawCur] of Object.entries(last)) {
+      const cur = investorsOf(rawCur)
+      const prev = investorsOf(base?.[sym])
       if (prev == null || cur == null) continue
       const delta = cur - prev
       if (!delta) continue
@@ -2785,7 +2900,7 @@ function Donut({ segments, size = 168 }) {
  * sektör/fon-kategorisi dağılım çubukları. Tümü mevcut pozisyon verisinden;
  * hisse sektörü günlük özetten, fon kategorisi ad çıkarımından gelir.
  */
-function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
+function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
   const known = useMemo(() => rows.filter((r) => r.value != null && r.value > 0), [rows])
 
   const alloc = useMemo(() => {
@@ -2818,6 +2933,10 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
       .sort((a, b) => b.value - a.value)
   }, [known, stockMap, lang])
 
+  // Hook'lar erken return'den ÖNCE çağrılmalı: React kancaların her render'da
+  // aynı sırayla çalışmasını şart koşuyor, `known.length < 1` dalı bunu bozardı.
+  const realReturn = useMemo(() => portfolioRealReturn(rows, inflation), [rows, inflation])
+
   if (known.length < 1) return null
   const best = known.reduce((a, b) => ((b.plPct ?? -Infinity) > (a.plPct ?? -Infinity) ? b : a))
   const worst = known.reduce((a, b) => ((b.plPct ?? Infinity) < (a.plPct ?? Infinity) ? b : a))
@@ -2839,6 +2958,21 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
           <span className="today-card-label">K/Z</span>
           <strong className={`today-card-value pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</strong>
         </div>
+        {/* Reel getiri: TL'de %40 nominal, enflasyon %45'se KAYIPTIR. Kart yalnızca
+            TÜFE serisi o dönemi kapsıyorsa çıkar; kapsamıyorsa hiç gösterilmez. */}
+        {realReturn?.realPct != null && (
+          <div className="today-card" title={t(lang, 'realReturnHint')}>
+            <span className="today-card-label">{t(lang, 'realReturn')}</span>
+            <strong className={`today-card-value pct ${pctTone(realReturn.realPct)}`}>
+              {formatPct(realReturn.realPct)}
+            </strong>
+            <span className="today-card-note">
+              {realReturn.covered < realReturn.total
+                ? t(lang, 'realReturnPartial', realReturn.covered, realReturn.total)
+                : t(lang, 'cpiSource', inflation.source || '—', inflation.as_of || '—')}
+            </span>
+          </div>
+        )}
         <div className="today-card">
           <span className="today-card-label">{t(lang, 'paPositions')}</span>
           <strong className="today-card-value">{rows.length}</strong>
@@ -2894,7 +3028,7 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang }) {
   )
 }
 
-function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock }) {
+function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock, inflation }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -3255,7 +3389,13 @@ function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang,
       )}
 
       {positions.length > 0 && (
-        <PortfolioAnalytics rows={rows} totals={totals} stockMap={stockMap} lang={lang} />
+        <PortfolioAnalytics
+          rows={rows}
+          totals={totals}
+          stockMap={stockMap}
+          lang={lang}
+          inflation={inflation}
+        />
       )}
 
       {pfChartLines && (
@@ -3634,7 +3774,7 @@ function TodayView({
     setScopeState(next)
     localStorage.setItem('today_scope', next)
   }
-  const isBistMarket = (key) => key === 'bist100'
+  const isBistMarket = (key) => key === 'bist' || key === 'bist100'
   const scopedMarkets = useMemo(
     () => allMarkets.filter((m) => (scope === 'bist' ? isBistMarket(m.key) : !isBistMarket(m.key))),
     [allMarkets, scope],
@@ -3901,7 +4041,7 @@ function TodayView({
 /** Oran gösterimi (isabet vb.): formatPct'in aksine işaret öneki istemez. */
 const formatRate = (v, digits = 0) => (v == null ? '—' : `${(v * 100).toFixed(digits)}%`)
 
-const MONEY_UNIT = { bist100: 'TL', sp500: '$', etf: '$', commodity: '$' }
+const MONEY_UNIT = { bist: 'TL', bist100: 'TL', sp500: '$', etf: '$', commodity: '$' }
 // Binlik ayracı dile bağlı: "15.158" TR'de on beş bin, EN'de ondalık okunur.
 const formatMoney = (v, lang) =>
   v == null ? '—' : Math.round(v).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')
@@ -5130,6 +5270,11 @@ function AlertsView({ evals, stockMap, fundMap, funds, lang, notifyPerm, onEnabl
         {notifyBtn}
       </div>
 
+      {/* Alarmlar tarayıcıda, bu sayfa açıkken ve GÜN SONU verisiyle değerlendiriliyor.
+          Bunu yazmadan "fiyat alarmı" demek, sekme kapalıyken de bildirim geleceği
+          ve seans içi takip yapıldığı izlenimi verirdi — ikisi de doğru değil. */}
+      <div className="alert-limitation">{t(lang, 'alertsLimitation')}</div>
+
       <form className="alert-form" onSubmit={submit}>
         <div className="tabs alert-type">
           <button type="button" className={`tab ${form.type === 'stock' ? 'active' : ''}`} onClick={() => changeType('stock')}>
@@ -5971,7 +6116,46 @@ function corrTone(value) {
   return ''
 }
 
-function MacroView({ data, loading, lang }) {
+/**
+ * Ekonomik takvim şeridi.
+ *
+ * Makro panelin İÇİNDE duruyor, ayrı bir sekmede değil: panel fiyat SEVİYELERİNİ
+ * gösteriyor ("dolar kaç"), takvim ise o seviyeleri hareket ettirecek OLAYLARI
+ * ("perşembe faiz kararı"). İkisi aynı soruyu farklı yönden cevapladığından ayrı
+ * sekmeye bölmek kullanıcıyı iki yere bakmaya zorlardı.
+ */
+function EconomicCalendar({ data, lang }) {
+  const events = data?.events || []
+  if (!events.length) return null
+
+  const label = (e) => (lang === 'en' ? e.title_en : e.title)
+  const when = (e) =>
+    new Date(`${e.date}T00:00:00`).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR', {
+      day: '2-digit',
+      month: 'short',
+    })
+
+  return (
+    <section className="today-section">
+      <h2 className="today-title">{t(lang, 'calTitle')}</h2>
+      <p className="today-note">{t(lang, 'calIntro')}</p>
+      <ul className="cal-list">
+        {events.slice(0, 8).map((e) => (
+          <li key={`${e.date}-${e.title}`} className="cal-item">
+            <span className={`cal-flag ${e.region}`}>{e.region === 'tr' ? '🇹🇷' : '🇺🇸'}</span>
+            <span className="cal-date">{when(e)}</span>
+            <span className="cal-title">{label(e)}</span>
+            {/* "3 gün sonra" backend'de hesaplanıyor: arayüzün tarih aritmetiği
+                yapmasına gerek yok ve iki yerde farklı sonuç çıkma riski kalkıyor. */}
+            <span className="cal-days">{t(lang, 'calDaysUntil', e.days_until)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function MacroView({ data, loading, lang, calendar }) {
   // Kartların üstündeki dönem anahtarı: "her yüzde dönemini taşır" kuralının
   // panel karşılığı — hangi dönemin gösterildiği tek yerden, açıkça seçilir.
   const [period, setPeriod] = useState('change_1d')
@@ -5991,6 +6175,8 @@ function MacroView({ data, loading, lang }) {
 
   return (
     <>
+      <EconomicCalendar data={calendar} lang={lang} />
+
       <section className="today-section">
         <h2 className="today-title">{t(lang, 'macroTitle')}</h2>
         <p className="today-note">{t(lang, 'macroIntro')}</p>
@@ -6520,13 +6706,18 @@ function App() {
     NAV_ITEMS.some((i) => i.key === initialUrl.view) ? initialUrl.view : 'today',
   )
   const [market, setMarket] = useState(() =>
-    MARKETS.some((m) => m.key === initialUrl.market) ? initialUrl.market : 'bist100',
+    MARKETS.some((m) => m.key === canonicalMarket(initialUrl.market))
+      ? canonicalMarket(initialUrl.market)
+      : 'bist',
   )
   const [timeframe, setTimeframe] = useState(() =>
     TIMEFRAMES.some((tf) => tf.key === initialUrl.timeframe) ? initialUrl.timeframe : 'daily',
   )
   const [watchlist, setWatchlist] = useState(loadWatchlist)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  // Tarama artık borsanın tamamını kapsıyor (610 hisse); endeks bileşenlerine
+  // daralmak sık istenen bir görünüm olduğundan ayrı bir düğme hak ediyor.
+  const [onlyIndex, setOnlyIndex] = useState(false)
   // Filtreleri yok sayıp taranan tüm hisseleri (örn. BIST 100'ün tamamı) listele
   const [showAllStocks, setShowAllStocks] = useState(false)
   // Yalnızca bu mumda sinyal veren (taze) hisseleri göster
@@ -6567,6 +6758,14 @@ function App() {
   const [news, setNews] = useState(null)
   const [newsLoading, setNewsLoading] = useState(false)
   const [newsError, setNewsError] = useState(null)
+  const [kap, setKap] = useState(null)
+  const [kapLoading, setKapLoading] = useState(false)
+  const [kapError, setKapError] = useState(null)
+  // TÜFE ve finansallar sayfa açılışında değil, İHTİYAÇ DUYULDUĞUNDA çekilir:
+  // ikisi de yalnızca belirli ekranlarda kullanılıyor ve açılışı yavaşlatmamalı.
+  const [inflation, setInflation] = useState(null)
+  const [financials, setFinancials] = useState(null)
+  const [calendar, setCalendar] = useState(null)
   const [funds, setFunds] = useState(null)
   const [fundsLoading, setFundsLoading] = useState(false)
   const [fundsError, setFundsError] = useState(null)
@@ -6611,7 +6810,7 @@ function App() {
   const activeMarkets = useMemo(
     () =>
       MARKETS.filter((m) =>
-        (enabledMarketKeys || ['bist100', 'sp500', 'commodity']).includes(m.key),
+        (enabledMarketKeys || ['bist', 'sp500', 'commodity']).includes(m.key),
       ),
     [enabledMarketKeys],
   )
@@ -7193,6 +7392,80 @@ function App() {
     }
   }, [view, chartSymbol, chartFund, news, activeMarkets, marketsResolved])
 
+  // KAP bildirimleri: yalnızca KAP sekmesinde ve hisse grafiği açıldığında lazım.
+  useEffect(() => {
+    if (view !== 'kap' && !chartSymbol) return
+    if (kap) return
+    let ignore = false
+    setKapLoading(true)
+    setKapError(null)
+    fetchKap()
+      .then((result) => {
+        // 404 (henüz tarama çalışmamış) hata değil, veri yokluğudur.
+        if (!ignore) setKap(result || { items: [], generated_at: null })
+      })
+      .catch((err) => {
+        if (!ignore) setKapError(err.message)
+      })
+      .finally(() => {
+        if (!ignore) setKapLoading(false)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [view, chartSymbol, kap])
+
+  // Ekonomik takvim: yalnızca makro sayfasında lazım.
+  useEffect(() => {
+    if (view !== 'macro' || calendar) return
+    let ignore = false
+    fetchCalendar()
+      .then((result) => {
+        if (!ignore) setCalendar(result || { events: [] })
+      })
+      .catch(() => {
+        if (!ignore) setCalendar({ events: [] })
+      })
+    return () => {
+      ignore = true
+    }
+  }, [view, calendar])
+
+  // TÜFE serisi: reel getiri gösteren ekranlar (portföy, fonlar) açılınca çekilir.
+  useEffect(() => {
+    if (view !== 'portfolio' && view !== 'funds' && view !== 'fundCompare') return
+    if (inflation) return
+    let ignore = false
+    fetchInflation()
+      .then((result) => {
+        if (!ignore) setInflation(result || { series: {}, source: null, as_of: null })
+      })
+      .catch(() => {
+        // Reel getiri gösterilmez; nominal getiriler etkilenmez.
+        if (!ignore) setInflation({ series: {}, source: null, as_of: null })
+      })
+    return () => {
+      ignore = true
+    }
+  }, [view, inflation])
+
+  // Çeyreklik finansallar: hisse detay grafiği açılınca çekilir.
+  useEffect(() => {
+    if (!chartSymbol) return
+    if (financials) return
+    let ignore = false
+    fetchFinancials()
+      .then((result) => {
+        if (!ignore) setFinancials(result || { symbols: {} })
+      })
+      .catch(() => {
+        if (!ignore) setFinancials({ symbols: {} })
+      })
+    return () => {
+      ignore = true
+    }
+  }, [chartSymbol, financials])
+
   // Haftalık sinyaller: Strateji sekmesi açıkken veya bildirim izni verilmişken
   // (arka planda yeni-sinyal bildirimi için) tek sefer yüklenir.
   useEffect(() => {
@@ -7335,6 +7608,10 @@ function App() {
       list = list.filter((s) => fresh.has(s.symbol))
     }
     if (onlyWatchlist) list = list.filter((s) => watchlist.has(s.symbol))
+    // in_bist100 bayrağı taramada statik listeden geliyor (app/data/indices.py).
+    // Bayrağı OLMAYAN sembollerde (S&P, emtia) filtre hiç uygulanmaz: orada
+    // "BIST 100 üyesi değil" demek anlamsız olurdu.
+    if (onlyIndex) list = list.filter((s) => s.in_bist100 !== false)
     const q = search.trim().toUpperCase()
     if (q)
       list = list.filter(
@@ -7346,7 +7623,7 @@ function App() {
     const { key, dir } = sort
     list.sort((a, b) => compareRows(a, b, key, dir))
     return list
-  }, [data, filters, availableEmas, onlyWatchlist, watchlist, search, sort, showAllStocks, onlyNew])
+  }, [data, filters, availableEmas, onlyWatchlist, onlyIndex, watchlist, search, sort, showAllStocks, onlyNew])
 
   /* Liste görünümlerinde yalnızca EKRANDA duran satırların serisi istenir.
    * `rows` bu satırdan önce tanımlı olmalı — effect'i yukarı taşımak
@@ -7748,6 +8025,7 @@ function App() {
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
             onOpenStock={setChartSymbol}
+            inflation={inflation}
           />
         </>
       )}
@@ -7834,6 +8112,7 @@ function App() {
             </div>
           </details>
 
+          <FundFlows flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
           <FundFlowsPanel flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
 
           {!fundsError && funds && (
@@ -7989,7 +8268,9 @@ function App() {
 
       {view === 'bonds' && <BondDuration lang={lang} />}
 
-      {view === 'macro' && <MacroView data={macro} loading={macroLoading} lang={lang} />}
+      {view === 'macro' && (
+        <MacroView data={macro} loading={macroLoading} lang={lang} calendar={calendar} />
+      )}
 
       {view === 'about' && <AboutView lang={lang} />}
 
@@ -8098,6 +8379,20 @@ function App() {
         </>
       )}
 
+      {view === 'kap' && (
+        <>
+          <Kap
+            items={kap?.items || []}
+            generatedAt={kap?.generated_at}
+            loading={kapLoading}
+            error={kapError}
+            lang={lang}
+            onOpenChart={setChartSymbol}
+          />
+          <p className="disclaimer">{t(lang, 'newsDisclaimer')}</p>
+        </>
+      )}
+
       {view === 'news' && (
         <>
           <div className="status-bar">
@@ -8168,6 +8463,16 @@ function App() {
             ⭐ {t(lang, 'favorites')}
             {watchlist.size ? ` (${watchlist.size})` : ''}
           </button>
+          {/* Yalnızca BIST tarafında anlamlı: S&P/emtia listesinde endeks üyeliği yok */}
+          {(data?.stocks || []).some((s) => s.in_bist100 != null) && (
+            <button
+              className={`btn ${onlyIndex ? 'primary' : ''}`}
+              title={t(lang, 'onlyBist100Hint')}
+              onClick={() => setOnlyIndex((v) => !v)}
+            >
+              🏛️ {t(lang, 'onlyBist100')}
+            </button>
+          )}
           {rows.length > 0 && (
             <ShareBar
               lang={lang}
@@ -8395,6 +8700,7 @@ function App() {
           positions={chartPositions}
           scoreSeries={chartScoreSeries}
           dividend={chartDividend}
+          financials={financials?.symbols?.[chartSymbol] || null}
           fx={fx}
           onCompare={(sym) => {
             setCompareSeed([sym])

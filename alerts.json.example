@@ -1,0 +1,5 @@
+[
+  { "symbol": "THYAO.IS", "field": "close", "op": "above", "value": 300 },
+  { "symbol": "ASELS.IS", "kind": "signal" },
+  { "symbol": "AKBNK.IS", "field": "rsi", "op": "below", "value": 30 }
+]

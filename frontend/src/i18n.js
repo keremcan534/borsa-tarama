@@ -637,6 +637,73 @@ const STRINGS = {
     navSecFunds: 'Fonlar',
     navSecMine: 'Bana Özel',
     navSecAnalysis: 'Analiz',
+    // --- KAP bildirimleri (birincil kaynak) ---
+    tabKap: 'KAP Bildirimleri',
+    kapIntro:
+      'Şirketlerin KAP\'ta yayımladığı resmi bildirimler. Haber akışının aksine bu birincil kaynaktır: bilanço, pay alım-satım ve özel durum açıklamaları önce burada çıkar.',
+    kapLoading: 'KAP bildirimleri yükleniyor...',
+    kapSearch: 'Hisse, şirket veya konu ara',
+    kapEmpty: 'Bu filtreye uyan bildirim yok.',
+    kapCatAll: 'Tümü',
+    kapCatFinancial: 'Finansal Rapor',
+    kapCatSpecial: 'Özel Durum',
+    kapCatTrade: 'Pay Alım Satım',
+    kapLate: 'GEÇ',
+    kapNoSubject: 'Konu belirtilmemiş',
+    kapMore: (n) => `${n} bildirim daha var — aramayla daralt.`,
+    // --- Fon para akışı (TL) ---
+    flowMoneyTitle: 'Fon para akışı (5 gün)',
+    flowMoneyIntro:
+      'Fona net kaç TL girdi/çıktı. Yatırımcı sayısından farklıdır: tek kurumsal giriş, kişi sayısını hiç değiştirmeden fonu büyütebilir.',
+    flowMoneyFootnote:
+      'Akış, fon büyüklüğündeki değişimin fiyat hareketiyle açıklanamayan kısmıdır. Yüzdeler o günkü akışın fonun büyüklüğüne oranıdır; toplam yüzdesi dönem başındaki büyüklüğe göredir.',
+    flowMoneyPending:
+      'Para akışı için en az iki günlük arşiv gerekiyor. Arşiv her taramada ileriye doğru doluyor.',
+    flowFund: 'Fon',
+    flowTotal: 'Toplam',
+    // --- Ekonomik takvim ---
+    calTitle: 'Ekonomik takvim',
+    calIntro:
+      'Piyasayı hareket ettiren yaklaşan olaylar. Tarihler TCMB ve Fed\'in kendi yayımladığı takvimlerden alınmıştır.',
+    calDaysUntil: (n) => (n === 0 ? 'bugün' : n === 1 ? 'yarın' : `${n} gün`),
+    // --- Kapsam ve endeks filtresi ---
+    onlyBist100: 'Yalnızca BIST 100',
+    onlyBist100Hint: 'Tarama borsanın tamamını kapsıyor; bu filtre listeyi endeks bileşenlerine indirir.',
+    // --- Reel getiri ---
+    realReturn: 'Reel getiri',
+    realReturnHint:
+      'Enflasyondan arındırılmış getiri. Nominal getiri ile aynı dönemin TÜFE artışı oranlanır.',
+    cpiSource: (src, month) => `TÜFE kaynağı: ${src} (son veri ${month})`,
+    cpiMissing: 'TÜFE verisi olmadığı için reel getiri gösterilemiyor.',
+    realReturnPartial: (covered, total) =>
+      `${total} pozisyonun ${covered}'i TÜFE serisinde kapsanıyor; hesap yalnızca onları içerir.`,
+    cpiUncovered: 'Bu dönem TÜFE serisinde yok — reel getiri hesaplanmadı.',
+    // --- Finansallar ---
+    finTitle: 'Finansallar (çeyreklik)',
+    finPeriod: 'Dönem',
+    finRevenue: 'Satış',
+    finNetIncome: 'Net kâr',
+    finGrossMargin: 'Brüt marj',
+    finOperatingMargin: 'Faaliyet marjı',
+    finNetMargin: 'Net marj',
+    finQoq: 'Önceki çeyreğe göre',
+    finTtm: 'Son 12 ay',
+    finNoData: 'Bu hisse için çeyreklik finansal veri yok.',
+    finOnlyFourQuarters: 'Kaynak son 4 çeyreği veriyor; yıllık (YoY) karşılaştırma yapılamıyor.',
+    // --- Analist konsensüsü ---
+    analystTitle: 'Analist konsensüsü',
+    analystTarget: 'Hedef fiyat',
+    analystUpside: 'Potansiyel',
+    analystCount: (n) => `${n} analist`,
+    sdRecommendation: 'Tavsiye',
+    sdAnalysts: 'Kapsayan',
+    analystRecBuy: 'AL',
+    analystRecHold: 'TUT',
+    analystRecSell: 'SAT',
+    // --- Veri tazeliği / alarm dürüstlüğü ---
+    priceAsOf: (d) => `Fiyatlar ${d} kapanışı`,
+    alertsLimitation:
+      'Alarmlar YALNIZCA bu sayfa açıkken ve gün sonu kapanış verisiyle çalışır. Sekme kapalıyken bildirim gelmez; seans içi fiyat takibi yapılmaz.',
     // --- Tahvil durasyonu hesaplayıcısı ---
     tabBonds: 'Tahvil Durasyonu',
     bdIntro:
@@ -1453,6 +1520,73 @@ const STRINGS = {
     navSecFunds: 'Funds',
     navSecMine: 'My Space',
     navSecAnalysis: 'Analysis',
+    // --- KAP disclosures (primary source) ---
+    tabKap: 'KAP Disclosures',
+    kapIntro:
+      'Official filings companies publish on KAP. Unlike the news feed this is a primary source: financial reports, share transactions and material events appear here first.',
+    kapLoading: 'Loading KAP disclosures...',
+    kapSearch: 'Search ticker, company or subject',
+    kapEmpty: 'No disclosure matches this filter.',
+    kapCatAll: 'All',
+    kapCatFinancial: 'Financial Report',
+    kapCatSpecial: 'Material Event',
+    kapCatTrade: 'Share Transaction',
+    kapLate: 'LATE',
+    kapNoSubject: 'No subject given',
+    kapMore: (n) => `${n} more disclosures — narrow with search.`,
+    // --- Fund money flow (TRY) ---
+    flowMoneyTitle: 'Fund money flow (5 days)',
+    flowMoneyIntro:
+      'Net lira flowing into/out of the fund. Different from investor count: one institutional ticket can grow a fund without changing the number of holders.',
+    flowMoneyFootnote:
+      'Flow is the part of the change in fund size that price moves do not explain. Percentages are that day\'s flow over fund size; the total is measured against the size at the start of the period.',
+    flowMoneyPending:
+      'Money flow needs at least two days of archive. The archive fills forward with each scan.',
+    flowFund: 'Fund',
+    flowTotal: 'Total',
+    // --- Economic calendar ---
+    calTitle: 'Economic calendar',
+    calIntro:
+      'Upcoming events that move the market. Dates come from the calendars published by the CBRT and the Fed.',
+    calDaysUntil: (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : `${n} days`),
+    // --- Coverage and index filter ---
+    onlyBist100: 'BIST 100 only',
+    onlyBist100Hint: 'The scan covers the whole exchange; this filter narrows it to index members.',
+    // --- Real return ---
+    realReturn: 'Real return',
+    realReturnHint:
+      'Return adjusted for inflation: nominal return divided by CPI growth over the same period.',
+    cpiSource: (src, month) => `CPI source: ${src} (latest ${month})`,
+    cpiMissing: 'Real return cannot be shown because CPI data is unavailable.',
+    realReturnPartial: (covered, total) =>
+      `${covered} of ${total} positions are covered by the CPI series; only those are included.`,
+    cpiUncovered: 'This period is not covered by the CPI series — real return not computed.',
+    // --- Financials ---
+    finTitle: 'Financials (quarterly)',
+    finPeriod: 'Period',
+    finRevenue: 'Revenue',
+    finNetIncome: 'Net income',
+    finGrossMargin: 'Gross margin',
+    finOperatingMargin: 'Operating margin',
+    finNetMargin: 'Net margin',
+    finQoq: 'vs previous quarter',
+    finTtm: 'Trailing 12 months',
+    finNoData: 'No quarterly financials for this stock.',
+    finOnlyFourQuarters: 'The source provides only the last 4 quarters; year-over-year comparison is not possible.',
+    // --- Analyst consensus ---
+    analystTitle: 'Analyst consensus',
+    analystTarget: 'Target price',
+    analystUpside: 'Upside',
+    analystCount: (n) => `${n} analysts`,
+    sdRecommendation: 'Recommendation',
+    sdAnalysts: 'Coverage',
+    analystRecBuy: 'BUY',
+    analystRecHold: 'HOLD',
+    analystRecSell: 'SELL',
+    // --- Data freshness / alert honesty ---
+    priceAsOf: (d) => `Prices as of ${d} close`,
+    alertsLimitation:
+      'Alerts run ONLY while this page is open and on end-of-day closing data. No notifications arrive with the tab closed; intraday prices are not tracked.',
     // --- Bond duration calculator ---
     tabBonds: 'Bond Duration',
     bdIntro:

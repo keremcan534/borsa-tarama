@@ -37,6 +37,14 @@ class BaseFetcher(ABC):
         """
         return {}
 
+    def clear_price_cache(self) -> None:
+        """Fiyat cache'ini boşaltır. Cache tutmayan kaynaklar için no-op.
+
+        Tarama bir marketi bitirip diğerine geçerken çağrılır: cache'li fetcher'lar
+        (bkz. `YFinanceFetcher._daily_bars`) tüm sembollerin günlük geçmişini bellekte
+        tutar ve market başına ~100 MB'a çıkabilir.
+        """
+
     def fetch_fundamentals(self, symbol: str) -> dict:
         """Temel oranlar: {"pe", "pb", "dividend_yield", "roe"} (bilinmeyen alan None).
 

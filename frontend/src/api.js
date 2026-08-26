@@ -306,3 +306,42 @@ export async function fetchScreener(market, { live = false, timeframe = "daily" 
   }
   return res.json();
 }
+
+/** KAP şirket bildirimleri (birincil kaynak). İlk taramaya kadar 404 normaldir. */
+export async function fetchKap() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/kap.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`KAP bildirimleri yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
+/** TÜFE serisi: reel (enflasyondan arındırılmış) getiri hesabı için.
+ * `as_of` serinin son ayıdır ve arayüzde GÖSTERİLİR — kapsanmayan dönemde
+ * reel getiri hesaplanmaz, çünkü eksik ayı tahmin etmek sayıyı olduğundan
+ * güvenilir gösterirdi. */
+export async function fetchInflation() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/inflation.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`TÜFE verisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
+/** Çeyreklik finansal özet (satış, net kâr, marjlar). Repoda statik durur. */
+export async function fetchFinancials() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/financials.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Finansal veri yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}
+
+/** Ekonomik takvim: faiz kararları ve enflasyon raporları. İlk taramaya kadar 404 normaldir. */
+export async function fetchCalendar() {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/calendar.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Takvim yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  return res.json();
+}

@@ -129,6 +129,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/notify_telegram.py frontend/public/data
 
+      # Alarmlar: repodaki alerts.json kurallarını tarama sonucuna karşı değerlendirir.
+      # Arayüzdeki alarmlar yalnızca site açıkken çalışıyor; bu adım site sahibinin
+      # sekmeyi açık tutmak zorunda kalmadan takip etmesini sağlar.
+      - name: Alarmları değerlendir
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/notify_alerts.py frontend/public/data
+
       - name: X (Twitter) paylaşımı gönder
         continue-on-error: true
         env:

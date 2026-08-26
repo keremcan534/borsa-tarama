@@ -20,13 +20,18 @@ from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
 from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.calendars import build_calendar_payload
+from app.data.financials import load_financials
 from app.data.fx import fetch_fx_series
+from app.data.inflation import load_cpi
+from app.data.kap import fetch_disclosures
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.data.price_files import assert_unique_file_names, price_file_name
 from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
+from app.reports.symbol_pages import build_symbol_index, build_symbol_page, symbol_slug, symbol_url
 from app.screener.engine import run_analysis
 from app.screener.filters import passes_filters
 from app.screener.score import technical_score
@@ -41,7 +46,7 @@ FLOW_HISTORY_DAYS = 90
 
 
 def fetch_previous_flows() -> dict:
-    """Yayındaki fund_flows.json'dan birikmiş yatırımcı sayısı arşivini çeker.
+    """Yayındaki fund_flows.json'dan birikmiş fon akışı arşivini çeker.
 
     data/ klasörü repoya commit'lenmediği için önceki koşunun çıktısı yalnızca
     yayındaki dosyadan alınabilir (fetch_previous_symbols ile aynı desen).
@@ -128,6 +133,67 @@ def merge_with_previous_macro(fresh: dict, previous: dict) -> dict:
     fresh["count"] = len(filled)
     fresh.setdefault("correlation_bars", previous.get("correlation_bars", CORRELATION_BARS))
     return fresh
+
+
+SYMBOL_NAMES_PATH = Path(__file__).resolve().parents[1] / "app" / "data" / "symbols" / "bist_all_names.json"
+
+
+def load_symbol_names() -> dict[str, str]:
+    """Hisse kodu -> şirket adı (sayfa başlıkları için). Dosya yoksa boş."""
+    try:
+        return json.loads(SYMBOL_NAMES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_symbol_pages(public_dir: Path, market_payloads: dict, financials: dict, kap_items: list[dict]) -> None:
+    """Her taranan hisse için bağımsız HTML sayfası + dizin + manifest üretir.
+
+    Sayfa GÜNLÜK zaman diliminin verisiyle basılır: kullanıcı bir hisseyi
+    aradığında beklediği şey son kapanış ve güncel görünümdür, aylık mum değil.
+    Manifest (`index.json`) yalnızca URL taşır; site haritasını `build_site_meta`
+    ondan üretir, böylece iki script birbirinin veri yapısını bilmek zorunda kalmaz.
+    """
+    names = load_symbol_names()
+    fin_by_symbol = financials.get("symbols") or {}
+
+    kap_by_symbol: dict[str, list[dict]] = {}
+    for item in kap_items:
+        kap_by_symbol.setdefault(item["symbol"], []).append(item)
+
+    symbol_dir = public_dir / "hisse"
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    entries: list[tuple[str, str | None]] = []
+
+    for market, payloads in market_payloads.items():
+        # Emtia/kripto sembolleri için "hisse analizi" sayfası anlamsız olurdu.
+        if market == "commodity":
+            continue
+        for stock in payloads.get("daily", {}).get("stocks") or []:
+            symbol = stock["symbol"]
+            name = names.get(symbol_slug(symbol))
+            html = build_symbol_page(
+                symbol,
+                stock,
+                name=name,
+                financials=fin_by_symbol.get(symbol),
+                kap_items=kap_by_symbol.get(symbol),
+                generated_at=generated_at,
+            )
+            (symbol_dir / f"{symbol_slug(symbol)}.html").write_text(html, encoding="utf-8")
+            entries.append((symbol, name))
+
+    (symbol_dir / "index.html").write_text(build_symbol_index(entries), encoding="utf-8")
+    (symbol_dir / "index.json").write_text(
+        json.dumps(
+            {"generated_at": generated_at, "urls": [symbol_url(sym) for sym, _ in entries]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[HİSSE SAYFASI] {len(entries)} sayfa -> {symbol_dir}")
 
 
 def main() -> None:
@@ -304,6 +370,13 @@ def main() -> None:
         news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
 
+        # Fiyat cache'i market bitince boşaltılır. Fetcher artık sembol başına TÜM
+        # günlük geçmişi bellekte tutuyor (haftalık/aylık/çeyreklik ondan türetiliyor,
+        # bkz. app/data/resample.py) — sembol başına ~150 KB, 700 sembollük bir
+        # markette ~100 MB. Tüm marketler birikirse runner'ın belleğini zorlar;
+        # döngü market eksenli olduğundan bir marketin verisine bir daha bakılmaz.
+        fetcher.clear_price_cache()
+
     # Fiyat serileri SEMBOL BAŞINA ayrı dosyalara yazılır. Eskiden tek bir
     # stock_prices.json vardı (8,4 MB ham / 2,6 MB sıkıştırılmış) ve tek bir
     # hisseye tıklamak bu dosyanın tamamını indiriyordu; ölçüldü, en yüksek
@@ -358,6 +431,64 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[FX] usdtry={len(fx.get('usdtry', []))} goldusd={len(fx.get('goldusd', []))} -> {fx_path}")
+
+    # KAP bildirimleri: haber akışı Google News üzerinden çalışıyordu, yani ikincil
+    # kaynak. Bilanço, pay alım-satım, özel durum açıklaması önce KAP'ta yayımlanır.
+    # Tek istek — sembol başına değil, tüm borsa için (bkz. app/data/kap.py).
+    scanned_symbols = {s["symbol"] for series in all_market_payloads.values() for s in
+                       (series.get("daily", {}).get("stocks") or [])}
+    kap_items = fetch_disclosures(symbols=scanned_symbols)
+    kap_path = out_dir / "kap.json"
+    kap_path.write_text(
+        json.dumps(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "count": len(kap_items),
+                "items": kap_items,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[KAP] {len(kap_items)} bildirim -> {kap_path}")
+
+    # TÜFE serisi: portföy ve fon getirilerinin reel (enflasyondan arındırılmış)
+    # karşılığı arayüzde hesaplanıyor, seri bir kez indirilip payload'a konuyor.
+    # `as_of` bilinçli olarak taşınır — arayüz hangi aya kadar veri olduğunu yazar
+    # ve kapsanmayan dönemde reel getiriyi HİÇ göstermez.
+    cpi = load_cpi()
+    inflation_path = out_dir / "inflation.json"
+    inflation_path.write_text(
+        json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(), **cpi}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    print(f"[TÜFE] {len(cpi['series'])} ay ({cpi['source'] or 'kaynak yok'}) -> {inflation_path}")
+
+    # Ekonomik takvim: makro panel fiyat SEVİYELERİNİ gösteriyor, bu ise OLAYLARI.
+    # Statik dosyadan okunur (bkz. app/data/calendars.py), istek atılmaz.
+    calendar_payload = build_calendar_payload()
+    calendar_path = out_dir / "calendar.json"
+    calendar_path.write_text(
+        json.dumps(
+            {"generated_at": datetime.now(timezone.utc).isoformat(), **calendar_payload},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[TAKVİM] {calendar_payload['count']} yaklaşan olay -> {calendar_path}")
+
+    # Çeyreklik finansallar repoda statik durur (bilanço çeyrekte bir değişir,
+    # tarama günde iki kez çalışır); burada yalnızca siteye kopyalanır, istek atılmaz.
+    financials = load_financials()
+    financials_path = out_dir / "financials.json"
+    financials_path.write_text(json.dumps(financials, ensure_ascii=False), encoding="utf-8")
+    print(f"[FİNANSAL] {len(financials.get('symbols') or {})} sembol -> {financials_path}")
+
+    # Hisse başına statik sayfa: sitenin arama motorundan trafik alabilmesi için
+    # tek gerçek içerik ekseni. Sitemap'te yalnızca tarih damgalı raporlar vardı,
+    # oysa aramalar sembol adıyla yapılıyor (bkz. app/reports/symbol_pages.py).
+    write_symbol_pages(out_dir.parent, all_market_payloads, financials, kap_items)
+
 
     # Skor/sinyal geçmişi: değişim raporu (skoru en çok yükselen/düşen, sinyale
     # yeni giren/çıkan) arayüzde son iki günü karşılaştırarak üretilir.
@@ -458,17 +589,26 @@ def main() -> None:
         f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
     )
 
-    # Fon akışı arşivi: günlük yatırımcı sayıları birikir; arayüz bundan
-    # "son 7/30 günde en çok yatırımcı kazanan/kaybeden" listesini üretir.
+    # Fon akışı arşivi: gün başına yatırımcı sayısı, fon büyüklüğü ve fiyat birikir.
+    # Yatırımcı sayısı "kaç kişi katıldı"yı, büyüklük+fiyat ise "net kaç TL girdi"yi
+    # verir (bkz. app/funds/flows.py) — biri diğerinin yerine geçmez: tek kurumsal
+    # giriş yatırımcı sayısını hiç değiştirmeden fonun boyutunu ikiye katlayabilir.
+    #
+    # Kayıt biçimi düz sayıdan sözlüğe geçti; okuma tarafı eski kayıtları da kabul
+    # eder (o günler için akış hesaplanamaz, yatırımcı sayısı yine okunur).
     flows_history = fetch_previous_flows()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    counts = {
-        r["symbol"]: r["investor_count"]
+    readings = {
+        r["symbol"]: {
+            "investors": r.get("investor_count"),
+            "size": r.get("portfolio_size"),
+            "price": r.get("price"),
+        }
         for r in fund_results
-        if r.get("investor_count") is not None
+        if r.get("investor_count") is not None or r.get("portfolio_size") is not None
     }
-    if counts:
-        flows_history[today] = counts
+    if readings:
+        flows_history[today] = readings
     flows_history = dict(sorted(flows_history.items())[-FLOW_HISTORY_DAYS:])
     flows_path = out_dir / "fund_flows.json"
     flows_path.write_text(

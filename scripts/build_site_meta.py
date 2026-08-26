@@ -6,6 +6,7 @@ Frontend build'inden ÖNCE çalıştırılır:
     python scripts/build_site_meta.py reports frontend/public
 """
 
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -27,10 +28,24 @@ def main() -> None:
         shutil.copy2(report, rapor_dir / report.name)
         dates.append(report.stem)
 
+    # Hisse sayfaları taramada üretiliyor (veri orada); burada yalnızca site
+    # haritasına ekleniyor. Manifest yoksa (tarama henüz koşmamışsa) harita eski
+    # haliyle üretilir — sitemap'in hiç yazılmaması daha kötü olurdu.
+    symbol_urls: list[str] = []
+    manifest = public_dir / "hisse" / "index.json"
+    if manifest.exists():
+        try:
+            symbol_urls = json.loads(manifest.read_text(encoding="utf-8")).get("urls") or []
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"[SITE-META] hisse manifesti okunamadı ({e}); sitemap'e eklenmedi")
+
     (rapor_dir / "index.html").write_text(build_archive_index(dates), encoding="utf-8")
-    (public_dir / "sitemap.xml").write_text(build_sitemap(dates), encoding="utf-8")
+    (public_dir / "sitemap.xml").write_text(build_sitemap(dates, symbol_urls), encoding="utf-8")
     (public_dir / "robots.txt").write_text(build_robots(), encoding="utf-8")
-    print(f"[SITE-META] {len(dates)} rapor kopyalandı; arşiv + sitemap + robots üretildi")
+    print(
+        f"[SITE-META] {len(dates)} rapor kopyalandı, {len(symbol_urls)} hisse sayfası "
+        "haritaya eklendi; arşiv + sitemap + robots üretildi"
+    )
 
     # Backtest ayrı ve seyrek bir workflow'da üretilip repoya commit'lendiğinden
     # (data/backtest.json), her yayında oradan alınıp siteye taşınır.
@@ -39,7 +54,7 @@ def main() -> None:
         data_dir = public_dir / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backtest_src, data_dir / "backtest.json")
-        print(f"[SITE-META] backtest.json siteye kopyalandı")
+        print("[SITE-META] backtest.json siteye kopyalandı")
     else:
         print("[SITE-META] data/backtest.json yok; Strateji sekmesi bu yayında boş görünecek")
 

@@ -19,6 +19,10 @@ SYMBOLS_DIR = Path(__file__).resolve().parent / "symbols"
 # Tanımlı tüm marketler. Hangilerinin taranacağı `settings.enabled_markets` ile
 # belirlenir — burada durmaları kodun/sembol listesinin korunduğu anlamına gelir.
 MARKET_FILES = {
+    # "bist": borsanın tamamı (610 hisse). "bist100" endeks listesi olarak DURUYOR:
+    # silinmedi çünkü endeks üyeliği hâlâ bir bilgi (bkz. app/data/indices.py) ve
+    # yalnızca endeksi taramak istenirse tek satırla geri dönülebilir.
+    "bist": "bist_all.json",
     "bist100": "bist100.json",
     "sp500": "sp500.json",
     "etf": "etf.json",

@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-08-26",
+  "sources": {
+    "tcmb_ppk": "https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB+TR/Main+Menu/Temel+Faaliyetler/Para+Politikasi/PPK/2026",
+    "fomc": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  "events": [
+    { "date": "2026-01-22", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-02-12", "kind": "report", "region": "tr", "title": "TCMB Enflasyon Raporu", "title_en": "CBRT Inflation Report" },
+    { "date": "2026-03-12", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-04-22", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-05-14", "kind": "report", "region": "tr", "title": "TCMB Enflasyon Raporu", "title_en": "CBRT Inflation Report" },
+    { "date": "2026-06-11", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-07-23", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-08-13", "kind": "report", "region": "tr", "title": "TCMB Enflasyon Raporu", "title_en": "CBRT Inflation Report" },
+    { "date": "2026-09-10", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-10-22", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+    { "date": "2026-11-12", "kind": "report", "region": "tr", "title": "TCMB Enflasyon Raporu", "title_en": "CBRT Inflation Report" },
+    { "date": "2026-12-10", "kind": "rate", "region": "tr", "title": "TCMB faiz kararı (PPK)", "title_en": "CBRT rate decision (MPC)" },
+
+    { "date": "2026-01-28", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-03-18", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-04-29", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-06-17", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-07-29", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-09-16", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-10-28", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2026-12-09", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+
+    { "date": "2027-01-26", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-03-17", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-04-28", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-06-09", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-07-28", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-09-15", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-10-27", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" },
+    { "date": "2027-12-08", "kind": "rate", "region": "us", "title": "Fed faiz kararı (FOMC)", "title_en": "Fed rate decision (FOMC)" }
+  ]
+}

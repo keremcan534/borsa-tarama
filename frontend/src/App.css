@@ -4475,3 +4475,260 @@ tr.alert-hit td {
   margin: 8px 0 18px;
   max-width: 70ch;
 }
+
+/* ---------------------------------------------------------------------------
+ * KAP bildirimleri
+ *
+ * Haber kartlarıyla aynı yüzey/kenarlık dilini kullanır (aynı akış hissi), ama
+ * başlık satırı farklıdır: burada hisse kodu ve resmi kategori rozeti öne çıkar,
+ * çünkü kullanıcı KAP akışında "hangi şirket, ne tür bildirim?" diye tarar.
+ * ------------------------------------------------------------------------- */
+.kap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kap-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  transition: border-color 0.15s;
+}
+
+.kap-item:hover {
+  border-color: var(--accent);
+}
+
+.kap-item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.kap-symbol {
+  font: inherit;
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.kap-symbol:hover {
+  text-decoration: underline;
+}
+
+.kap-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg, rgba(124, 58, 237, 0.12));
+  color: var(--text);
+}
+
+/* "Geç bildirim" KAP'ın kendi işareti — bizim yorumumuz değil, o yüzden
+   uyarı rengi hak ediyor. */
+.kap-badge-late {
+  background: rgba(220, 38, 38, 0.14);
+  color: #dc2626;
+}
+
+.kap-when {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kap-subject {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.kap-subject:hover {
+  text-decoration: underline;
+}
+
+.kap-summary {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.85;
+  line-height: 1.45;
+}
+
+.kap-company {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Kapsam filtresi: tarama borsanın tamamını gösterdiğinden "yalnızca BIST 100"
+   sık kullanılacak bir daraltma. Filtre şeridiyle aynı satırda durur. */
+.index-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Alarmların sınırını anlatan uyarı: vaadin fazla olmaması için görünür ama
+   alarm kurmayı caydırmayacak kadar sakin. */
+.alert-limitation {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+/* Ekonomik takvim: makro panelin başında duran kompakt şerit. Tablo değil liste,
+   çünkü satır başına yalnızca dört alan var ve mobilde tablo kaydırma üretiyordu. */
+.cal-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.cal-date {
+  font-weight: 600;
+  color: var(--text-h, var(--text));
+  min-width: 58px;
+}
+
+.cal-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-days {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Fon para akışı tablosu.
+ *
+ * Hücre başına iki satır (TL tutarı + fonun büyüklüğüne oranı) çünkü ikisi ayrı
+ * soruları cevaplıyor: "ne kadar para" ve "bu fon için ne kadar büyük bir hareket".
+ * Renk yoğunluğu ORANA göre, tutara göre değil — büyük fonun mutlak rakamı hep
+ * büyük olur ve tabloyu tek renge boyardı. */
+.flow-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.flow-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 13px;
+  min-width: 560px;
+}
+
+.flow-table th {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 2px 6px;
+}
+
+.flow-table th:first-child {
+  text-align: left;
+}
+
+.flow-fund button {
+  font: inherit;
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.flow-fund button:hover {
+  text-decoration: underline;
+}
+
+.flow-cell {
+  text-align: center;
+  border-radius: 8px;
+  padding: 6px 8px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.flow-amount {
+  display: block;
+  font-weight: 600;
+}
+
+.flow-share {
+  display: block;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.flow-in { color: #15803d; }
+.flow-out { color: #b91c1c; }
+.flow-flat { color: var(--muted); }
+
+.flow-in.flow-soft { background: rgba(22, 163, 74, 0.08); }
+.flow-in.flow-mid { background: rgba(22, 163, 74, 0.16); }
+.flow-in.flow-strong { background: rgba(22, 163, 74, 0.28); }
+.flow-out.flow-soft { background: rgba(220, 38, 38, 0.08); }
+.flow-out.flow-mid { background: rgba(220, 38, 38, 0.16); }
+.flow-out.flow-strong { background: rgba(220, 38, 38, 0.28); }
+
+.flow-total {
+  font-weight: 700;
+  border-left: 2px solid var(--border);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flow-in { color: #4ade80; }
+  .flow-out { color: #f87171; }
+}
+
+/* Kart altı not: reel getiri kartında TÜFE kaynağı/kapsamı yazılıyor. Küçük ve
+   soluk, çünkü rakamın kendisi değil güvenilirliğinin sınırı bilgisi. */
+.today-card-note {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.35;
+}

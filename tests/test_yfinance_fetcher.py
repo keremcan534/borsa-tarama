@@ -8,7 +8,10 @@ from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 
 
 def _history_df_with_trailing_nan() -> pd.DataFrame:
-    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    # Tarihler BUGÜNe göre üretilir: fetch_ohlcv artık `max` çekip istenen periyoda
+    # kırptığından (bkz. app/data/resample.py) sabit bir geçmiş tarih varsayılan
+    # "1y" periyodunda tamamen elenir ve test veriyi hiç göremezdi.
+    idx = pd.date_range(pd.Timestamp.today().normalize() - pd.Timedelta(days=4), periods=5, freq="D")
     return pd.DataFrame(
         {
             "Open": [10.0, 10.5, 11.0, 11.5, np.nan],
