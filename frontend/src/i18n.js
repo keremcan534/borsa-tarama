@@ -651,6 +651,16 @@ const STRINGS = {
     kapLate: 'GEÇ',
     kapNoSubject: 'Konu belirtilmemiş',
     kapMore: (n) => `${n} bildirim daha var — aramayla daralt.`,
+    // --- Fon para akışı (TL) ---
+    flowMoneyTitle: 'Fon para akışı (5 gün)',
+    flowMoneyIntro:
+      'Fona net kaç TL girdi/çıktı. Yatırımcı sayısından farklıdır: tek kurumsal giriş, kişi sayısını hiç değiştirmeden fonu büyütebilir.',
+    flowMoneyFootnote:
+      'Akış, fon büyüklüğündeki değişimin fiyat hareketiyle açıklanamayan kısmıdır. Yüzdeler o günkü akışın fonun büyüklüğüne oranıdır; toplam yüzdesi dönem başındaki büyüklüğe göredir.',
+    flowMoneyPending:
+      'Para akışı için en az iki günlük arşiv gerekiyor. Arşiv her taramada ileriye doğru doluyor.',
+    flowFund: 'Fon',
+    flowTotal: 'Toplam',
     // --- Ekonomik takvim ---
     calTitle: 'Ekonomik takvim',
     calIntro:
@@ -1522,6 +1532,16 @@ const STRINGS = {
     kapLate: 'LATE',
     kapNoSubject: 'No subject given',
     kapMore: (n) => `${n} more disclosures — narrow with search.`,
+    // --- Fund money flow (TRY) ---
+    flowMoneyTitle: 'Fund money flow (5 days)',
+    flowMoneyIntro:
+      'Net lira flowing into/out of the fund. Different from investor count: one institutional ticket can grow a fund without changing the number of holders.',
+    flowMoneyFootnote:
+      'Flow is the part of the change in fund size that price moves do not explain. Percentages are that day\'s flow over fund size; the total is measured against the size at the start of the period.',
+    flowMoneyPending:
+      'Money flow needs at least two days of archive. The archive fills forward with each scan.',
+    flowFund: 'Fund',
+    flowTotal: 'Total',
     // --- Economic calendar ---
     calTitle: 'Economic calendar',
     calIntro:

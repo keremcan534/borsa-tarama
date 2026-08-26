@@ -29,6 +29,7 @@ import {
   STATIC_MODE,
 } from './api'
 import BondDuration from './BondDuration'
+import FundFlows from './FundFlows'
 import Kap from './Kap'
 import FundCompare from './FundCompare'
 import StockCompare from './StockCompare'
@@ -2510,6 +2511,20 @@ function priceOn(series, dateStr) {
  */
 const FLOW_WINDOWS = [7, 30]
 
+/**
+ * Arşiv kaydından yatırımcı sayısını okur.
+ *
+ * Kayıt biçimi düz sayıdan sözlüğe geçti (artık fon büyüklüğü ve fiyat da
+ * saklanıyor, bkz. app/funds/flows.py). Bu panel geçmiş günleri de gösterdiğinden
+ * İKİ biçimi de okumak zorunda: yalnızca yenisini okusaydı arşivin eski kısmı
+ * sessizce kaybolur ve 30 günlük pencere aniden boşalırdı.
+ */
+function investorsOf(entry) {
+  if (entry == null) return null
+  if (typeof entry === 'number') return entry
+  return typeof entry.investors === 'number' ? entry.investors : null
+}
+
 function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
   const history = flows?.history || {}
   const dates = useMemo(() => Object.keys(history).sort(), [history])
@@ -2546,8 +2561,9 @@ function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
     const last = history[lastDate]
     const bySymbol = new Map((funds?.results || []).map((f) => [f.symbol, f]))
     const rows = []
-    for (const [sym, cur] of Object.entries(last)) {
-      const prev = base?.[sym]
+    for (const [sym, rawCur] of Object.entries(last)) {
+      const cur = investorsOf(rawCur)
+      const prev = investorsOf(base?.[sym])
       if (prev == null || cur == null) continue
       const delta = cur - prev
       if (!delta) continue
@@ -8069,6 +8085,7 @@ function App() {
             </div>
           </details>
 
+          <FundFlows flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
           <FundFlowsPanel flows={fundFlows} funds={funds} lang={lang} onOpenFund={setChartFund} />
 
           {!fundsError && funds && (

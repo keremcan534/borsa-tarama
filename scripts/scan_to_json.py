@@ -46,7 +46,7 @@ FLOW_HISTORY_DAYS = 90
 
 
 def fetch_previous_flows() -> dict:
-    """Yayındaki fund_flows.json'dan birikmiş yatırımcı sayısı arşivini çeker.
+    """Yayındaki fund_flows.json'dan birikmiş fon akışı arşivini çeker.
 
     data/ klasörü repoya commit'lenmediği için önceki koşunun çıktısı yalnızca
     yayındaki dosyadan alınabilir (fetch_previous_symbols ile aynı desen).
@@ -589,17 +589,26 @@ def main() -> None:
         f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
     )
 
-    # Fon akışı arşivi: günlük yatırımcı sayıları birikir; arayüz bundan
-    # "son 7/30 günde en çok yatırımcı kazanan/kaybeden" listesini üretir.
+    # Fon akışı arşivi: gün başına yatırımcı sayısı, fon büyüklüğü ve fiyat birikir.
+    # Yatırımcı sayısı "kaç kişi katıldı"yı, büyüklük+fiyat ise "net kaç TL girdi"yi
+    # verir (bkz. app/funds/flows.py) — biri diğerinin yerine geçmez: tek kurumsal
+    # giriş yatırımcı sayısını hiç değiştirmeden fonun boyutunu ikiye katlayabilir.
+    #
+    # Kayıt biçimi düz sayıdan sözlüğe geçti; okuma tarafı eski kayıtları da kabul
+    # eder (o günler için akış hesaplanamaz, yatırımcı sayısı yine okunur).
     flows_history = fetch_previous_flows()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    counts = {
-        r["symbol"]: r["investor_count"]
+    readings = {
+        r["symbol"]: {
+            "investors": r.get("investor_count"),
+            "size": r.get("portfolio_size"),
+            "price": r.get("price"),
+        }
         for r in fund_results
-        if r.get("investor_count") is not None
+        if r.get("investor_count") is not None or r.get("portfolio_size") is not None
     }
-    if counts:
-        flows_history[today] = counts
+    if readings:
+        flows_history[today] = readings
     flows_history = dict(sorted(flows_history.items())[-FLOW_HISTORY_DAYS:])
     flows_path = out_dir / "fund_flows.json"
     flows_path.write_text(

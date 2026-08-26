@@ -4637,3 +4637,88 @@ tr.alert-hit td {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Fon para akışı tablosu.
+ *
+ * Hücre başına iki satır (TL tutarı + fonun büyüklüğüne oranı) çünkü ikisi ayrı
+ * soruları cevaplıyor: "ne kadar para" ve "bu fon için ne kadar büyük bir hareket".
+ * Renk yoğunluğu ORANA göre, tutara göre değil — büyük fonun mutlak rakamı hep
+ * büyük olur ve tabloyu tek renge boyardı. */
+.flow-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.flow-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 13px;
+  min-width: 560px;
+}
+
+.flow-table th {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 2px 6px;
+}
+
+.flow-table th:first-child {
+  text-align: left;
+}
+
+.flow-fund button {
+  font: inherit;
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.flow-fund button:hover {
+  text-decoration: underline;
+}
+
+.flow-cell {
+  text-align: center;
+  border-radius: 8px;
+  padding: 6px 8px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.flow-amount {
+  display: block;
+  font-weight: 600;
+}
+
+.flow-share {
+  display: block;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.flow-in { color: #15803d; }
+.flow-out { color: #b91c1c; }
+.flow-flat { color: var(--muted); }
+
+.flow-in.flow-soft { background: rgba(22, 163, 74, 0.08); }
+.flow-in.flow-mid { background: rgba(22, 163, 74, 0.16); }
+.flow-in.flow-strong { background: rgba(22, 163, 74, 0.28); }
+.flow-out.flow-soft { background: rgba(220, 38, 38, 0.08); }
+.flow-out.flow-mid { background: rgba(220, 38, 38, 0.16); }
+.flow-out.flow-strong { background: rgba(220, 38, 38, 0.28); }
+
+.flow-total {
+  font-weight: 700;
+  border-left: 2px solid var(--border);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flow-in { color: #4ade80; }
+  .flow-out { color: #f87171; }
+}
