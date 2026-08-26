@@ -4475,3 +4475,126 @@ tr.alert-hit td {
   margin: 8px 0 18px;
   max-width: 70ch;
 }
+
+/* ---------------------------------------------------------------------------
+ * KAP bildirimleri
+ *
+ * Haber kartlarıyla aynı yüzey/kenarlık dilini kullanır (aynı akış hissi), ama
+ * başlık satırı farklıdır: burada hisse kodu ve resmi kategori rozeti öne çıkar,
+ * çünkü kullanıcı KAP akışında "hangi şirket, ne tür bildirim?" diye tarar.
+ * ------------------------------------------------------------------------- */
+.kap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kap-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  transition: border-color 0.15s;
+}
+
+.kap-item:hover {
+  border-color: var(--accent);
+}
+
+.kap-item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.kap-symbol {
+  font: inherit;
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.kap-symbol:hover {
+  text-decoration: underline;
+}
+
+.kap-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg, rgba(124, 58, 237, 0.12));
+  color: var(--text);
+}
+
+/* "Geç bildirim" KAP'ın kendi işareti — bizim yorumumuz değil, o yüzden
+   uyarı rengi hak ediyor. */
+.kap-badge-late {
+  background: rgba(220, 38, 38, 0.14);
+  color: #dc2626;
+}
+
+.kap-when {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kap-subject {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.kap-subject:hover {
+  text-decoration: underline;
+}
+
+.kap-summary {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.85;
+  line-height: 1.45;
+}
+
+.kap-company {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Kapsam filtresi: tarama borsanın tamamını gösterdiğinden "yalnızca BIST 100"
+   sık kullanılacak bir daraltma. Filtre şeridiyle aynı satırda durur. */
+.index-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Alarmların sınırını anlatan uyarı: vaadin fazla olmaması için görünür ama
+   alarm kurmayı caydırmayacak kadar sakin. */
+.alert-limitation {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}

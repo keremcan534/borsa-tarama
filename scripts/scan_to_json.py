@@ -20,7 +20,10 @@ from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
 from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
+from app.data.financials import load_financials
 from app.data.fx import fetch_fx_series
+from app.data.inflation import load_cpi
+from app.data.kap import fetch_disclosures
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.data.price_files import assert_unique_file_names, price_file_name
@@ -365,6 +368,45 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"[FX] usdtry={len(fx.get('usdtry', []))} goldusd={len(fx.get('goldusd', []))} -> {fx_path}")
+
+    # KAP bildirimleri: haber akışı Google News üzerinden çalışıyordu, yani ikincil
+    # kaynak. Bilanço, pay alım-satım, özel durum açıklaması önce KAP'ta yayımlanır.
+    # Tek istek — sembol başına değil, tüm borsa için (bkz. app/data/kap.py).
+    scanned_symbols = {s["symbol"] for series in all_market_payloads.values() for s in
+                       (series.get("daily", {}).get("stocks") or [])}
+    kap_items = fetch_disclosures(symbols=scanned_symbols)
+    kap_path = out_dir / "kap.json"
+    kap_path.write_text(
+        json.dumps(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "count": len(kap_items),
+                "items": kap_items,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"[KAP] {len(kap_items)} bildirim -> {kap_path}")
+
+    # TÜFE serisi: portföy ve fon getirilerinin reel (enflasyondan arındırılmış)
+    # karşılığı arayüzde hesaplanıyor, seri bir kez indirilip payload'a konuyor.
+    # `as_of` bilinçli olarak taşınır — arayüz hangi aya kadar veri olduğunu yazar
+    # ve kapsanmayan dönemde reel getiriyi HİÇ göstermez.
+    cpi = load_cpi()
+    inflation_path = out_dir / "inflation.json"
+    inflation_path.write_text(
+        json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(), **cpi}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    print(f"[TÜFE] {len(cpi['series'])} ay ({cpi['source'] or 'kaynak yok'}) -> {inflation_path}")
+
+    # Çeyreklik finansallar repoda statik durur (bilanço çeyrekte bir değişir,
+    # tarama günde iki kez çalışır); burada yalnızca siteye kopyalanır, istek atılmaz.
+    financials = load_financials()
+    financials_path = out_dir / "financials.json"
+    financials_path.write_text(json.dumps(financials, ensure_ascii=False), encoding="utf-8")
+    print(f"[FİNANSAL] {len(financials.get('symbols') or {})} sembol -> {financials_path}")
 
     # Skor/sinyal geçmişi: değişim raporu (skoru en çok yükselen/düşen, sinyale
     # yeni giren/çıkan) arayüzde son iki günü karşılaştırarak üretilir.
