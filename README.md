@@ -121,45 +121,189 @@ variables → Actions → New repository secret'tan (veya `gh secret set AD` ile
 Elle denemek için (secret'ları ortam değişkeni olarak verip):
 `python scripts/notify_telegram.py frontend/public/data`
 
-## Etkin Marketler (S&P 500 şu an KAPALI)
+## Etkin Marketler ve Kapsam
 Hangi marketlerin taranacağı `app/core/config.py` → `enabled_markets` ile belirlenir.
 Market tanımları tek kaynakta: **`app/data/markets.py`** (`MARKET_FILES`, `SYMBOLS_DIR`,
 `load_symbols`, `enabled_markets`). Eskiden `MARKET_FILES` hem `scheduler.py` hem
 `api/routes/screener.py` içinde ayrı ayrı duruyordu ve elle senkron tutuluyordu — artık
 ikisi de buradan okuyor.
 
-**S&P 500 neden kapalı:** ölçüldü — deploy'un tamamı ~23 dk sürüyordu ve bunun **22,6
-dakikası tarama adımıydı** (frontend build yalnızca 0,1 dk). Sembol dağılımı:
+Etkin: **`bist` + `sp500` + `commodity`**. ETF kapalı (kod + sembol listesi duruyor;
+açmak için listeye `"etf"` eklemek yeterli) — tarama/strateji vizyonu hisse +
+emtia/kripto + TEFAS fonlarına odaklanıyor.
 
-| Market | Sembol | İstek (×4 zaman dilimi) | Durum |
-|---|---|---|---|
-| bist100 | 100 | 400 | etkin |
-| **sp500** | **503** | **2012 (%76)** | **kapalı** |
-| **etf** | **46** | **184** | **kapalı** |
-| commodity | 10 | 40 | etkin |
+### `bist`: borsanın tamamı (610 hisse)
+Uzun süre yalnızca `bist100` taranıyordu, yani borsanın **~%14'ü**. Kullanıcı
+ilgilendiği hisseyi arayıp bulamıyorsa site onun için yok demektir; bu, listedeki
+tüm diğer eksiklerden sert bir terk sebebiydi.
 
-Yani S&P tek başına tüm işin **%76'sı**. Kapatınca 2636 → 624 istek; tarama ~5 dk'ya
-iner. ETF de kapalı: tarama/strateji vizyonu hisse + emtia/kripto + TEFAS fonlarına
-odaklanıyor. Global haber akışını emtia/kripto sembolleri besler.
+Liste `scripts/build_bist_symbols.py` ile üretilir: KAP'ın BIST Şirketleri sayfasından
+hisse kodları çıkarılır (802 aday), her biri Yahoo'ya sorulur ve **gerçekten veri
+dönen 610'u** listeye girer. Kalan 192 Yahoo'da yok ya da 60 mumdan az geçmişi var —
+bir kez elemek, her taramada başarısız istek atmaktan ucuz. Şirket adları
+`bist_all_names.json` içinde ayrı durur (sembol dosyasının düz liste biçimi bozulmasın).
 
-**Geri açmak tek satır:** `enabled_markets` listesine `"sp500"` veya `"etf"` eklemek.
-Kod ve sembol listeleri silinmedi. Daha ucuza geri getirmenin yolu için aşağıdaki
-"Bilinen darboğaz"a bak.
+`bist100` listesi **silinmedi**: endeks üyeliği hâlâ bir bilgi. Her hisse
+`in_bist100` bayrağı taşır (`app/data/indices.py`, statik liste, ek istek yok) ve
+arayüzdeki "Yalnızca BIST 100" filtresi bundan üretilir. `bist100` marketi tanımlı
+ama taranmıyor: `bist` onu zaten kapsıyor, ikisini birden taramak aynı 100 hisseyi
+iki kez çekerdi.
 
-**S&P nabzı:** `^GSPC` eskiden ETF marketinin karşılaştırma endeksi üzerinden "Bugün"
-sayfasında görünüyordu. ETF kapalıyken bu kart gelmez; geri açınca (`"etf"` veya
-`"sp500"`) kart marketin değil endeksin adını gösterir (`BENCHMARK_NAMES`).
+**Likidite eşiği bilinçli olarak değiştirilmedi.** Ölçüldü (2026-08, 606 hissenin
+son 20 günlük ortalama cirosu): medyan 63M TRY. 50M eşiği 610 hissenin 345'ini
+geçiriyor ve BIST 100'ün en düşük cirolusu 70M olduğundan endeksin tamamı içeride
+kalıyor. Düşürmek (25M → 452 hisse) listeye ince hisse sokar; bu bir ürün kararıdır
+ve `min_daily_turnover` ile tek satırda değiştirilebilir.
+
+### Sembol başına 4 istek yerine 1 (resample)
+Tarama eskiden her sembolü zaman dilimi başına ayrı çekiyordu — günlük, haftalık,
+aylık, çeyreklik için **4 istek**. Artık fetcher sembol başına tek `max` günlük istek
+atıyor, uzun periyotlar `app/data/resample.py` ile ondan üretiliyor. Kapsamın
+100'den 610 hisseye çıkabilmesinin tek sebebi bu.
+
+Üretilen mumlar Yahoo'nunkiyle karşılaştırılarak doğrulandı (THYAO/AKBNK/AAPL, 10 yıl):
+haftalık ve aylıkta **522 mumun 522'si aynı tarihe** oturuyor, AAPL'da dört alan da
+birebir. BIST'te 7-8 mumda açılış/en düşük sapıyor ve sapanların hepsi tatil ya da
+işlem durması haftası — o haftalarda Yahoo açılışı ilk işlem gününden almıyor, bizim
+değerimiz doğrudan günlük mumdan geliyor.
+
+**Çeyreklikte bilinçli olarak Yahoo'dan ayrılıyoruz:** Yahoo'nun `3mo` mumunun çapası
+istenen aralığa göre kayıyor (aynı sembol `range=5y` ile başka, `range=10y` ile başka
+aya oturuyor), yani semboller arası karşılaştırılamaz. Takvim çeyreği kullanılıyor.
+
+Bellek: fetcher artık sembol başına tüm günlük geçmişi tutuyor (~150 KB); tarama her
+marketi bitirdiğinde `clear_price_cache()` ile boşaltıyor.
+
+**S&P nabzı:** `^GSPC` "Bugün" sayfasındaki nabız kartında marketin değil endeksin
+adını gösterir (`BENCHMARK_NAMES`).
 
 **Arayüz senkronu:** tarama her koşuda `data/markets.json` manifestini yazar, arayüz
 market sekmelerini bundan üretir. Böylece kapalı bir marketin sekmesi gösterilip veri
 dosyası bulunamaması (backend/frontend drift'i) mümkün değil. Manifest çözülene kadar
 veri isteği atılmaz — yoksa kapalı marketlerin dosyaları istenip 404 alınırdı.
+Yayındaki eski `?m=bist100` bağlantıları arayüzde `MARKET_ALIASES` ile `bist`e
+yönlendirilir; yoksa sessizce "Bugün" sayfasına düşerlerdi.
 
-### Bilinen darboğaz: her sembol 4 kez çekiliyor
-Tarama her sembolü zaman dilimi başına ayrı çekiyor (1y günlük, 10y haftalık, max aylık,
-max çeyreklik) — yani sembol başına **4 istek**. Oysa `max` günlük veri **bir kez** çekilip
-pandas ile haftalık/aylık/çeyrekliğe resample edilebilir: istek sayısı 4'e bölünür.
-Bu yapılırsa S&P 500 çok daha ucuza geri açılabilir. Henüz yapılmadı.
+## KAP Bildirimleri (birincil kaynak)
+Haber akışı Google News/Yahoo üzerinden çalışıyordu — yani **ikincil** kaynak. Bir
+şirketin bilançosu, pay alım-satımı ya da özel durum açıklaması önce KAP'ta yayımlanır;
+haber siteleri onu saatler sonra ve yorumlayarak aktarır.
+
+`app/data/kap.py` bildirimleri doğrudan KAP'tan çeker
+(`POST /tr/api/disclosure/members/byCriteria`). `Referer` başlığı **zorunlu** — onsuz
+istek cevapsız asılı kalıyor (60 sn'de 0 bayt ölçüldü). Hisseye bağlanamayan
+(`stockCodes` boş) bildirimler elenir, çok kodlu bildirim her kod için ayrı satır
+üretir. KAP erişilemezse boş liste döner ve tarama durmaz.
+
+Ölçüm (2026-08): 3 günlük pencere 546 ham bildirim getiriyor, taranan 610 sembol için
+219 satır kalıyor. Yanıt 2000 kayıtla sınırlı olduğundan pencere gün ölçeğinde tutulur.
+
+Arayüzde **ayrı bir sekme** (`frontend/src/Kap.jsx`), Haberler'in içinde değil: haber
+ikincil kaynak, KAP şirketin kendi resmi açıklaması. Tek listede karışsalar kullanıcı
+"bunu şirket mi dedi, gazete mi?" ayrımını kaybederdi.
+
+## Reel Getiri (TÜFE)
+Sitedeki her getiri nominal TL'ydi. Türkiye'de bu tek başına yanıltıcıdır: yıllık %40
+nominal getiri, enflasyon %45'se **kayıptır**.
+
+`app/data/inflation.py` TÜFE serisini `EVDS_API_KEY` varsa TCMB EVDS'ten, yoksa
+OECD'den (anahtarsız) çeker. Gecikme gizlenmez: `as_of` alanı serinin son ayını taşır
+ve **kapsanmayan dönem için reel getiri hesaplanmaz**. Ölçüldü (2026-08): OECD serisi
+2025-12'ye kadar geliyor, yani ~8 ay geride; EVDS anahtarı eklenirse güncel olur.
+FRED'in Türkiye serisi (TURCPIALLMINMEI) denendi ve elendi — 2025-04'te durmuş.
+
+Hesap **bölme** ile yapılır, "nominalden enflasyonu çıkar" kestirmesiyle değil:
+yüksek enflasyonda ikisi belirgin biçimde ayrışır (nominal %80, enflasyon %50 iken
+çıkarma %30 der, doğrusu %20). Aynı hesabın arayüz karşılığı
+`frontend/src/inflation.js` (19 birim testi, `npm test`).
+
+Portföy kartında pozisyonlar **ayrı ayrı** arındırılır (farklı tarihlerde alındıkları
+için tek bir portföy reel getirisi tanımlı değil) ve kaç pozisyonun kapsandığı yazılır.
+
+## Finansallar (çeyreklik)
+`app/data/financials.py` + `scripts/build_financials.py`: satış, brüt/faaliyet kârı,
+net kâr ve marjlar, son 4 çeyrek. Bilanço çeyrekte bir değişir, tarama günde iki kez
+çalışır — bu yüzden sektör haritasıyla aynı desen: script üretir, repoya commit'lenir,
+tarama yalnızca okur ve hiç ek istek atmaz.
+
+**Kapsam sınırı dürüstçe not edilmeli:** 652 sembolde veri geldi ama dağılım eşit değil
+— S&P 500'de 484/503, **BIST'te yalnızca 168/610**. Yahoo'nun BIST küçük/orta ölçekli
+şirketler için gelir tablosu verisi çoğu zaman yok.
+
+Yahoo raporlamadığı kalemi bazen `0` döndürüyor (THYAO'da 327 milyar TL satışa karşılık
+brüt kâr 0). Bunu saklamak arayüzde "brüt marj %0" yazdırırdı — veri yokluğunu ölçülmüş
+gerçek gibi gösterirdi. Brüt kâr/faaliyet kârı/FAVÖK için tam sıfır **eksik sayılır**;
+satış ve net kârda sıfır korunur, orada gerçek bir sonuç olabilir.
+
+## Ekonomik Takvim
+Makro panel fiyat **seviyelerini** gösteriyordu; o seviyeleri hareket ettiren
+**olaylar** yoktu. `app/data/calendars.py` + `calendar_events.json`: TCMB PPK faiz
+kararları, TCMB Enflasyon Raporu ve Fed FOMC tarihleri.
+
+Tarihler kazınmıyor, statik dosyada duruyor: TCMB ve TÜİK'in takvim sayfaları bu
+ortamdan çekilemiyor (SPA/404) ve kazımaya dayanan bir çözüm kaynak sayfa değiştiği
+gün sessizce boş takvim gösterirdi. PPK tarihleri TCMB'nin kendi 2026 sayfasından,
+FOMC tarihleri federalreserve.gov'dan **doğrulanarak** alındı; kaynak URL'leri hem
+dosyada hem payload'da taşınır.
+
+**TÜİK enflasyon açıklama tarihleri bilinçli olarak yok:** "ayın 3'ü" konvansiyonunu
+resmî bir takvimden doğrulayamadım ve doğrulanmamış tarih kullanıcıyı yanlış güne
+hazırlardı. Halka arz takvimi için de programatik ve güvenilir bir kaynak bulunamadı.
+
+Takvim ayrı bir sekme değil, makro panelin başında: ikisi aynı soruyu farklı yönden
+cevaplıyor, ayırmak kullanıcıyı iki yere bakmaya zorlardı.
+
+## Hisse Sayfaları (SEO)
+Sitenin arama motoru altyapısı vardı (sitemap, robots, statik günlük raporlar) ama
+**içerik ekseni yoktu**: haritadaki 30 URL'in 28'i tarih damgalı rapordu, oysa aramalar
+sembol adıyla yapılıyor ("THYAO teknik analiz"). Bu sorgular için hedef sayfa
+olmadığından organik trafik kanalı fiilen kapalıydı.
+
+`app/reports/symbol_pages.py` her taranan hisse için `/hisse/KOD.html` üretir: teknik
+görünüm, temel oranlar, analist konsensüsü, son çeyrek finansallar, son KAP bildirimleri
+ve uygulamaya dönüş bağlantısı. Sayfa **tek başına ayakta durur** — JavaScript yok,
+veri gömülü; uygulamanın kendisi SPA olduğundan `?v=…&s=…` derin bağlantısı
+indekslenebilir içerik üretmiyor ve bu sayfaların var olma sebebi tam olarak bu.
+
+Verisi olmayan blok **hiç basılmaz**: boş bir "F/K: —" tablosu hem arama motoruna hem
+kullanıcıya içerik varmış izlenimi verirdi. Yatırım tavsiyesi uyarısı her sayfada,
+çünkü sayfa uygulamadan bağımsız dolaşıyor.
+
+Sayfalar taramada üretilir (veri orada), site haritasına `build_site_meta` manifestten
+ekler — iki script birbirinin veri yapısını bilmek zorunda değil.
+
+## Sunucu Tarafı Alarmlar
+Arayüzdeki alarmlar `new Notification` ile tarayıcıda çalışıyor, yani **yalnızca site
+açıkken**; üstelik veri günde iki kez güncellendiğinden pratikte gün sonu alarmıdır.
+Arayüz artık bu sınırı açıkça yazıyor.
+
+`app/notify/alerts.py` + `scripts/notify_alerts.py`: repodaki `alerts.json` kuralları
+her taramadan sonra değerlendirilip Telegram'a düşer (örnek: `alerts.json.example`).
+İki kural tipi var — sayısal eşik (herhangi bir tarama alanı) ve "taramaya yeni girdi".
+
+Kapsam açıkça sınırlı: bu **site sahibinin** alarmları, ziyaretçininki değil. Ziyaretçi
+alarmları yalnızca kendi tarayıcısında durur ve bu bilinçli bir gizlilik kararıdır;
+onları sunucuya taşımak hesap + sunucu gerektirir, yani mimarinin tamamını değiştirir.
+
+## Fon Para Akışı (TL)
+Fon akışı paneli **yatırımcı sayısı** üzerinden çalışıyordu; "fona 500 kişi katıldı"
+ile "fona 12 milyar TL girdi" aynı şey değil — tek kurumsal giriş, kişi sayısını hiç
+değiştirmeden fonun boyutunu ikiye katlayabilir.
+
+`app/funds/flows.py`: akış, fon büyüklüğündeki değişimin **fiyat hareketiyle
+açıklanamayan** kısmıdır.
+
+    akış_t = büyüklük_t − büyüklük_(t−1) × (fiyat_t / fiyat_(t−1))
+
+Fiyat çarpanı olmadan, fonu %5 yükselten bir piyasa günü %5'lik sahte "para girişi"
+gibi görünürdü. Toplam yüzdesi **dönem başındaki** büyüklüğe oranlanır; günlük yüzdeler
+farklı tabanlara göre hesaplandığından toplanmaları matematiksel olarak yanlıştır.
+Sıralama TL toplamına göredir, yüzdeye göre değil: yüzde sıralaması küçük fonları
+tepeye taşır ve "bugün para nereye gitti?" sorusunu cevaplamaz.
+
+Arşiv kayıt biçimi düz sayıdan sözlüğe geçti (yatırımcı + büyüklük + fiyat); mevcut
+yatırımcı paneli iki biçimi de okur, yoksa arşivin eski kısmı sessizce kaybolurdu.
+Akış ancak arşivde ardışık iki gün varsa hesaplanabilir — geriye dönük üretilemez.
 
 ## "Bugün" Sayfası
 Uygulamanın açılış sekmesi (`view === 'today'`). Kullanıcıyı doğrudan ham tabloya

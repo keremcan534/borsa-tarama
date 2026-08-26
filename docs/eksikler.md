@@ -9,6 +9,34 @@ için kullanıcının o yüzden **başka bir siteyi açması** gerekiyor. Rakipt
 bizim stratejimize hizmet etmeyen şeyler (ör. online seminer, aracı kurum hacim
 analizi) bilerek dışarıda bırakıldı.
 
+## Durum (2026-08-26 — hepsi uygulandı)
+
+Aşağıdaki analiz tarama gününde yazıldı; maddelerin çoğu **aynı gün kapatıldı**.
+Tablo neyin bittiğini, neyin dışarıda kaldığını ve niçin kaldığını gösterir.
+
+| # | Eksik | Durum |
+|---|---|---|
+| 1 | Kapsam: BIST'in %14'ü | ✅ 610 hisse (`bist` marketi), resample ile istek bütçesi artmadan |
+| 2 | Finansal tablo derinliği | ✅ çeyreklik satış/kâr/marj — **ama BIST kapsamı 168/610**, kaynak sınırı |
+| 3 | KAP bildirim akışı | ✅ birincil kaynak, ayrı sekme |
+| 4 | Reel getiri (TÜFE) | ✅ portföyde — TÜFE serisi 2025-12'de bitiyor, EVDS anahtarıyla güncellenir |
+| 5 | Takvimler | ⚠️ ekonomik takvim ✅; **bilanço ve halka arz takvimi yok** (kaynak bulunamadı) |
+| 6 | Alarmlar sekme kapalıyken çalışmıyor | ✅ site sahibi için Telegram; ziyaretçi alarmı hâlâ tarayıcıda (tasarım gereği) + arayüzde sınır uyarısı |
+| 7 | Cihazlar arası senkron | ➖ zaten vardı: paylaşılabilir yedek kodu (`BT1.`) mevcut. Bulut senkronu sunucu gerektirir, mimari kararı |
+| 8 | Hisse başına sayfa (SEO) | ✅ `/hisse/KOD.html` + sitemap |
+| 9 | Seans içi veri | ➖ gerçek eksik değildi: kolon zaten "Kapanış" diyor, tarama saati yazıyor. Asıl boşluk alarm vaadiydi (madde 6) |
+| 10 | Yabancı takas oranı | ❌ **yapılamadı** — MKK 404, Borsa İstanbul bloklu, programatik kaynak yok |
+| 11 | Analist hedef fiyatı | ✅ aynı `.info` çağrısından, ek istek yok |
+| 12 | Telegram/X + Play yayını | ➖ kod hazır, **token/hesap işi** (bu tarafta yapılacak kod yok) |
+| 13 | README kayması | ✅ düzeltildi + tüm yeni bölümler yazıldı |
+| 14 | Tek veri kaynağı riski | ⚠️ kısmen: `app/data/yahoo_http.py` yfinance'siz ikinci bir erişim yolu açtı, ama kaynak hâlâ Yahoo |
+| + | **Fon para akışı (TL)** | ✅ listede yoktu, sonradan istendi: net giriş/çıkış tablosu |
+
+**Kapanmayanların özeti:** yabancı takas oranı (kaynak yok), bilanço/halka arz takvimi
+(kaynak yok), bulut senkronu (sunucu gerektirir), Play yayını (hesap gerektirir).
+
+---
+
 ## Rakip haritası
 
 | Platform | Odak | Bizde karşılığı |
