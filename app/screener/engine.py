@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 from app.data.fetchers.base import BaseFetcher
@@ -53,6 +55,25 @@ def signal_fresh(df: pd.DataFrame, ema_periods: list[int]) -> bool:
     if len(df) < 2:
         return True  # kıyaslanacak önceki mum yok: ilk mumdaki sinyali taze say
     return not passes_filters(df.iloc[-2], ema_periods)
+
+
+def finite_or_none(value, digits: int) -> float | None:
+    """Sayıyı yuvarlar; NaN/Inf ise None döner.
+
+    NaN JSON'a literal `NaN` olarak sızıyor ve tarayıcının JSON.parse'ı TÜM
+    payload'ı reddediyordu — çeyreklik taramada stoch-rsi'nin sıfıra bölmesi
+    tam olarak bunu üretti ve "3 Aylık" sekmesi yayında günlerce boş kaldı
+    (Python'un json modülü NaN'i kabul ettiğinden testlerde görünmez).
+    Hesaplanamayan gösterge None (JSON null) olarak yazılır; filtreler None'ı
+    zaten "geçemedi" sayar.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(v):
+        return None
+    return round(v, digits)
 
 
 def last_bar_change(df: pd.DataFrame) -> float | None:
@@ -130,7 +151,7 @@ def analyze_symbol(
 
     result = {
         "symbol": symbol,
-        "close": round(float(last_row["close"]), 2),
+        "close": finite_or_none(last_row["close"], 2),
         # Son kapanmış mumun bir öncekine göre değişimi. Günlük taramada bu
         # "bugünün getirisi"dir — bir finans sayfasında ilk beklenen rakam.
         "change": last_bar_change(df),
@@ -142,13 +163,13 @@ def analyze_symbol(
     # "yalnızca BIST 100" filtresini bu bayraktan üretiyor. Statik liste, ek istek yok.
     result.update(index_flags(symbol))
     for p in ema_periods:
-        result[f"ema_{p}"] = round(float(last_row[f"ema_{p}"]), 2)
+        result[f"ema_{p}"] = finite_or_none(last_row[f"ema_{p}"], 2)
     result.update(
         {
-            "macd_line": round(float(last_row["macd_line"]), 3),
-            "rsi": round(float(last_row["rsi"]), 2),
-            "stoch_k": round(float(last_row["stoch_k"]), 2),
-            "stoch_rsi_k": round(float(last_row["stoch_rsi_k"]), 2),
+            "macd_line": finite_or_none(last_row["macd_line"], 3),
+            "rsi": finite_or_none(last_row["rsi"], 2),
+            "stoch_k": finite_or_none(last_row["stoch_k"], 2),
+            "stoch_rsi_k": finite_or_none(last_row["stoch_rsi_k"], 2),
         }
     )
 
@@ -162,18 +183,33 @@ def analyze_symbol(
     # sorusuna cevabı yoktu. Kaynak temel veri sağlamıyorsa alanlar hiç eklenmez.
     result.update(fetcher.fetch_fundamentals(symbol))
 
-    if series_sink is not None:
-        bars = df[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)
-        series_sink[symbol] = [
-            [
-                ts.strftime("%Y-%m-%d"),
-                round(float(row.close), 4),
-                round(float(row.open), 4),
-                round(float(row.high), 4),
-                round(float(row.low), 4),
-            ]
-            for ts, row in bars.iterrows()
-        ]
+    if series_sink is not None and symbol not in series_sink:
+        # Grafikler her zaman GÜNLÜK seriden çizilir. Yalnızca haftalık/aylık taramaya
+        # girip günlük elemeye (min_bars/likidite) takılan semboller eskiden dosyasız
+        # kalıyor ve modal grafiği hiç açılamıyordu; günlük mumlar fetcher'ın
+        # bellekteki geçmişinden türetildiğinden ek istek maliyeti yok.
+        if config["interval"] == "1d":
+            source = df
+        else:
+            try:
+                source = fetcher.fetch_ohlcv(symbol, period="1y", interval="1d")
+            except Exception:
+                source = None
+        if source is not None and len(source):
+            bars = source[["open", "high", "low", "close"]].dropna(subset=["close"]).tail(270)
+
+            def bar_row(ts, row):
+                close = round(float(row.close), 4)
+
+                # Tatil/işlem durması mumlarında açılış/uç değerler NaN gelebilir;
+                # NaN JSON'u bozar, kapanışa düşmek mum çizimini ayakta tutar.
+                def field(value):
+                    cleaned = finite_or_none(value, 4)
+                    return close if cleaned is None else cleaned
+
+                return [ts.strftime("%Y-%m-%d"), close, field(row.open), field(row.high), field(row.low)]
+
+            series_sink[symbol] = [bar_row(ts, row) for ts, row in bars.iterrows()]
     return result
 
 

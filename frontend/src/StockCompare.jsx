@@ -20,7 +20,7 @@ const METRIC_ROWS = [
   { key: 'score', i18nKey: 'colScore', format: 'score' },
   { key: 'close', i18nKey: 'colClose', format: 'price' },
   { key: 'change', i18nKey: 'colChange', format: 'pct' },
-  { key: 'relative_strength', label: 'Göreli Güç', format: 'pct' },
+  { key: 'relative_strength', i18nKey: 'colRs', format: 'pct' },
   { key: 'rsi', label: 'RSI', format: 'num1' },
   { key: 'market_cap', i18nKey: 'colMcap', format: 'mcap' },
 ]
@@ -56,11 +56,13 @@ export default function StockCompare({
   onNeedSeries,
   scoreOf,
 }) {
-  // "overview": günlük tarama sonucu (results); "prices": stock_prices.json
+  // "overview": günlük tarama çıktısı. Aday listesi TÜM taranan hisselerdir
+  // (payload.stocks); yalnızca filtreyi geçen ~50 sinyalden seçtirmek, modaldan
+  // "Karşılaştır" ile gelen hissenin sessizce düşmesine yol açıyordu.
   const list = useMemo(() => {
     const rows = []
     for (const payload of Object.values(overview || {})) {
-      for (const r of payload.results || []) {
+      for (const r of payload.stocks || payload.results || []) {
         if (r.symbol?.endsWith('.IS')) rows.push(r)
       }
     }

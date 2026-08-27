@@ -26,7 +26,7 @@ const STRINGS = {
     refreshCache: "Cache'ten Yenile",
     liveScan: 'Canlı Tara',
     loading: 'Yükleniyor...',
-    searchStock: 'Hisse ara (örn. THYAO)',
+    searchStock: (example) => `Hisse ara (örn. ${example})`,
     searchFund: 'Fon ara (kod veya ad)',
     disclaimer:
       'Bu uygulama yalnızca teknik göstergelere dayalı veri sunar; yatırım tavsiyesi değildir.',
@@ -50,12 +50,18 @@ const STRINGS = {
       `${n} başlık · Sinyal veren hisselerin haberleri · Güncelleme: ${when}`,
     scanStatus: (scanned, passed, when) =>
       `${scanned} enstrüman tarandı, ${passed} tanesi kriterleri geçti${when ? ` · Son tarama: ${when}` : ''}`,
+    // Arama/favori/"tüm hisseler" gibi istemci daraltmalarında satır sayısına
+    // "kriterleri geçti" demek yanlıştı (333 hisse kriter geçmedi, listeleniyor).
+    scanStatusShown: (scanned, shown, when) =>
+      `${scanned} enstrüman tarandı · ${shown} satır gösteriliyor${when ? ` · Son tarama: ${when}` : ''}`,
     emptyCustom:
       'Bu filtre ayarlarıyla hiçbir enstrüman kriterleri geçmiyor. Eşikleri gevşetmeyi veya "Varsayılana dön"ü dene.',
     emptyStatic:
       'Son taramada filtreyi geçen enstrüman çıkmadı. Sonuçlar her gün piyasa kapanışlarından sonra güncellenir.',
     emptyLive: 'Şu an filtreyi geçen enstrüman yok. "Canlı Tara" ile tekrar dene ya da daha sonra kontrol et.',
     emptySearch: (q) => `"${q}" için sonuç yok.`,
+    emptyWatchlistFilter: 'Henüz favori eklemedin — satırlardaki ☆ işaretiyle ekle.',
+    emptyOnlyNew: 'Bu taramada yeni sinyal yok. Yeni sinyaller mum kapanışlarıyla gelir.',
     colSymbol: 'Sembol',
     colScore: 'Puan',
     colClose: 'Kapanış',
@@ -350,6 +356,7 @@ const STRINGS = {
     modalOpenTefas: "TEFAS'ta aç ↗",
     modalClose: 'Kapat ✕',
     modalNewsTitle: '📰 Son haberler',
+    modalKapTitle: '📄 Son KAP bildirimleri',
     chartOf: (symbol) => `${symbol} grafiği`,
     favoritesHint: 'Sadece favori hisseleri göster',
     curNote:
@@ -945,7 +952,7 @@ const STRINGS = {
     refreshCache: 'Refresh cache',
     liveScan: 'Live scan',
     loading: 'Loading...',
-    searchStock: 'Search ticker (e.g. AAPL)',
+    searchStock: (example) => `Search ticker (e.g. ${example})`,
     searchFund: 'Search fund (code or name)',
     disclaimer:
       'This app shows technical-indicator data only; it is not investment advice.',
@@ -968,12 +975,16 @@ const STRINGS = {
     newsStatus: (n, when) => `${n} headlines · News for signaled tickers · Updated: ${when}`,
     scanStatus: (scanned, passed, when) =>
       `${scanned} scanned, ${passed} passed the criteria${when ? ` · Last scan: ${when}` : ''}`,
+    scanStatusShown: (scanned, shown, when) =>
+      `${scanned} scanned · showing ${shown} rows${when ? ` · Last scan: ${when}` : ''}`,
     emptyCustom:
       'No instrument passes with these filter settings. Try loosening the thresholds or "Reset to default".',
     emptyStatic:
       'No instrument passed the filter in the last scan. Results update daily after market close.',
     emptyLive: 'No instrument passes the filter right now. Try "Live scan" again or check back later.',
     emptySearch: (q) => `No results for "${q}".`,
+    emptyWatchlistFilter: 'No favourites yet — add some with the ☆ icon on the rows.',
+    emptyOnlyNew: 'No new signals in this scan. New signals arrive with bar closes.',
     colSymbol: 'Symbol',
     colScore: 'Score',
     colClose: 'Close',
@@ -1255,6 +1266,7 @@ const STRINGS = {
     modalOpenTefas: 'Open on TEFAS ↗',
     modalClose: 'Close ✕',
     modalNewsTitle: '📰 Latest news',
+    modalKapTitle: '📄 Latest KAP filings',
     chartOf: (symbol) => `${symbol} chart`,
     favoritesHint: 'Show only starred stocks',
     curNote:

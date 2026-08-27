@@ -8,6 +8,7 @@ reports/ klasörüne yazar (workflow bunu repoya commit'ler). Kullanım:
 """
 
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,33 @@ from app.screener.timeframes import TIMEFRAMES
 
 # Arayüzdeki filtre panelinin varsayılan eşikleri (client-side filtreleme için)
 DEFAULT_THRESHOLDS = {"rsi": 70, "stoch_k": 80, "stoch_rsi_k": 80, "macd_positive": True}
+
+
+def sanitize_for_json(value):
+    """Sonlu olmayan her sayıyı (NaN/Inf) None'a çevirir — iç içe yapıları gezerek.
+
+    Python'un json modülü NaN'i literal `NaN` olarak yazar ve tarayıcının
+    JSON.parse'ı TÜM dosyayı reddeder: çeyreklik taramada stoch-rsi NaN'i tam
+    olarak bunu yaptı ve "3 Aylık" sekmesi yayında ham hata kutusuna dönüştü.
+    Göstergeler artık kaynakta temizleniyor (engine.finite_or_none) ama temel
+    oranlar/piyasa değeri gibi dış kaynaklı alanlar da NaN taşıyabilir.
+    """
+    if isinstance(value, dict):
+        return {k: sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_for_json(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def dump_json(value) -> str:
+    """Yazılan her dosya için tek kapı: önce temizlik, sonra allow_nan=False.
+
+    allow_nan=False emniyet kilididir — temizlikten kaçan bir NaN sessizce
+    bozuk dosya yayınlamak yerine taramayı burada patlatır.
+    """
+    return json.dumps(sanitize_for_json(value), ensure_ascii=False, allow_nan=False)
 
 
 # Fon akışı arşivi bu kadar günü aşınca en eski günler düşer
@@ -187,9 +215,8 @@ def write_symbol_pages(public_dir: Path, market_payloads: dict, financials: dict
 
     (symbol_dir / "index.html").write_text(build_symbol_index(entries), encoding="utf-8")
     (symbol_dir / "index.json").write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": generated_at, "urls": [symbol_url(sym) for sym, _ in entries]},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -221,14 +248,14 @@ def main() -> None:
     macro_payload = merge_with_previous_macro(macro_payload, fetch_previous_macro())
     macro_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
     macro_path = out_dir / "macro.json"
-    macro_path.write_text(json.dumps(macro_payload, ensure_ascii=False), encoding="utf-8")
+    macro_path.write_text(dump_json(macro_payload), encoding="utf-8")
     stale = sum(1 for i in macro_payload["items"] if i.get("stale"))
     print(f"[MAKRO] {macro_payload['count']} gösterge ({stale} tanesi eski veriden) -> {macro_path}")
 
     # Arayüz market listesini bu manifestten okur: kapalı bir marketin sekmesi
     # gösterilip veri dosyası bulunamaması (backend/frontend drift'i) böyle önlenir.
     manifest_path = out_dir / "markets.json"
-    manifest_path.write_text(json.dumps(markets), encoding="utf-8")
+    manifest_path.write_text(dump_json(markets), encoding="utf-8")
     print(f"[MARKET] etkin marketler: {', '.join(markets)} -> {manifest_path}")
 
     # Hisse fiyat serileri: BIST verisi TradingView'in anonim embed widget'ından
@@ -264,13 +291,16 @@ def main() -> None:
             benchmark_df = fetch_benchmark(market, fetcher, config["period"], config["interval"])
             benchmark_close = benchmark_df["close"] if benchmark_df is not None else None
 
+            # series_sink her zaman verilir: haftalık/aylık taramaya girip günlük
+            # elemeye takılan sembollerin de grafiği olsun (sink günlük seriyi,
+            # yalnızca eksik semboller için, fetcher cache'inden doldurur).
             stocks = run_analysis(
                 symbols,
                 fetcher,
                 timeframe,
                 min_turnover,
                 benchmark_close,
-                series_sink=stock_series if timeframe == "daily" else None,
+                series_sink=stock_series,
             )
             results = [s for s in stocks if passes_filters(s, ema_periods)]
 
@@ -360,14 +390,14 @@ def main() -> None:
             # Günlük dosya adı geriye dönük uyumluluk için eksiz kalır.
             suffix = "" if timeframe == "daily" else f"_{timeframe}"
             out_path = out_dir / f"{market}{suffix}.json"
-            out_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            out_path.write_text(dump_json(payload), encoding="utf-8")
             print(f"[SCAN] {market}/{timeframe}: {len(results)} sonuç ({new_count} yeni) -> {out_path}")
 
         all_market_payloads[market] = market_payloads
 
         news_payload = build_news_payload(market, signal_symbols)
         news_path = out_dir / f"news_{market}.json"
-        news_path.write_text(json.dumps(news_payload, ensure_ascii=False), encoding="utf-8")
+        news_path.write_text(dump_json(news_payload), encoding="utf-8")
         print(f"[HABER] {market}: {len(news_payload['items'])} başlık -> {news_path}")
 
         # Fiyat cache'i market bitince boşaltılır. Fetcher artık sembol başına TÜM
@@ -389,7 +419,7 @@ def main() -> None:
     for symbol, bars in stock_series.items():
         path = prices_dir / f"{price_file_name(symbol)}.json"
         path.write_text(
-            json.dumps({"symbol": symbol, "bars": bars}, ensure_ascii=False),
+            dump_json({"symbol": symbol, "bars": bars}),
             encoding="utf-8",
         )
 
@@ -397,9 +427,8 @@ def main() -> None:
     # (portföy sayfasındaki hisse listesi bunu kullanır). Seri taşımaz.
     index_path = prices_dir / "index.json"
     index_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": generated_at, "symbols": sorted(stock_series.keys())},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -414,7 +443,7 @@ def main() -> None:
         dividends_payload = {"count": 0, "upcoming_count": 0, "items": [], "upcoming": []}
     dividends_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
     dividends_path = out_dir / "dividends.json"
-    dividends_path.write_text(json.dumps(dividends_payload, ensure_ascii=False), encoding="utf-8")
+    dividends_path.write_text(dump_json(dividends_payload), encoding="utf-8")
     print(
         f"[TEMETTÜ] {dividends_payload['count']} hisse "
         f"({dividends_payload['upcoming_count']} yaklaşan) -> {dividends_path}"
@@ -424,9 +453,8 @@ def main() -> None:
     fx = fetch_fx_series(fetcher)
     fx_path = out_dir / "fx.json"
     fx_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": datetime.now(timezone.utc).isoformat(), **fx},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -440,13 +468,12 @@ def main() -> None:
     kap_items = fetch_disclosures(symbols=scanned_symbols)
     kap_path = out_dir / "kap.json"
     kap_path.write_text(
-        json.dumps(
+        dump_json(
             {
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "count": len(kap_items),
                 "items": kap_items,
             },
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -459,7 +486,7 @@ def main() -> None:
     cpi = load_cpi()
     inflation_path = out_dir / "inflation.json"
     inflation_path.write_text(
-        json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(), **cpi}, ensure_ascii=False),
+        dump_json({"generated_at": datetime.now(timezone.utc).isoformat(), **cpi}),
         encoding="utf-8",
     )
     print(f"[TÜFE] {len(cpi['series'])} ay ({cpi['source'] or 'kaynak yok'}) -> {inflation_path}")
@@ -469,9 +496,8 @@ def main() -> None:
     calendar_payload = build_calendar_payload()
     calendar_path = out_dir / "calendar.json"
     calendar_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": datetime.now(timezone.utc).isoformat(), **calendar_payload},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -481,7 +507,7 @@ def main() -> None:
     # tarama günde iki kez çalışır); burada yalnızca siteye kopyalanır, istek atılmaz.
     financials = load_financials()
     financials_path = out_dir / "financials.json"
-    financials_path.write_text(json.dumps(financials, ensure_ascii=False), encoding="utf-8")
+    financials_path.write_text(dump_json(financials), encoding="utf-8")
     print(f"[FİNANSAL] {len(financials.get('symbols') or {})} sembol -> {financials_path}")
 
     # Hisse başına statik sayfa: sitenin arama motorundan trafik alabilmesi için
@@ -499,9 +525,8 @@ def main() -> None:
     score_history = dict(sorted(score_history.items())[-SCORE_HISTORY_DAYS:])
     score_path = out_dir / "score_history.json"
     score_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": datetime.now(timezone.utc).isoformat(), "history": score_history},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -515,9 +540,8 @@ def main() -> None:
     signal_log = dict(sorted(signal_log.items())[-SIGNAL_LOG_DAYS:])
     signal_log_path = out_dir / "signal_log.json"
     signal_log_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": datetime.now(timezone.utc).isoformat(), "history": signal_log},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -552,7 +576,7 @@ def main() -> None:
             "metrics": [],
         }
     funds_path = out_dir / "funds.json"
-    funds_path.write_text(json.dumps(funds_payload, ensure_ascii=False), encoding="utf-8")
+    funds_path.write_text(dump_json(funds_payload), encoding="utf-8")
     print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
 
     # Karşılaştırma benchmark'ları (normalize eğri için). Başarısız olanlar sessizce atlanır.
@@ -584,7 +608,7 @@ def main() -> None:
         "benchmarks": benchmarks,
     }
     prices_path = out_dir / "fund_prices.json"
-    prices_path.write_text(json.dumps(prices_payload, ensure_ascii=False), encoding="utf-8")
+    prices_path.write_text(dump_json(prices_payload), encoding="utf-8")
     print(
         f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
     )
@@ -612,9 +636,8 @@ def main() -> None:
     flows_history = dict(sorted(flows_history.items())[-FLOW_HISTORY_DAYS:])
     flows_path = out_dir / "fund_flows.json"
     flows_path.write_text(
-        json.dumps(
+        dump_json(
             {"generated_at": funds_payload["generated_at"], "history": flows_history},
-            ensure_ascii=False,
         ),
         encoding="utf-8",
     )

@@ -576,9 +576,14 @@ function filtersMatchPreset(filters, preset, availableEmas) {
   return availableEmas.every((p) => Boolean(filters.emas[p]) === Boolean(f.emas[p]))
 }
 
+/* Sayı biçimi arayüz dilini izler: EN arayüzde Türkçe ondalık virgülü ("55,9")
+ * karışık okunuyordu. getLang() render sırasında okunur; dil değişimi zaten
+ * yeniden render tetikler. CSV çıktıları bu yoldan GEÇMEZ (ham toFixed). */
+const numLocale = () => (getLang() === 'en' ? 'en-US' : 'tr-TR')
+
 function formatNum(value, digits = 2) {
   if (value == null || Number.isNaN(value)) return '—'
-  return Number(value).toLocaleString('tr-TR', {
+  return Number(value).toLocaleString(numLocale(), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })
@@ -589,7 +594,7 @@ function formatMarketCap(value) {
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-  return value.toLocaleString('tr-TR')
+  return value.toLocaleString(numLocale())
 }
 
 class ErrorBoundary extends Component {
@@ -763,14 +768,22 @@ const FUND_COLUMNS = [
  *  formatPct'in artı işareti burada yanlış olurdu — "+%11 verim" bir artışı ima eder. */
 function formatRatioPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
-  return `${(value * 100).toFixed(digits)}%`
+  return `${(value * 100).toLocaleString(numLocale(), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`
 }
 
 function formatPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
   const pct = value * 100
   const sign = pct > 0 ? '+' : ''
-  return `${sign}${pct.toFixed(digits)}%`
+  // Aynı tablo satırında iki farklı ondalık kuralı ("5,40" yanında "+5.47%")
+  // olmasın: yüzdeler de sayılarla aynı yerel biçimi kullanır.
+  return `${sign}${pct.toLocaleString(numLocale(), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`
 }
 
 /**
@@ -1125,9 +1138,27 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
         <div className="sd-block">
           <div className="sd-block-title">{t(lang, 'finTitle')}</div>
           <div className="sd-metrics">
-            {metric(t(lang, 'finPeriod'), financials.period)}
+            {metric(
+              t(lang, 'finPeriod'),
+              financials.period
+                ? // T00:00:00 eki: çıplak tarih UTC sayılır ve batı saat
+                  // dilimlerinde bir gün geriye kayardı
+                  new Date(`${financials.period}T00:00:00`).toLocaleDateString(
+                    lang === 'en' ? 'en-US' : 'tr-TR',
+                  )
+                : null,
+            )}
             {metric(t(lang, 'finRevenue'), formatCompact(financials.revenue, lang))}
-            {metric(t(lang, 'finNetIncome'), formatCompact(financials.net_income, lang))}
+            {/* Kaynak, raporlamadığı net kârı bazen 0 döndürüyor (BIST'te 168
+                şirketin 77'si!). "Net kâr 0" yazmak veri yokluğunu ölçülmüş bir
+                sonuç gibi gösterirdi; satışı olan bir şirkette kuruşu kuruşuna
+                sıfır kâr fiilen imkânsız — eksik sayılır. */}
+            {metric(
+              t(lang, 'finNetIncome'),
+              financials.net_income === 0 && financials.revenue
+                ? null
+                : formatCompact(financials.net_income, lang),
+            )}
             {metric(
               t(lang, 'finQoq'),
               financials.revenue_change_qoq == null ? null : formatPct(financials.revenue_change_qoq, 1),
@@ -1135,7 +1166,9 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
             )}
             {metric(
               t(lang, 'finNetMargin'),
-              financials.net_margin == null ? null : formatPct(financials.net_margin, 1),
+              financials.net_margin == null || (financials.net_margin === 0 && financials.net_income === 0)
+                ? null
+                : formatPct(financials.net_margin, 1),
             )}
             {metric(t(lang, 'finTtm'), formatCompact(financials.ttm_revenue, lang))}
           </div>
@@ -1215,7 +1248,7 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
   )
 }
 
-function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare, dividend, financials }) {
+function ChartModal({ symbol, news, kapItems, onClose, lang = 'tr', series, seriesLoading, stock, positions, scoreSeries, fx, onCompare, dividend, financials }) {
   // TL / $ / gram altın: TL bazlı bir getirinin reelde ne olduğunu göstermek için
   const [currency, setCurrency] = useState('native')
 
@@ -1340,7 +1373,18 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
 
         {hasOwnSeries ? (
           <div className="modal-own-chart">
-            <FundPriceChart points={shownSeries} lang={lang} showEma />
+            <FundPriceChart
+              points={shownSeries}
+              lang={lang}
+              showEma
+              unit={
+                currency === 'gold'
+                  ? 'g'
+                  : currency === 'usd' || symbolCurrency(symbol) === 'USD'
+                    ? '$'
+                    : '₺'
+              }
+            />
             {currency !== 'native' && <p className="currency-note">{t(lang, 'curNote')}</p>}
           </div>
         ) : seriesLoading ? (
@@ -1359,6 +1403,25 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
           dividend={dividend}
           financials={financials}
         />
+        {/* KAP birincil kaynaktır (şirketin kendi açıklaması) — haberlerin ÜSTÜNDE
+            durur. Veri zaten modal açılışında iniyordu ama hiç gösterilmiyordu. */}
+        {kapItems?.length > 0 && (
+          <div className="modal-news">
+            <div className="modal-news-title">{t(lang, 'modalKapTitle')}</div>
+            {kapItems.slice(0, 3).map((item, i) => (
+              <a
+                key={`${item.link}-${i}`}
+                className="modal-news-item"
+                href={item.link}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <span className="news-time">{formatRelativeTime(item.published_at, lang)}</span>{' '}
+                {item.subject || item.summary}
+              </a>
+            ))}
+          </div>
+        )}
         {news && news.length > 0 && (
           <div className="modal-news">
             <div className="modal-news-title">{t(lang, 'modalNewsTitle')}</div>
@@ -1370,7 +1433,7 @@ function ChartModal({ symbol, news, onClose, lang = 'tr', series, seriesLoading,
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                <span className="news-time">{formatRelativeTime(item.published_at)}</span> {item.title}
+                <span className="news-time">{formatRelativeTime(item.published_at, lang)}</span> {item.title}
               </a>
             ))}
           </div>
@@ -1510,12 +1573,14 @@ function Sparkline({ points, days = 90, symbol, onNeed }) {
   )
 }
 
-function formatFundPrice(value, lang) {
+function formatFundPrice(value, lang, unit = '₺') {
+  // Birim çağrı yerinden gelir: ABD hissesi $, gram altın bazı g — "208,65 ₺"
+  // yazan NVDA tooltip'i yanlış para birimiyle etiketlenmiş bir fiyattı.
   if (value == null || Number.isNaN(value)) return '—'
   return `${Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
-  })} ₺`
+  })} ${unit}`
 }
 
 function fundAxisPrice(v) {
@@ -1542,7 +1607,7 @@ function nearestFundPoint(points, t) {
  * Tek fonun pay değeri zaman serisini gerçek eksenlerle (tarih + fiyat) çizen
  * çizgi grafik. Fareyle üzerine gelince tarih/fiyat/getiri gösteren tooltip verir.
  */
-function FundPriceChart({ points, lang, showEma = false }) {
+function FundPriceChart({ points, lang, showEma = false, unit = '₺' }) {
   const [period, setPeriod] = useState('3m')
   const [hover, setHover] = useState(null)
   const [emaOn, setEmaOn] = useState(false)
@@ -1669,7 +1734,15 @@ function FundPriceChart({ points, lang, showEma = false }) {
     <div className="fund-price">
       <div className="fund-price-head">
         {selector}
-        <span className={`fund-price-change pct ${pctTone(totalRet)}`}>{formatPct(totalRet)}</span>
+        {/* Dönem etiketi kuralı: çıplak yüzde, üstteki "Getiri (son 1 yıl)" ile
+            çelişik okunuyordu — bu rakam seçili pencerenin getirisi. */}
+        <span className={`fund-price-change pct ${pctTone(totalRet)}`}>
+          {(() => {
+            const p = FUND_CHART_PERIODS.find((it) => it.key === period)
+            const label = p ? (lang === 'en' ? p.labelEn : p.label) : ''
+            return label ? `${label}: ${formatPct(totalRet)}` : formatPct(totalRet)
+          })()}
+        </span>
       </div>
       <div className="fund-price-wrap">
         <svg
@@ -1729,12 +1802,24 @@ function FundPriceChart({ points, lang, showEma = false }) {
               <circle className={`fund-price-dot ${dir}`} cx={x(hover.t)} cy={y(hover.px)} r="4" />
             </g>
           )}
-          <text className="fund-price-axis" x={pad.l} y={H - 6}>
-            {new Date(minT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-          </text>
-          <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
-            {new Date(maxT).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-          </text>
+          {/* 6 aydan uzun pencerede yıl da yazılır: 1Y grafiği "26 Ağu → 26 Ağu"
+              diye okunuyor, sol ucun bir yıl önce olduğu anlaşılmıyordu. */}
+          {(() => {
+            const spansLong = maxT - minT > 180 * 24 * 3600 * 1000
+            const fmt = spansLong
+              ? { day: 'numeric', month: 'short', year: '2-digit' }
+              : { day: 'numeric', month: 'short' }
+            return (
+              <>
+                <text className="fund-price-axis" x={pad.l} y={H - 6}>
+                  {new Date(minT).toLocaleDateString(locale, fmt)}
+                </text>
+                <text className="fund-price-axis" x={W - pad.r} y={H - 6} textAnchor="end">
+                  {new Date(maxT).toLocaleDateString(locale, fmt)}
+                </text>
+              </>
+            )
+          })()}
         </svg>
         {hover && (
           <div
@@ -1748,7 +1833,7 @@ function FundPriceChart({ points, lang, showEma = false }) {
               {new Date(hover.t).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
             <div className="fund-price-tooltip-row">
-              <strong>{formatFundPrice(hover.px, lang)}</strong>
+              <strong>{formatFundPrice(hover.px, lang, unit)}</strong>
               <span className={`pct ${pctTone(hover.ret)}`}>{formatPct(hover.ret)}</span>
             </div>
           </div>
@@ -7642,8 +7727,12 @@ function App() {
 
   const rows = useMemo(() => {
     if (!data) return []
+    const q = search.trim().toUpperCase()
+    // Arama, taranan LİSTENİN TAMAMINDA yapılır (filtre baypas edilir): kullanıcı
+    // "THYAO" yazdığında niyeti hisseyi bulmaktır; hisse o gün filtreyi geçmedi
+    // diye "sonuç yok" demek, hissenin var olmadığı izlenimini veriyordu.
     let list = data.stocks
-      ? showAllStocks
+      ? showAllStocks || q
         ? data.stocks
         : data.stocks.filter((s) => stockPassesFilters(s, filters, availableEmas))
       : data.results // eski veri formatı: yalnızca varsayılan filtre sonuçları
@@ -7658,7 +7747,6 @@ function App() {
     // Bayrağı OLMAYAN sembollerde (S&P, emtia) filtre hiç uygulanmaz: orada
     // "BIST 100 üyesi değil" demek anlamsız olurdu.
     if (onlyIndex) list = list.filter((s) => s.in_bist100 !== false)
-    const q = search.trim().toUpperCase()
     if (q)
       list = list.filter(
         (s) =>
@@ -7753,6 +7841,15 @@ function App() {
     () => new Set((data?.results || []).filter((r) => r.is_new).map((r) => r.symbol)),
     [data],
   )
+
+  // Emtia gibi marketlerde bazı kolonlar (piyasa değeri, F/K, temettü...) tümden
+  // boş gelir; her satırı "—" olan kolon tabloyu yarı boş gösteriyordu. Hiçbir
+  // satırda değeri olmayan kolon hiç çizilmez.
+  const hiddenCols = useMemo(() => {
+    const list = data?.stocks || data?.results || []
+    const hideable = ['market_cap', 'relative_strength', 'pe', 'pb', 'dividend_yield']
+    return new Set(hideable.filter((key) => !list.some((s) => s[key] != null)))
+  }, [data])
 
   function toggleWatch(symbol) {
     setWatchlist((prev) => {
@@ -8476,7 +8573,11 @@ function App() {
           {data
             ? t(
                 lang,
-                'scanStatus',
+                // İstemci tarafı daraltma (arama/favori/yeniler/tüm hisseler)
+                // aktifken satır sayısı "kriterleri geçti" değildir.
+                showAllStocks || search.trim() || onlyWatchlist || onlyNew || onlyIndex
+                  ? 'scanStatusShown'
+                  : 'scanStatus',
                 data.scanned ?? '?',
                 rows.length,
                 data.generated_at
@@ -8631,7 +8732,17 @@ function App() {
           <input
             className="search-input"
             type="search"
-            placeholder={t(lang, 'searchStock')}
+            placeholder={t(
+              lang,
+              'searchStock',
+              market === 'sp500'
+                ? 'AAPL'
+                : market === 'commodity'
+                  ? lang === 'en'
+                    ? 'Gold'
+                    : 'Altın'
+                  : 'THYAO',
+            )}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -8644,11 +8755,15 @@ function App() {
         <div className="empty-box">
           {search.trim()
             ? t(lang, 'emptySearch', search.trim().toUpperCase())
-            : isCustom
-              ? t(lang, 'emptyCustom')
-              : STATIC_MODE
-                ? t(lang, 'emptyStatic')
-                : t(lang, 'emptyLive')}
+            : onlyWatchlist && watchlist.size === 0
+              ? t(lang, 'emptyWatchlistFilter')
+              : onlyNew
+                ? t(lang, 'emptyOnlyNew')
+                : isCustom
+                  ? t(lang, 'emptyCustom')
+                  : STATIC_MODE
+                    ? t(lang, 'emptyStatic')
+                    : t(lang, 'emptyLive')}
         </div>
       )}
 
@@ -8658,7 +8773,7 @@ function App() {
             <thead>
               <tr>
                 <th className="star-cell"></th>
-                {COLUMNS.map((c) => (
+                {COLUMNS.filter((c) => !hiddenCols.has(c.key)).map((c) => (
                   <th
                     key={c.key}
                     className={`sortable ${c.align === 'left' ? 'left' : ''} ${sort.key === c.key ? 'sorted' : ''}`}
@@ -8708,16 +8823,18 @@ function App() {
                   <td className={`pct ${pctTone(r.change)}`} title={t(lang, 'colChangeTitle')}>
                     {formatPct(r.change, 2)}
                   </td>
-                  <td>{formatMarketCap(r.market_cap)}</td>
-                  <td
-                    className={`pct ${pctTone(r.relative_strength)}`}
-                    title={t(lang, 'colRsTitle')}
-                  >
-                    {formatPct(r.relative_strength, 1)}
-                  </td>
-                  <td>{formatNum(r.pe, 1)}</td>
-                  <td>{formatNum(r.pb, 2)}</td>
-                  <td>{formatRate(r.dividend_yield, 1)}</td>
+                  {!hiddenCols.has('market_cap') && <td>{formatMarketCap(r.market_cap)}</td>}
+                  {!hiddenCols.has('relative_strength') && (
+                    <td
+                      className={`pct ${pctTone(r.relative_strength)}`}
+                      title={t(lang, 'colRsTitle')}
+                    >
+                      {formatPct(r.relative_strength, 1)}
+                    </td>
+                  )}
+                  {!hiddenCols.has('pe') && <td>{formatNum(r.pe, 1)}</td>}
+                  {!hiddenCols.has('pb') && <td>{formatNum(r.pb, 2)}</td>}
+                  {!hiddenCols.has('dividend_yield') && <td>{formatRate(r.dividend_yield, 1)}</td>}
                   <td>
                     <span className={`badge rsi-${rsiTone(r.rsi ?? 0)}`}>
                       {r.rsi == null ? '—' : formatNum(r.rsi, 1)}
@@ -8746,6 +8863,7 @@ function App() {
         <ChartModal
           symbol={chartSymbol}
           news={chartNews}
+          kapItems={(kap?.items || []).filter((i) => i.symbol === chartSymbol)}
           lang={lang}
           series={stockPrices?.series?.[chartSymbol]}
           seriesLoading={stockPricesLoading}
