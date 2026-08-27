@@ -541,7 +541,13 @@ const STRINGS = {
       `Kurallar: en fazla ${positions} eşit ağırlıklı pozisyon, her biri ${bars} mum tutuluyor. ${taken} işlem açıldı, ${skipped} sinyal kapasite dolu olduğu için atlandı.`,
     btPfDrawdown: 'Portföyün tepeden en büyük düşüşü',
     btPfWhyRange:
-      'Neden tek bir rakam değil de aralık? Kapasite dolduğunda sinyallerin çoğu atlanır, yani sonuç hangi sinyali seçtiğine bağlıdır. Aynı strateji 25 kez farklı rastgele seçimlerle koşturuldu; tek bir rakam bu şansı gizlerdi. Güvenilir olan yön: koşuların tamamına yakını endeksi yeniyor — büyüklük ise şansa bağlı.',
+      'Neden tek bir rakam değil de aralık? Kapasite dolduğunda sinyallerin çoğu atlanır, yani sonuç hangi sinyali seçtiğine bağlıdır. Aynı strateji birçok kez farklı rastgele seçimlerle koşturuldu; tek bir rakam bu şansı gizlerdi.',
+    // Endeks kıyası VERİYE göre yazılır: sabit "tamamına yakını endeksi yeniyor"
+    // cümlesi, 5/25 koşunun yendiği markette kendini yalanlıyordu.
+    btPfBeatHigh: (beat, trials) =>
+      `Güvenilir olan yön: ${trials} koşunun ${beat}'i endeksi yendi — büyüklük ise şansa bağlı.`,
+    btPfBeatLow: (beat, trials) =>
+      `Dikkat: ${trials} koşunun yalnızca ${beat}'i endeksi yenebildi — bu markette strateji endeksi güvenilir biçimde geçemiyor.`,
     btPfNote: 'Komisyon, slipaj ve vergi yok. Geçmiş veriyle yapılmış varsayımsal bir simülasyondur; yatırım tavsiyesi değildir.',
     // Global arama paleti (⌘K)
     cmdkTrigger: 'Ara',
@@ -1443,7 +1449,11 @@ const STRINGS = {
       `Rules: at most ${positions} equally weighted positions, each held ${bars} bars. ${taken} trades opened, ${skipped} signals skipped because capacity was full.`,
     btPfDrawdown: 'Portfolio max drawdown from peak',
     btPfWhyRange:
-      'Why a range instead of one number? When capacity is full most signals are skipped, so the result depends on which ones you pick. The same strategy was run 25 times with different random picks; a single number would hide that luck. What is reliable is the direction: nearly all runs beat the index — the magnitude is luck.',
+      'Why a range instead of one number? When capacity is full most signals are skipped, so the result depends on which ones you pick. The same strategy was run many times with different random picks; a single number would hide that luck.',
+    btPfBeatHigh: (beat, trials) =>
+      `What is reliable is the direction: ${beat} of ${trials} runs beat the index — the magnitude is luck.`,
+    btPfBeatLow: (beat, trials) =>
+      `Caution: only ${beat} of ${trials} runs beat the index — in this market the strategy does not reliably outperform.`,
     btPfNote: 'No commissions, slippage or taxes. A hypothetical simulation on historical data; not investment advice.',
     // Global search palette (⌘K)
     cmdkTrigger: 'Search',

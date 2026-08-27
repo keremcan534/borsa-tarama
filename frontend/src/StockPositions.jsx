@@ -139,15 +139,18 @@ export default function StockPositions({ data, loading, error, lang }) {
 
       <section className="sp-section">
         <h2 className="today-title">{t(lang, 'stockPositionsPick')}</h2>
-        <div className="search-row">
-          <input
-            className="search-input"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t(lang, 'stockPositionsSearch')}
-          />
-        </div>
+        {/* Veri yokken aramayı göstermek "yaz ama hiçbir şey olmasın" çıkmazıydı */}
+        {symbols.length > 0 && (
+          <div className="search-row">
+            <input
+              className="search-input"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t(lang, 'stockPositionsSearch')}
+            />
+          </div>
+        )}
         {symbols.length ? (
           <div className="sp-symbols">
             {matches.map((symbol) => (

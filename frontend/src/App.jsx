@@ -4283,8 +4283,15 @@ function BacktestPortfolio({ lang, portfolio, market }) {
         <strong className="pct neg">{formatPct(portfolio.max_drawdown, 1)}</strong>
       </p>
 
-      {/* Aralığın neden tek rakamdan daha dürüst olduğu: gizlenirse rakam abartılı okunur */}
-      <p className="bt-pf-why">{t(lang, 'btPfWhyRange')}</p>
+      {/* Aralığın neden tek rakamdan daha dürüst olduğu: gizlenirse rakam abartılı okunur.
+          Endeks kıyası cümlesi VERİDEN yazılır — sabit "tamamına yakını yeniyor" metni,
+          5/25 koşunun yendiği markette kendini yalanlıyordu. */}
+      <p className="bt-pf-why">
+        {t(lang, 'btPfWhyRange')}
+        {beat != null && dist?.trials > 0 && (
+          <> {t(lang, beat / dist.trials >= 0.8 ? 'btPfBeatHigh' : 'btPfBeatLow', beat, dist.trials)}</>
+        )}
+      </p>
       <p className="bt-pf-why">{t(lang, 'btPfNote')}</p>
     </div>
   )
@@ -5726,9 +5733,14 @@ const SCORECARD_COLUMNS = [
   { key: 'ret', i18nKey: 'scColReturn' },
 ]
 
-function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
+function SignalScorecard({ log, stockMap, lang, loading, onOpenChart, pricesAsOf }) {
   const [tf, setTf] = useState('weekly')
   const [sort, setSort] = useState({ key: 'day', dir: 'desc' })
+
+  // "Güncel" fiyat, statik taramanın mühürlediği kapanıştır — duvar saati değil.
+  // Olgunluk duvar saatine göre hesaplanınca dünkü sinyaller, kendilerini mühürleyen
+  // AYNI kapanışla kıyaslanıp zorunlu %0 satırlar olarak istatistiğe karışıyordu.
+  const priceDate = (pricesAsOf || new Date().toISOString()).slice(0, 10)
 
   const toggleSort = (key) =>
     setSort((prev) =>
@@ -5746,6 +5758,9 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
     const perTf = {}
     for (const day of days) {
       for (const e of history[day] || []) {
+        // Rozet, tabloyla AYNI elemeden geçer: fiyatı bilinmeyen kayıt tabloda
+        // yokken rozete sayılınca iki sayı çelişiyordu (1605'e karşı 1566).
+        if (!(e.p > 0) || !(stockMap.get(e.s)?.close > 0)) continue
         perTf[e.tf] = (perTf[e.tf] || 0) + 1
       }
     }
@@ -5758,11 +5773,11 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
         // "0 getiri" saymak isabet oranını sessizce şişirirdi.
         if (!(entry > 0) || !(current > 0)) continue
         const ret = current / entry - 1
-        // floor: bugün kaydedilen sinyal "0 gün"dür. round kullanıldığında aradan
-        // 18 saat geçmiş bir kayıt "1 gün" sayılıp olgunlaşmış gibi görünüyordu.
+        // Süre, fiyat anlık görüntüsünün tarihine göre: duvar saatiyle ölçmek,
+        // fiyatı dünkü kapanış olan kaydı "1 gün" gösterip olgun sanılmasına yol açıyordu.
         const daysHeld = Math.max(
           0,
-          Math.floor((Date.now() - Date.parse(`${day}T00:00:00Z`)) / 86400000),
+          Math.floor((Date.parse(`${priceDate}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86400000),
         )
         out.push({ ...e, symbol: e.s, day, entry, current, ret, daysHeld })
       }
@@ -5784,10 +5799,9 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
     // Sinyal, mumun kapanışıyla mühürlenir; aynı gün içinde güncel fiyat da o kapanış
     // olduğundan getiri zorunlu olarak 0'dır. Bunları katmak isabet oranını sıfıra
     // çekip "strateji hiç kazandırmadı" gibi okunuyordu — oysa henüz zaman geçmemiştir.
-    // Olgunluk takvim gününe göre: kayıt günü bugünden ÖNCEyse olgunlaşmıştır.
-    // (Tarama günü UTC yazıldığından karşılaştırma da UTC tarih dizesiyle yapılır.)
-    const todayUtc = new Date().toISOString().slice(0, 10)
-    const matured = out.filter((r) => r.day < todayUtc)
+    // Olgunluk, FİYAT VERİSİNİN tarihine göre: kayıt günü fiyat anlık
+    // görüntüsünden önceyse olgunlaşmıştır (bkz. priceDate açıklaması).
+    const matured = out.filter((r) => r.day < priceDate)
     const rets = matured.map((r) => r.ret)
     const wins = rets.filter((r) => r > 0).length
     const avg = rets.length ? rets.reduce((s, r) => s + r, 0) / rets.length : null
@@ -5810,7 +5824,7 @@ function SignalScorecard({ log, stockMap, lang, loading, onOpenChart }) {
       dayCount: days.length,
       counts: perTf,
     }
-  }, [log, stockMap, tf, sort])
+  }, [log, stockMap, tf, sort, priceDate])
 
   if (loading) return <div className="empty-box">{t(lang, 'loading')}</div>
 
@@ -6525,7 +6539,8 @@ function AboutView({ lang }) {
         </p>
 
         <p className="about-updated">
-          {t(lang, 'aboutUpdated')}: {new Date(ABOUT_UPDATED).toLocaleDateString(locale)}
+          {/* T00:00:00 eki: çıplak tarih UTC sayılır, batı dilimlerinde 1 gün geri kayardı */}
+          {t(lang, 'aboutUpdated')}: {new Date(`${ABOUT_UPDATED}T00:00:00`).toLocaleDateString(locale)}
         </p>
       </section>
     </>
@@ -7031,6 +7046,15 @@ function App() {
       setMarket(activeMarkets[0].key)
     }
   }, [activeMarkets, market])
+
+  // Backtest yalnızca günlük/haftalık üretilir. Uygulama İÇİ geçişte sekme
+  // zaten düzeltiliyor; derin bağlantı (?v=backtest&tf=monthly) bu korumayı
+  // atlayıp seçili sekmesi olmayan boş bir sayfa gösteriyordu.
+  useEffect(() => {
+    if (view === 'backtest' && !BACKTEST_TIMEFRAMES.some((tf) => tf.key === timeframe)) {
+      setTimeframe('daily')
+    }
+  }, [view, timeframe])
 
   // Tema seçimi <html> data-theme'ine yansır (data-theme yoksa sistem tercihi)
   useEffect(() => {
@@ -8520,6 +8544,9 @@ function App() {
           lang={lang}
           loading={signalLogLoading || (overviewLoading && !overviewCache.daily)}
           onOpenChart={setChartSymbol}
+          pricesAsOf={
+            Object.values(overviewCache.daily || {}).find((p) => p?.generated_at)?.generated_at
+          }
         />
       )}
 
