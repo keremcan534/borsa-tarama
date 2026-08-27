@@ -379,6 +379,11 @@ def main() -> None:
         max_months=12,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
+    # Doğrulama YAZIMDAN ÖNCE: boş sonuç önce dosyaya yazılıp sonra hata
+    # veriliyordu — başarısız bir koşu, elde ne varsa boş iskeletle eziyordu.
+    if not records and not payload.get("stocks"):
+        raise SystemExit("Hiç hisse pozisyonu ayrıştırılamadı; mevcut dosyaya dokunulmadı")
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
@@ -388,8 +393,6 @@ def main() -> None:
         f"[KAP] {month_key}: {len(latest_by_fund)} rapor, {len(records)} pozisyon, "
         f"{failures} hata -> {args.output}"
     )
-    if not records and not payload.get("stocks"):
-        raise SystemExit("Hiç hisse pozisyonu ayrıştırılamadı")
     if not records:
         print("[KAP] Bu ay için yeni pozisyon yok; önceki geçmiş korundu.")
 

@@ -30,8 +30,10 @@ Yahoo, bilmediği kalemi eksik bırakmak yerine `0` döndürebiliyor: THYAO'da
 `grossProfit` 327 milyar TL satışa karşılık 0 geliyor. Bunu olduğu gibi saklamak
 arayüzde "brüt marj %0" yazdırırdı — bu, veri yokluğunu **ölçülmüş bir gerçek gibi**
 gösterir. Bu yüzden brüt kâr / faaliyet kârı / FAVÖK için TAM SIFIR değerler eksik
-sayılır. Kural satış ve net kâra uygulanmaz: orada sıfır (ya da negatif) gerçekten
-olabilir ve anlamlıdır.
+sayılır. Net kâr da (ölçüm sonrası) aynı kurala girdi: yayında BIST'te finansalı
+olan 168 şirketin 77'si net kâr 0 taşıyordu, satışı olan çeyrekte kuruşu kuruşuna
+sıfır kâr fiilen imkânsız. Kural yalnızca satışa uygulanmaz: orada sıfır gerçekten
+olabilir ve anlamlıdır (satışsız çeyrekte net kâr 0 da karar verilemediği için korunur).
 
 ## Neden taramanın içinde değil, ayrı bir script
 
@@ -62,8 +64,20 @@ INCOME_FIELDS = {
 
 
 # Yahoo'nun raporlamadığı kalemi 0 ile doldurduğu alanlar (bkz. modül başlığı).
-# Satış ve net kâr bilinçli olarak DIŞARIDA: orada sıfır gerçek bir sonuç olabilir.
+# Satış bilinçli olarak DIŞARIDA: orada sıfır gerçek bir sonuç olabilir.
 ZERO_MEANS_MISSING = ("gross_profit", "operating_income", "ebit")
+
+# Net kâr için kural ölçümle değişti: ilk sürüm "sıfır kâr gerçek olabilir" diye
+# değeri koruyordu, ama yayında BIST'te finansalı olan 168 şirketin 77'si net kâr
+# 0 taşıyor — kuruşu kuruşuna sıfır kâr fiilen imkânsız, bu Yahoo'nun "veri yok"
+# doldurmasıdır. SATIŞI OLAN bir çeyrekte net kâr 0 ise eksik sayılır; satışı da
+# 0/None olan çeyrekte karar verilemez, değer olduğu gibi kalır.
+
+
+def _clean_net_income(value: float | None, revenue: float | None) -> float | None:
+    if value == 0 and revenue:
+        return None
+    return value
 
 
 def _margin(numerator: float | None, denominator: float | None) -> float | None:
@@ -94,6 +108,7 @@ def parse_quarters(payload: dict | None) -> list[dict]:
             if value == 0 and target_field in ZERO_MEANS_MISSING:
                 value = None
             row[target_field] = value
+        row["net_income"] = _clean_net_income(row["net_income"], row["revenue"])
         if all(row[field] is None for field in INCOME_FIELDS.values()):
             continue  # tamamen boş çeyrek: dönem etiketinden ibaret, taşımanın anlamı yok
         row["gross_margin"] = _margin(row["gross_profit"], row["revenue"])

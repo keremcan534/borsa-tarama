@@ -132,6 +132,8 @@ const STRINGS = {
       'İki fonun son açıklanan portföylerinde aynı hisselere verdiği ortak ağırlık. Yüksek örtüşme, iki fonu birden almanın çeşitlendirme sağlamadığı anlamına gelir.',
     fcOverlapStock: 'Hisse',
     fcOverlapMissing: (codes) => `KAP portföy verisi bulunamayan fonlar: ${codes} (hisse dışı fon olabilir).`,
+    fcOverlapNoData:
+      'KAP portföy verisi henüz yok. Aylık KAP portföy raporları işlendiğinde seçili fonların ortak hisseleri burada görünecek.',
     fundCompareMetrics: 'Metrikler',
     fundCompareMetricCol: 'Metrik',
     fundCompareNoChart: 'Bu dönem için çizilecek yeterli veri yok.',
@@ -676,7 +678,7 @@ const STRINGS = {
     flowMoneyFootnote:
       'Akış, fon büyüklüğündeki değişimin fiyat hareketiyle açıklanamayan kısmıdır. Yüzdeler o günkü akışın fonun büyüklüğüne oranıdır; toplam yüzdesi dönem başındaki büyüklüğe göredir.',
     flowMoneyPending:
-      'Para akışı için en az iki günlük arşiv gerekiyor. Arşiv her taramada ileriye doğru doluyor.',
+      'TL akışı, fon büyüklüğü + fiyat kaydı tutulmaya başladıktan sonra hesaplanabilir ve en az iki günlük yeni kayıt ister. Kayıt her taramada ileriye doğru doluyor; yandaki yatırımcı sayısı paneli daha eski arşivle şimdiden çalışıyor.',
     flowFund: 'Fon',
     flowTotal: 'Toplam',
     // --- Ekonomik takvim ---
@@ -1055,6 +1057,8 @@ const STRINGS = {
       'Shared weight the funds give to the same stocks in their latest disclosed portfolios. High overlap means holding both funds adds little diversification.',
     fcOverlapStock: 'Stock',
     fcOverlapMissing: (codes) => `No KAP portfolio data for: ${codes} (may not be equity funds).`,
+    fcOverlapNoData:
+      'No KAP portfolio data yet. Once the monthly KAP portfolio reports are processed, shared holdings of the selected funds will appear here.',
     fundCompareMetrics: 'Metrics',
     fundCompareMetricCol: 'Metric',
     fundCompareNoChart: 'Not enough data to chart this period.',
@@ -1576,7 +1580,7 @@ const STRINGS = {
     flowMoneyFootnote:
       'Flow is the part of the change in fund size that price moves do not explain. Percentages are that day\'s flow over fund size; the total is measured against the size at the start of the period.',
     flowMoneyPending:
-      'Money flow needs at least two days of archive. The archive fills forward with each scan.',
+      'TL flow needs fund size + price records, which started being kept recently, and requires at least two days of them. The record fills forward with each scan; the investor-count panel already works from the older archive.',
     flowFund: 'Fund',
     flowTotal: 'Total',
     // --- Economic calendar ---

@@ -11,7 +11,9 @@ import { useRef, useState } from 'react'
 import { t } from './i18n'
 
 // Kartta en fazla kaç satır gösterilir (yüksekliğe sığan sayı).
-export const SHARE_CARD_ROWS = 8
+// 7 satır: 8. satır (y=916-994) alt bilgideki tarih/site satırına (y≈962)
+// biniyordu — kart taşmış görünüyordu.
+export const SHARE_CARD_ROWS = 7
 export const SHARE_SITE_LABEL = 'keremcan534.github.io/borsa-tarama'
 export const SHARE_CARD_W = 1080
 export const SHARE_CARD_H = 1080

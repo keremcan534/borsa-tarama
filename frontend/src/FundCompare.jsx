@@ -443,13 +443,20 @@ function RiskReturnScatter({ universe, selected, lang }) {
   const H = 320
   const pad = { l: 54, r: 16, t: 14, b: 34 }
   const xs = pts.map((p) => p.x)
-  const ys = pts.map((p) => p.y)
+  const ys = pts.map((p) => p.y).sort((a, b) => a - b)
   const x0 = 0
   const x1 = Math.max(...xs) * 1.05
-  const y0 = Math.min(0, Math.min(...ys)) * 1.05
-  const y1 = Math.max(...ys) * 1.05
+  // Y ekseni p95'te kırpılır (seçililer hariç): tek bir uç fon (+%1285 getiri)
+  // ölçeği 13 kat büyütüp kalan 119 fonu alttaki ince bir şeride sıkıştırıyordu.
+  // Kırpılan noktalar üst kenara oturur; seçili fon her zaman gerçek yerinde.
+  const p95 = ys[Math.min(ys.length - 1, Math.floor(ys.length * 0.95))]
+  const selMax = Math.max(...pts.filter((p) => p.on).map((p) => p.y), -Infinity)
+  const y0 = Math.min(0, ys[0]) * 1.05
+  const y1 = Math.max(p95, selMax, 0.01) * 1.05
   const px = (v) => pad.l + ((v - x0) / (x1 - x0 || 1)) * (W - pad.l - pad.r)
-  const py = (v) => H - pad.b - ((v - y0) / (y1 - y0 || 1)) * (H - pad.t - pad.b)
+  const py = (v) =>
+    H - pad.b - ((Math.min(v, y1) - y0) / (y1 - y0 || 1)) * (H - pad.t - pad.b)
+  const pctLabel = (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`
 
   return (
     <div className="fc-scatter-wrap">
@@ -465,7 +472,10 @@ function RiskReturnScatter({ universe, selected, lang }) {
           .sort((a, b) => Number(a.on) - Number(b.on)) // seçililer en üstte çizilsin
           .map((p) => (
             <g key={p.symbol}>
-              <circle cx={px(p.x)} cy={py(p.y)} r={p.on ? 6 : 3} className={p.on ? 'fc-dot on' : 'fc-dot'} />
+              <circle cx={px(p.x)} cy={py(p.y)} r={p.on ? 6 : 3} className={p.on ? 'fc-dot on' : 'fc-dot'}>
+                {/* Seçili olmayan noktalar da kimliğini söylesin (hover) */}
+                <title>{`${p.symbol} · ${pctLabel(p.y)} / ${pctLabel(p.x)}`}</title>
+              </circle>
               {p.on && (
                 <text x={px(p.x) + 9} y={py(p.y) + 4} className="fc-dot-label">
                   {p.symbol}
@@ -473,6 +483,16 @@ function RiskReturnScatter({ universe, selected, lang }) {
               )}
             </g>
           ))}
+        {/* Eksen uç değerleri: sayısız eksen okunmuyordu */}
+        <text x={pad.l - 6} y={py(0) + 4} className="fc-axis-label" textAnchor="end">
+          0%
+        </text>
+        <text x={pad.l - 6} y={pad.t + 28} className="fc-axis-label" textAnchor="end">
+          {pctLabel(y1 / 1.05)}
+        </text>
+        <text x={W - pad.r} y={H - pad.b + 16} className="fc-axis-label" textAnchor="end">
+          {pctLabel(x1 / 1.05)}
+        </text>
         <text x={W - pad.r} y={H - 8} className="fc-axis-label" textAnchor="end">
           {t(lang, 'fcRiskX')}
         </text>
@@ -511,10 +531,14 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
   }, [list])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toUpperCase()
+    // Türkçe yerelle büyüt: ASCII toUpperCase 'iş' -> 'IŞ' yapar ve
+    // 'İŞ PORTFÖY' fon adlarıyla asla eşleşmezdi
+    const q = query.trim().toLocaleUpperCase('tr-TR')
     if (!q) return list.slice(0, 40)
     return list
-      .filter((f) => f.symbol.includes(q) || (f.name || '').toUpperCase().includes(q))
+      .filter(
+        (f) => f.symbol.includes(q) || (f.name || '').toLocaleUpperCase('tr-TR').includes(q),
+      )
       .slice(0, 40)
   }, [list, query])
 
@@ -562,7 +586,11 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
       if (inUsd && key === 'USDTRY=X') continue
       const b = prices?.benchmarks?.[key]
       if (!b) continue
-      const pts = normalizeSeries(convert(b.points), period)
+      // Zaten dolar cinsinden kote seriler (ons altın) USD modunda İKİNCİ KEZ
+      // kura bölünmez: bölmek hem fiyatı saçmalatıyor (85 $ "ons altın") hem
+      // getiri eğrisini kur hareketiyle çarpıtıyordu.
+      const alreadyUsd = key === 'GC=F'
+      const pts = normalizeSeries(inUsd && alreadyUsd ? b.points : convert(b.points), period)
       if (!pts.length) continue
       lines.push({
         key: `b:${key}`,
@@ -781,7 +809,15 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
               rows: () =>
                 METRIC_ROWS.map((row) => [
                   row.i18nKey ? t(lang, row.i18nKey) : row.label,
-                  ...selectedFunds.map((f) => f[row.key] ?? ''),
+                  // "%" başlıklı kolonlara 0-1 aralığında 17 haneli ham oran
+                  // yazılıyordu; yüzdeler x100 + 2 hane, sayılar 4 haneye yuvarlı.
+                  ...selectedFunds.map((f) => {
+                    const v = f[row.key]
+                    if (v == null) return ''
+                    if (row.format === 'pct' || row.format === 'vol') return (v * 100).toFixed(2)
+                    if (row.format === 'num') return Number(v).toFixed(4)
+                    return v
+                  }),
                 ]),
             }}
             card={{
@@ -952,6 +988,15 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
           {overlap.missing.length > 0 && (
             <p className="fc-overlap-note">{t(lang, 'fcOverlapMissing', overlap.missing.join(', '))}</p>
           )}
+        </section>
+      )}
+
+      {/* Veri yokken bölümü sessizce yok etmek "bir şey kayıp" hissi veriyordu:
+          başlık kalır, sebep açıkça yazılır (KAP raporları henüz işlenmedi). */}
+      {!overlap && selected.length >= 2 && (
+        <section className="fc-section">
+          <h2 className="today-title">{t(lang, 'fcOverlapTitle')}</h2>
+          <p className="fc-overlap-note">{t(lang, 'fcOverlapNoData')}</p>
         </section>
       )}
 

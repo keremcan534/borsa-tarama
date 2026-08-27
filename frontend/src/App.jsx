@@ -581,9 +581,13 @@ function filtersMatchPreset(filters, preset, availableEmas) {
  * yeniden render tetikler. CSV çıktıları bu yoldan GEÇMEZ (ham toFixed). */
 const numLocale = () => (getLang() === 'en' ? 'en-US' : 'tr-TR')
 
+// Gösterilen haneye 0 olarak yuvarlanan değer işaretsiz basılır: -0.004 için
+// "-0,00" yazmak bir aksaklık gibi görünüyordu (Makro'da Euro/TL korelasyonu).
+const dropNegativeZero = (value, digits) => (Number(value.toFixed(digits)) === 0 ? 0 : value)
+
 function formatNum(value, digits = 2) {
   if (value == null || Number.isNaN(value)) return '—'
-  return Number(value).toLocaleString(numLocale(), {
+  return dropNegativeZero(Number(value), digits).toLocaleString(numLocale(), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })
@@ -776,7 +780,7 @@ function formatRatioPct(value, digits = 1) {
 
 function formatPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
-  const pct = value * 100
+  const pct = dropNegativeZero(value * 100, digits)
   const sign = pct > 0 ? '+' : ''
   // Aynı tablo satırında iki farklı ondalık kuralı ("5,40" yanında "+5.47%")
   // olmasın: yüzdeler de sayılarla aynı yerel biçimi kullanır.
@@ -825,6 +829,18 @@ function pctTone(value) {
   if (value > 0.02) return 'pos'
   if (value < -0.02) return 'neg'
   return 'flat'
+}
+
+/** Bugünden hedef güne kalan gün. Payload'daki mühürlü sayaçlar (days_to_ex,
+ * days_until) tarama anına aitti: ertesi sabah "bugün" yerine "1 gün sonra"
+ * gösteriyor, gün geçmişse saçmalıyordu. Sayaç RENDER anında hesaplanır. */
+function daysUntilIso(iso) {
+  if (!iso) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const target = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(target.getTime())) return null
+  return Math.round((target - today) / 86400000)
 }
 
 function formatRelativeTime(iso, lang = 'tr') {
@@ -1101,9 +1117,13 @@ function StockDetailStats({ stock, positions, scoreSeries, series, lang, dividen
             )}
             {metric(
               t(lang, 'sdDivNext'),
-              dividend.next_ex_date
-                ? `${new Date(dividend.next_ex_date).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')} (${t(lang, 'dvdDays', dividend.days_to_ex)})`
-                : null,
+              (() => {
+                const days = daysUntilIso(dividend.next_ex_date)
+                if (days == null || days < 0) return null
+                return `${new Date(dividend.next_ex_date).toLocaleDateString(
+                  lang === 'en' ? 'en-US' : 'tr-TR',
+                )} (${t(lang, 'dvdDays', days)})`
+              })(),
             )}
             {metric(t(lang, 'dvdColYears'), dividend.years_paid || null)}
           </div>
@@ -1956,7 +1976,8 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
           <div className="fund-price-section">
             <div className="fund-section-title">{t(lang, 'fundPriceTitle')}</div>
             {series?.length ? (
-              <FundPriceChart points={series} lang={lang} />
+              // EMA düğmesi fonda da açık: bileşen destekliyordu, prop unutulmuştu
+              <FundPriceChart points={series} lang={lang} showEma />
             ) : (
               <div className="empty-box">
                 {pricesLoading ? t(lang, 'fundCompareLoading') : t(lang, 'fundCompareNoPrices')}
@@ -1978,15 +1999,15 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Sharpe</span>
-              <strong>{fund.sharpe != null ? fund.sharpe.toFixed(2) : '—'}</strong>
+              <strong>{formatNum(fund.sharpe, 2)}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Sortino</span>
-              <strong>{fund.sortino != null ? fund.sortino.toFixed(2) : '—'}</strong>
+              <strong>{formatNum(fund.sortino, 2)}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Calmar</span>
-              <strong>{fund.calmar != null ? fund.calmar.toFixed(2) : '—'}</strong>
+              <strong>{formatNum(fund.calmar, 2)}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">{t(lang, 'colAlpha')}</span>
@@ -1994,11 +2015,11 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">{t(lang, 'colBeta')}</span>
-              <strong>{fund.beta != null ? fund.beta.toFixed(2) : '—'}</strong>
+              <strong>{formatNum(fund.beta, 2)}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Vol</span>
-              <strong>{fund.volatility != null ? `${(fund.volatility * 100).toFixed(1)}%` : '—'}</strong>
+              <strong>{fund.volatility != null ? formatRatioPct(fund.volatility, 1) : '—'}</strong>
             </div>
             <div className="fund-metric">
               <span className="fund-metric-label">Max DD</span>
@@ -4153,7 +4174,7 @@ function TodayView({
 }
 
 /** Oran gösterimi (isabet vb.): formatPct'in aksine işaret öneki istemez. */
-const formatRate = (v, digits = 0) => (v == null ? '—' : `${(v * 100).toFixed(digits)}%`)
+const formatRate = (v, digits = 0) => (v == null ? '—' : formatRatioPct(v, digits))
 
 const MONEY_UNIT = { bist: 'TL', bist100: 'TL', sp500: '$', etf: '$', commodity: '$' }
 // Binlik ayracı dile bağlı: "15.158" TR'de on beş bin, EN'de ondalık okunur.
@@ -4511,7 +4532,7 @@ function FundLeague({ funds, lang, loading, onOpenFund }) {
   const metricCell = (f) => {
     if (metric === 'score') return <span className={`badge score-${scoreTone(f.score)}`}>{f.score}</span>
     if (metric === 'sharpe' || metric === 'sortino')
-      return <span className="fl-metric-num">{f[metric] != null ? f[metric].toFixed(2) : '—'}</span>
+      return <span className="fl-metric-num">{formatNum(f[metric], 2)}</span>
     return <span className={`pct ${pctTone(f.return_1y)}`}>{formatPct(f.return_1y)}</span>
   }
 
@@ -6255,7 +6276,8 @@ function corrTone(value) {
  * sekmeye bölmek kullanıcıyı iki yere bakmaya zorlardı.
  */
 function EconomicCalendar({ data, lang }) {
-  const events = data?.events || []
+  // Günü geçmiş olay listelenmez: payload iki tarama arasında eskiyebilir
+  const events = (data?.events || []).filter((e) => (daysUntilIso(e.date) ?? 0) >= 0)
   if (!events.length) return null
 
   const label = (e) => (lang === 'en' ? e.title_en : e.title)
@@ -6275,9 +6297,9 @@ function EconomicCalendar({ data, lang }) {
             <span className={`cal-flag ${e.region}`}>{e.region === 'tr' ? '🇹🇷' : '🇺🇸'}</span>
             <span className="cal-date">{when(e)}</span>
             <span className="cal-title">{label(e)}</span>
-            {/* "3 gün sonra" backend'de hesaplanıyor: arayüzün tarih aritmetiği
-                yapmasına gerek yok ve iki yerde farklı sonuç çıkma riski kalkıyor. */}
-            <span className="cal-days">{t(lang, 'calDaysUntil', e.days_until)}</span>
+            {/* Sayaç render anında hesaplanır: payload günde iki kez üretildiğinden
+                mühürlü sayı ertesi sabah bir gün geriden geliyordu. */}
+            <span className="cal-days">{t(lang, 'calDaysUntil', daysUntilIso(e.date) ?? e.days_until)}</span>
           </li>
         ))}
       </ul>
@@ -6542,15 +6564,38 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
     [data, scope],
   )
 
+  // Kolon sıralaması: tarama tablosundaki alışkanlık burada da çalışsın
+  // (örn. yaklaşan ex-tarihe ya da dağıtım oranına göre sırala).
+  const [divSort, setDivSort] = useState({ key: 'yield_ttm', dir: 'desc' })
+  const toggleDivSort = (key) =>
+    setDivSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' },
+    )
+
   const items = useMemo(() => {
     const q = query.trim().toUpperCase()
-    return q ? scoped.filter((r) => r.symbol.toUpperCase().includes(q)) : scoped
-  }, [scoped, query])
+    const list = q ? scoped.filter((r) => r.symbol.toUpperCase().includes(q)) : [...scoped]
+    const { key, dir } = divSort
+    const mul = dir === 'desc' ? -1 : 1
+    list.sort((a, b) => {
+      const va = a[key]
+      const vb = b[key]
+      if (va == null && vb == null) return 0
+      if (va == null) return 1 // boş değerler her iki yönde de sona
+      if (vb == null) return -1
+      if (typeof va === 'string' || typeof vb === 'string')
+        return mul * String(va).localeCompare(String(vb))
+      return mul * (va - vb)
+    })
+    return list
+  }, [scoped, query, divSort])
 
   const upcoming = useMemo(
     () =>
       scoped
-        .filter((i) => i.next_ex_date)
+        // Sayaç render anında hesaplanır; ex-tarihi geçmiş kayıt "yaklaşan" değildir
+        .map((i) => ({ ...i, days_to_ex: daysUntilIso(i.next_ex_date) }))
+        .filter((i) => i.days_to_ex != null && i.days_to_ex >= 0)
         .sort((a, b) => a.next_ex_date.localeCompare(b.next_ex_date)),
     [scoped],
   )
@@ -6676,13 +6721,27 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
           <table className="results div-table">
             <thead>
               <tr>
-                <th>{t(lang, 'dvdColSymbol')}</th>
-                <th>{t(lang, 'dvdColYield')}</th>
-                <th>{t(lang, 'dvdColTtm')}</th>
-                <th>{t(lang, 'dvdColLast')}</th>
-                <th>{t(lang, 'dvdColNext')}</th>
-                <th>{t(lang, 'dvdColPayout')}</th>
-                <th>{t(lang, 'dvdColYears')}</th>
+                {[
+                  { key: 'symbol', i18nKey: 'dvdColSymbol' },
+                  { key: 'yield_ttm', i18nKey: 'dvdColYield' },
+                  { key: 'ttm', i18nKey: 'dvdColTtm' },
+                  { key: 'last_date', i18nKey: 'dvdColLast' },
+                  { key: 'next_ex_date', i18nKey: 'dvdColNext' },
+                  { key: 'payout_ratio', i18nKey: 'dvdColPayout' },
+                  { key: 'years_paid', i18nKey: 'dvdColYears' },
+                ].map((c) => (
+                  <th
+                    key={c.key}
+                    className={`sortable ${divSort.key === c.key ? 'sorted' : ''}`}
+                    onClick={() => toggleDivSort(c.key)}
+                    title={t(lang, 'sortHint')}
+                  >
+                    {t(lang, c.i18nKey)}
+                    <span className="sort-arrow">
+                      {divSort.key === c.key ? (divSort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -6712,14 +6771,17 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
                     <td>{i.ttm == null ? '—' : formatNum(i.ttm, 2)}</td>
                     <td>{i.last_date ? new Date(i.last_date).toLocaleDateString(locale) : '—'}</td>
                     <td>
-                      {i.next_ex_date ? (
-                        <span className="div-next">
-                          {new Date(i.next_ex_date).toLocaleDateString(locale)}
-                          <span className="div-next-days">{t(lang, 'dvdDays', i.days_to_ex)}</span>
-                        </span>
-                      ) : (
-                        '—'
-                      )}
+                      {(() => {
+                        // Sayaç render anında; geçmiş ex-tarih "yaklaşan" olarak basılmaz
+                        const days = daysUntilIso(i.next_ex_date)
+                        if (days == null || days < 0) return '—'
+                        return (
+                          <span className="div-next">
+                            {new Date(i.next_ex_date).toLocaleDateString(locale)}
+                            <span className="div-next-days">{t(lang, 'dvdDays', days)}</span>
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td>{i.payout_ratio == null ? '—' : formatRatioPct(i.payout_ratio, 0)}</td>
                     <td>{i.years_paid}</td>
@@ -7780,12 +7842,14 @@ function App() {
     if (!funds?.results) return []
     let list = [...funds.results]
     if (onlyFundWatchlist) list = list.filter((f) => fundWatchlist.has(f.symbol))
-    const q = fundSearch.trim().toUpperCase()
+    // Türkçe yerelle büyüt: ASCII toUpperCase 'iş' -> 'IŞ' yapar ve
+    // 'İŞ PORTFÖY' adlarıyla asla eşleşmezdi (küçük harf arama 0 sonuç veriyordu)
+    const q = fundSearch.trim().toLocaleUpperCase('tr-TR')
     if (q) {
       list = list.filter(
         (f) =>
-          f.symbol.toUpperCase().includes(q) ||
-          (f.name || '').toUpperCase().includes(q),
+          f.symbol.toLocaleUpperCase('tr-TR').includes(q) ||
+          (f.name || '').toLocaleUpperCase('tr-TR').includes(q),
       )
     }
     const { key, dir } = fundSort
@@ -7827,11 +7891,12 @@ function App() {
     header: ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Sortino', 'Calmar', 'Max Düşüş %', 'Alfa %', 'Beta', 'Büyüklük'],
     rows: () => {
       const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
+      const num = (v) => (v != null ? Number(v).toFixed(4) : '')
       return fundRows.map((f) => [
         f.symbol, f.name, f.score ?? '', pct(f.return_1d), f.investor_count ?? '',
         pct(f.return_1m), pct(f.return_3m), pct(f.return_6m), pct(f.return_1y), pct(f.return_ytd),
-        pct(f.volatility), f.sharpe ?? '', f.sortino ?? '', f.calmar ?? '',
-        pct(f.max_drawdown), pct(f.alpha), f.beta ?? '', f.portfolio_size ?? '',
+        pct(f.volatility), num(f.sharpe), num(f.sortino), num(f.calmar),
+        pct(f.max_drawdown), pct(f.alpha), num(f.beta), f.portfolio_size ?? '',
       ])
     },
   }
@@ -8349,10 +8414,10 @@ function App() {
                       <td>
                         <span className={`pct ${pctTone(f.return_ytd)}`}>{formatPct(f.return_ytd)}</span>
                       </td>
-                      <td>{f.volatility != null ? `${(f.volatility * 100).toFixed(1)}%` : '—'}</td>
-                      <td>{f.sharpe != null ? f.sharpe.toFixed(2) : '—'}</td>
-                      <td>{f.sortino != null ? f.sortino.toFixed(2) : '—'}</td>
-                      <td>{f.calmar != null ? f.calmar.toFixed(2) : '—'}</td>
+                      <td>{f.volatility != null ? formatRatioPct(f.volatility, 1) : '—'}</td>
+                      <td>{formatNum(f.sharpe, 2)}</td>
+                      <td>{formatNum(f.sortino, 2)}</td>
+                      <td>{formatNum(f.calmar, 2)}</td>
                       <td>
                         <span className={`pct ${pctTone(f.max_drawdown)}`}>
                           {formatPct(f.max_drawdown)}

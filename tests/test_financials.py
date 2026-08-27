@@ -122,8 +122,15 @@ class TestZeroMeansMissing:
         assert quarters[0]["gross_profit"] is None
         assert quarters[0]["gross_margin"] is None
 
-    def test_zero_revenue_and_net_income_are_kept(self):
-        """Satış/net kârda sıfır gerçek bir sonuç olabilir — silinmemeli."""
+    def test_zero_net_income_with_revenue_is_treated_as_missing(self):
+        """Kural ölçümle değişti: yayında BIST'te finansalı olan 168 şirketin
+        77'si net kâr 0 taşıyordu — satışı olan çeyrekte kuruşu kuruşuna sıfır
+        kâr, Yahoo'nun "veri yok" doldurmasıdır; ölçülmüş sonuç gibi basılmaz."""
         quarters = parse_quarters(_payload([_statement("2026-06-30", 1000, 0, gross=200)]))
+        assert quarters[0]["net_income"] is None
+        assert quarters[0]["net_margin"] is None
+
+    def test_zero_net_income_without_revenue_is_kept(self):
+        """Satış da 0/None ise karar verilemez; değer olduğu gibi kalır."""
+        quarters = parse_quarters(_payload([_statement("2026-06-30", 0, 0, gross=200)]))
         assert quarters[0]["net_income"] == 0
-        assert quarters[0]["net_margin"] == 0.0
