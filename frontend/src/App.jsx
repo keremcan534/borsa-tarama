@@ -667,6 +667,9 @@ function rsiHealth(rsi) {
 // Tüm göstergeleri harmanlayan 0-100 teknik güç puanı.
 // Trend hizası (40) + MACD momentumu (25) + RSI sağlığı (20) + Stokastik alanı (15)
 function technicalScore(s, emaPeriods) {
+  // Gösterge hesaplanamamışsa (kaynakta NaN -> null) puan uydurulmaz: eksik
+  // alanlar 0 sayılıp "21 puan" gibi ölçülmemiş bir rakam çıkıyordu.
+  if (s?.close == null || s.rsi == null || s.stoch_k == null) return null
   const emasAbove = emaPeriods.filter((p) => s.close > s[`ema_${p}`]).length
   const trend = emaPeriods.length ? (emasAbove / emaPeriods.length) * 40 : 0
   const ratio = s.close ? s.macd_line / s.close : 0

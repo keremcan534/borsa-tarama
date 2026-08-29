@@ -1873,18 +1873,33 @@ const STRINGS = {
   },
 }
 
+/* Dil, sayı/tarih biçimleyicileri tarafından HÜCRE BAŞINA okunuyor (333 satırlık
+ * tabloda binlerce çağrı). localStorage senkron bir API; her hücrede yeniden
+ * okumak gereksiz. Değer bir kez okunup bellekte tutulur, setLang onu tazeler. */
+let cachedLang = null
+
 export function getLang() {
+  if (cachedLang) return cachedLang
   try {
     const stored = localStorage.getItem('lang')
-    if (stored === 'en' || stored === 'tr') return stored
+    if (stored === 'en' || stored === 'tr') {
+      cachedLang = stored
+      return cachedLang
+    }
   } catch {
     /* ignore */
   }
-  return 'tr'
+  cachedLang = 'tr'
+  return cachedLang
 }
 
 export function setLang(lang) {
-  localStorage.setItem('lang', lang)
+  cachedLang = lang === 'en' ? 'en' : 'tr'
+  try {
+    localStorage.setItem('lang', lang)
+  } catch {
+    /* gizli sekmede yazma reddedilebilir; seçim yine bu oturumda geçerli */
+  }
 }
 
 export function t(lang, key, ...args) {
