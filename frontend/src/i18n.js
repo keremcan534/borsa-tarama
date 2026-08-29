@@ -433,6 +433,7 @@ const STRINGS = {
     pfErrSymbol: 'Fon kodu gir.',
     pfErrUnknown: (s) => `${s} taranan fon/hisseler arasında yok; kodu kontrol et.`,
     pfErrPrice: 'Geçerli bir alış fiyatı gir (boş bırakırsan o günkü fiyat önerilir).',
+    pfErrNoPriceForDate: 'Bu tarih için fiyat verisi yok (seri daha geriye gitmiyor); alış fiyatını elle gir.',
     pfErrQty: 'Geçerli bir adet gir.',
     pfDisclaimer:
       'Portföy verileri yalnızca bu cihazın tarayıcısında saklanır; sunucuya gönderilmez. Yatırım tavsiyesi değildir.',
@@ -490,6 +491,20 @@ const STRINGS = {
     // aylık 12 = 1 yıl, çeyreklik 4 = 1 yıl (app/screener/timeframes.py ile senkron).
     rsColPeriods: { daily: '3a', weekly: '6a', monthly: '1y', quarterly: '1y' },
     colRsDyn: (p) => `Endeks Farkı (${p})`,
+    // Fon dönem kolonları: TR kısaltmaları (A=ay, G=gün, Y=yıl) İngilizce
+    // arayüzde yanlış okunuyordu ("1A" -> annual sanılıyor).
+    macroCsvIndicator: 'Gösterge',
+    macroCsvLast: 'Son',
+    macroCsvCorr: 'BIST korelasyon',
+    col1d: '1G %',
+    col1m: '1A %',
+    col3m: '3A %',
+    col6m: '6A %',
+    col1y: '1Y %',
+    colYtd: 'YBB %',
+    colVol: 'Vol %',
+    colMaxDd: 'Max Düşüş %',
+    flowWindowDays: (n) => `${n}G`,
     // Kolon adı dönemi taşımalı: çıplak bir "+%30", fiyatın yanında bugünün
     // getirisi sanılıyordu. Açıklama da somut sayıyla — soyut tanım anlaşılmıyordu.
     colRs: 'Endeks Farkı (3a)',
@@ -1351,6 +1366,7 @@ const STRINGS = {
     pfErrSymbol: 'Enter a fund code.',
     pfErrUnknown: (s) => `${s} is not among the scanned funds/stocks; check the code.`,
     pfErrPrice: 'Enter a valid purchase price (leave empty to use that day’s price).',
+    pfErrNoPriceForDate: 'No price data for this date (the series does not go back that far); enter the purchase price manually.',
     pfErrQty: 'Enter a valid unit count.',
     pfDisclaimer:
       'Portfolio data is stored only in this device’s browser; nothing is sent to a server. Not investment advice.',
@@ -1404,6 +1420,18 @@ const STRINGS = {
     changeColLabels: { daily: 'Today', weekly: 'Last Week', monthly: 'Last Month', quarterly: 'Last Quarter' },
     rsColPeriods: { daily: '3m', weekly: '6m', monthly: '1y', quarterly: '1y' },
     colRsDyn: (p) => `vs Index (${p})`,
+    macroCsvIndicator: 'Indicator',
+    macroCsvLast: 'Last',
+    macroCsvCorr: 'BIST correlation',
+    col1d: '1D %',
+    col1m: '1M %',
+    col3m: '3M %',
+    col6m: '6M %',
+    col1y: '1Y %',
+    colYtd: 'YTD %',
+    colVol: 'Vol %',
+    colMaxDd: 'Max DD %',
+    flowWindowDays: (n) => `${n}D`,
     colRs: 'vs Index (3m)',
     colRsTitle:
       'Over the last 3 months, how much better than the index? Example: the stock gained 30% while the BIST 100 gained 20% → +10%. Positive = it beat the market; negative = it lagged, even if it rose.',

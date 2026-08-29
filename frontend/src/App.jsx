@@ -208,20 +208,33 @@ const tfLabel = (tf, lang) => (lang === 'en' ? tf.labelEn : tf.label)
 
 // Emtia/kripto: dost isim + TradingView grafik sembolü eşlemesi
 const COMMODITY_INFO = {
-  'GC=F': { name: 'Altın', tv: 'TVC:GOLD' },
-  'SI=F': { name: 'Gümüş', tv: 'TVC:SILVER' },
-  'PL=F': { name: 'Platin', tv: 'TVC:PLATINUM' },
-  'PA=F': { name: 'Paladyum', tv: 'TVC:PALLADIUM' },
-  'HG=F': { name: 'Bakır', tv: 'TVC:COPPER' },
-  'CL=F': { name: 'Petrol (WTI)', tv: 'TVC:USOIL' },
-  'BZ=F': { name: 'Petrol (Brent)', tv: 'TVC:UKOIL' },
-  'NG=F': { name: 'Doğalgaz', tv: 'TVC:NATURALGAS' },
-  'BTC-USD': { name: 'Bitcoin', tv: 'BINANCE:BTCUSDT' },
-  'ETH-USD': { name: 'Ethereum', tv: 'BINANCE:ETHUSDT' },
+  'GC=F': { name: 'Altın', nameEn: 'Gold', tv: 'TVC:GOLD' },
+  'SI=F': { name: 'Gümüş', nameEn: 'Silver', tv: 'TVC:SILVER' },
+  'PL=F': { name: 'Platin', nameEn: 'Platinum', tv: 'TVC:PLATINUM' },
+  'PA=F': { name: 'Paladyum', nameEn: 'Palladium', tv: 'TVC:PALLADIUM' },
+  'HG=F': { name: 'Bakır', nameEn: 'Copper', tv: 'TVC:COPPER' },
+  'CL=F': { name: 'Petrol (WTI)', nameEn: 'Oil (WTI)', tv: 'TVC:USOIL' },
+  'BZ=F': { name: 'Petrol (Brent)', nameEn: 'Oil (Brent)', tv: 'TVC:UKOIL' },
+  'NG=F': { name: 'Doğalgaz', nameEn: 'Natural gas', tv: 'TVC:NATURALGAS' },
+  'BTC-USD': { name: 'Bitcoin', nameEn: 'Bitcoin', tv: 'BINANCE:BTCUSDT' },
+  'ETH-USD': { name: 'Ethereum', nameEn: 'Ethereum', tv: 'BINANCE:ETHUSDT' },
 }
 
-function displaySymbol(symbol) {
-  return COMMODITY_INFO[symbol]?.name || symbol.replace('.IS', '')
+/** Ekranda görünen ad. Emtia adları dile göre değişir; dil verilmezse (kolon
+ * başlığı gibi bağlamlarda) uygulama dili okunur — İngilizce arayüzde harita
+ * kutuları "Altın/Gümüş/Bakır" diye çıkıyordu. */
+function displaySymbol(symbol, lang) {
+  const info = COMMODITY_INFO[symbol]
+  if (info) return (lang || getLang()) === 'en' ? info.nameEn : info.name
+  return symbol.replace('.IS', '')
+}
+
+/** Aramada hem Türkçe hem İngilizce ad eşleşsin: EN arayüzde "Gold" yazınca
+ * "sonuç yok" çıkıyordu (üstelik örneği kutunun kendisi öneriyordu). */
+function symbolSearchText(symbol) {
+  const info = COMMODITY_INFO[symbol]
+  const base = symbol.replace('.IS', '')
+  return info ? `${base} ${info.name} ${info.nameEn}` : base
 }
 
 /* ---------- Para birimi dönüşümü (TL / $ / gram altın) ----------
@@ -754,16 +767,16 @@ const FUND_COLUMNS = [
   { key: 'score', label: 'Puan', i18nKey: 'colScore' },
   { key: 'return_1d', label: 'Bugün %', i18nKey: 'colChange' },
   { key: 'investor_count', label: 'Yatırımcı', i18nKey: 'colInvestors' },
-  { key: 'return_1m', label: '1A %' },
-  { key: 'return_3m', label: '3A %' },
-  { key: 'return_6m', label: '6A %' },
-  { key: 'return_1y', label: '1Y %' },
-  { key: 'return_ytd', label: 'YTD %' },
-  { key: 'volatility', label: 'Vol %' },
+  { key: 'return_1m', label: '1A %', i18nKey: 'col1m' },
+  { key: 'return_3m', label: '3A %', i18nKey: 'col3m' },
+  { key: 'return_6m', label: '6A %', i18nKey: 'col6m' },
+  { key: 'return_1y', label: '1Y %', i18nKey: 'col1y' },
+  { key: 'return_ytd', label: 'YTD %', i18nKey: 'colYtd' },
+  { key: 'volatility', label: 'Vol %', i18nKey: 'colVol' },
   { key: 'sharpe', label: 'Sharpe' },
   { key: 'sortino', label: 'Sortino', titleKey: 'colSortinoTitle' },
   { key: 'calmar', label: 'Calmar', titleKey: 'colCalmarTitle' },
-  { key: 'max_drawdown', label: 'Max DD %' },
+  { key: 'max_drawdown', label: 'Max DD %', i18nKey: 'colMaxDd' },
   { key: 'alpha', label: 'Alfa %', i18nKey: 'colAlphaPct', titleKey: 'colAlphaTitle' },
   { key: 'portfolio_size', label: 'Büyüklük', i18nKey: 'colSize' },
 ]
@@ -2290,9 +2303,17 @@ function WatchlistView({
   onNeedSeries,
 }) {
   const stockRows = useMemo(() => {
+    // TARANAN TÜM hisselerden kurulur (yalnızca filtreyi geçen ~50 sinyalden değil):
+    // yıldızlanan THYAO/ASELS/GARAN gibi hisseler o gün sinyal vermediği için
+    // "bugünkü taramada yok" diye soluk gösteriliyordu — oysa fiyatı da değişimi de
+    // aynı payload'ın içindeydi. Puan da tarama tablosundaki gibi burada hesaplanır
+    // (payload'daki satırlar score alanı taşımaz).
     const bySymbol = new Map()
     for (const payload of Object.values(overview || {})) {
-      for (const r of payload.results || []) bySymbol.set(r.symbol, r)
+      const emaPeriods = payload?.ema_periods || [9, 21, 50, 200]
+      for (const r of payload.stocks || payload.results || []) {
+        bySymbol.set(r.symbol, { ...r, score: technicalScore(r, emaPeriods) })
+      }
     }
     return [...watchlist].sort().map((symbol) => bySymbol.get(symbol) || { symbol, missing: true })
   }, [watchlist, overview])
@@ -2762,7 +2783,7 @@ function FundFlowsPanel({ flows, funds, lang, onOpenFund }) {
                   title={acik ? undefined : t(lang, 'flowNeedsMoreDays', d, spanDays)}
                   onClick={() => acik && setWin(d)}
                 >
-                  {d}G
+                  {t(lang, 'flowWindowDays', d)}
                 </button>
               )
             })}
@@ -2864,7 +2885,7 @@ const PF_BENCH_DEFS = [
 function formatAxisMoney(v) {
   if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`
   if (Math.abs(v) >= 1e4) return `${(v / 1e3).toFixed(0)}k`
-  return v.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
+  return v.toLocaleString(numLocale(), { maximumFractionDigits: 0 })
 }
 
 /** Portföy değeri + maliyet + benchmark eğrilerini ₺ ekseniyle çizen grafik. */
@@ -3163,7 +3184,7 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
   )
 }
 
-function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock, inflation }) {
+function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang, loading, onOpenFund, onOpenStock, inflation, onNeedSeries }) {
   const [positions, setPositions] = useState(loadPortfolio)
   const [form, setForm] = useState(() => ({
     symbol: '',
@@ -3187,19 +3208,28 @@ function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang,
 
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
 
-  // Kullanıcı "THYAO" yazsa da seri anahtarı "THYAO.IS"tir: fon/ham kod
-  // bulunamazsa .IS ekli hisse serisini dener.
+  // Kullanıcı "THYAO" yazsa da seri anahtarı "THYAO.IS"tir. Çözüm, İNDİRİLMİŞ
+  // serilere değil fiyat DİZİNİNE bakar: seriler artık sembol başına talep
+  // üzerine indiğinden, henüz inmemiş bir hisse "taranan hisseler arasında yok"
+  // sanılıp portföye eklenemiyordu (THYAO dahil — üstelik kutunun kendi örneği).
+  const knownSymbols = useMemo(() => new Set(priceIndex?.symbols || []), [priceIndex])
+
   const resolveSymbol = useMemo(() => {
     return (raw) => {
-      const s = raw.trim().toUpperCase()
+      const s = raw.trim().toLocaleUpperCase('tr-TR')
       if (!s) return ''
-      if (bySymbol.has(s) || seriesOf(s)) return s
-      if (seriesOf(`${s}.IS`)) return `${s}.IS`
+      if (bySymbol.has(s) || knownSymbols.has(s) || seriesOf(s)) return s
+      if (knownSymbols.has(`${s}.IS`) || seriesOf(`${s}.IS`)) return `${s}.IS`
       return s
     }
-  }, [bySymbol, seriesOf])
+  }, [bySymbol, knownSymbols, seriesOf])
 
   const symbolInput = resolveSymbol(form.symbol)
+
+  // Kod tanındığı anda serisini iste: fiyat önerisi ve doğrulama buna dayanıyor
+  useEffect(() => {
+    if (symbolInput && knownSymbols.has(symbolInput)) onNeedSeries?.([symbolInput])
+  }, [symbolInput, knownSymbols, onNeedSeries])
 
   // Sembol + tarih seçilince alış fiyatını o günkü fiyattan önerelim;
   // kullanıcı isterse üzerine kendi fiyatını yazar.
@@ -3213,8 +3243,13 @@ function PortfolioView({ funds, prices, stockPrices, priceIndex, stockMap, lang,
     const price = Number(String(form.price || suggestedPrice || '').replace(',', '.'))
     const qty = Number(String(form.qty).replace(',', '.'))
     if (!symbolInput) return setFormError(t(lang, 'pfErrSymbol'))
-    if (!bySymbol.has(symbolInput) && !seriesOf(symbolInput)) {
+    if (!bySymbol.has(symbolInput) && !knownSymbols.has(symbolInput) && !seriesOf(symbolInput)) {
       return setFormError(t(lang, 'pfErrUnknown', symbolInput))
+    }
+    // Seri kapsamı dışında bir tarih seçildiyse sebep fiyatın "geçersiz" olması
+    // değil, o gün için veri olmamasıdır — kullanıcı elle fiyat girebilsin diye söyle
+    if (!form.price && suggestedPrice == null && (knownSymbols.has(symbolInput) || seriesOf(symbolInput))) {
+      return setFormError(t(lang, 'pfErrNoPriceForDate'))
     }
     if (!Number.isFinite(price) || price <= 0) return setFormError(t(lang, 'pfErrPrice'))
     if (!Number.isFinite(qty) || qty <= 0) return setFormError(t(lang, 'pfErrQty'))
@@ -6168,7 +6203,12 @@ function StrategyTracker({
                       {displaySymbol(r.symbol)}
                     </button>
                   </td>
-                  <td className="left">{r.entryDate}</td>
+                  {/* Ham ISO tarih (2026-08-27) diğer tablolarla tutarsızdı */}
+                  <td className="left">
+                    {new Date(`${r.entryDate}T00:00:00`).toLocaleDateString(
+                      lang === 'en' ? 'en-US' : 'tr-TR',
+                    )}
+                  </td>
                   <td>{t(lang, 'stratWeeksN', r.weeksHeld)}</td>
                   <td>
                     <div className="strat-progress" title={t(lang, 'stratWeeksN', Math.max(0, r.weeksLeft))}>
@@ -6351,7 +6391,11 @@ function MacroView({ data, loading, lang, calendar }) {
           lang={lang}
           csv={{
             filename: 'makro.csv',
-            header: ['Gösterge', 'Son', '1g %', '1h %', '1a %', '3a %', 'YBB %', '1y %', 'BIST korelasyon'],
+            header: [
+              t(lang, 'macroCsvIndicator'), t(lang, 'macroCsvLast'),
+              ...MACRO_PERIODS.map((p) => t(lang, p.i18nKey)),
+              t(lang, 'macroCsvCorr'),
+            ],
             rows: () =>
               (data.items || []).map((i) => [
                 lang === 'en' ? i.name_en : i.name,
@@ -7813,7 +7857,8 @@ function App() {
 
   const rows = useMemo(() => {
     if (!data) return []
-    const q = search.trim().toUpperCase()
+    // tr-TR yerel: 'i' -> 'İ' (ASCII toUpperCase 'I' yapıp Türkçe adlarla eşleşmezdi)
+    const q = search.trim().toLocaleUpperCase('tr-TR')
     // Arama, taranan LİSTENİN TAMAMINDA yapılır (filtre baypas edilir): kullanıcı
     // "THYAO" yazdığında niyeti hisseyi bulmaktır; hisse o gün filtreyi geçmedi
     // diye "sonuç yok" demek, hissenin var olmadığı izlenimini veriyordu.
@@ -7834,9 +7879,8 @@ function App() {
     // "BIST 100 üyesi değil" demek anlamsız olurdu.
     if (onlyIndex) list = list.filter((s) => s.in_bist100 !== false)
     if (q)
-      list = list.filter(
-        (s) =>
-          s.symbol.toUpperCase().includes(q) || displaySymbol(s.symbol).toUpperCase().includes(q),
+      list = list.filter((s) =>
+        symbolSearchText(s.symbol).toLocaleUpperCase('tr-TR').includes(q),
       )
     // Her satıra teknik puanı ekle (sıralama ve gösterim için)
     list = list.map((s) => ({ ...s, score: technicalScore(s, availableEmas) }))
@@ -7901,7 +7945,11 @@ function App() {
   // diye 100 ile çarpılır; sembol arayüzdeki gösterim koduyla yazılır. Satırlar
   // tembel üretilir (fonksiyon): kullanıcı indirmedikçe hesaplanmaz.
   const screenerCsv = {
-    header: ['Sembol', 'Puan', 'Kapanış', 'Değişim %', 'Piyasa Değeri', 'Göreli Güç %', 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K'],
+    // Başlıklar arayüz dilinden: EN kullanıcı Türkçe başlıklı CSV indiriyordu
+    header: [
+      t(lang, 'colSymbol'), t(lang, 'colScore'), t(lang, 'colClose'), `${t(lang, 'colChange')} %`,
+      t(lang, 'colMcap'), `${t(lang, 'colRs')} %`, 'RSI', 'MACD', 'Stoch %K', 'Stoch RSI %K',
+    ],
     rows: () => {
       const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
       return rows.map((r) => [
@@ -7912,7 +7960,12 @@ function App() {
   }
 
   const fundsCsv = {
-    header: ['Sembol', 'Ad', 'Puan', '1G %', 'Yatırımcı', '1A %', '3A %', '6A %', '1Y %', 'YtD %', 'Volatilite %', 'Sharpe', 'Sortino', 'Calmar', 'Max Düşüş %', 'Alfa %', 'Beta', 'Büyüklük'],
+    header: [
+      t(lang, 'colSymbol'), t(lang, 'colFund'), t(lang, 'colScore'), t(lang, 'col1d'),
+      t(lang, 'colInvestors'), t(lang, 'col1m'), t(lang, 'col3m'), t(lang, 'col6m'),
+      t(lang, 'col1y'), t(lang, 'colYtd'), t(lang, 'colVol'), 'Sharpe', 'Sortino', 'Calmar',
+      t(lang, 'colMaxDd'), t(lang, 'colAlpha'), t(lang, 'colBeta'), t(lang, 'colSize'),
+    ],
     rows: () => {
       const pct = (v) => (v != null ? (v * 100).toFixed(2) : '')
       const num = (v) => (v != null ? Number(v).toFixed(4) : '')
@@ -8257,6 +8310,7 @@ function App() {
             loading={fundsLoading || fundPricesLoading}
             onOpenFund={setChartFund}
             onOpenStock={setChartSymbol}
+            onNeedSeries={ensureSeries}
             inflation={inflation}
           />
         </>

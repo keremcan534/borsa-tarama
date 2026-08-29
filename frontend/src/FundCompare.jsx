@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { t } from './i18n'
+import { getLang, t } from './i18n'
 import { SHARE_CARD_ROWS, ShareBar } from './share'
 
 const MAX_FUNDS = 5
@@ -15,30 +15,50 @@ export const PERIODS = [
 
 export const LINE_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d']
 
+// Benchmark adları veri dosyasından Türkçe geliyor ("Altın (ons)"); bilinen
+// anahtarlar için arayüz dilinde yazılır, bilinmeyende dosyadaki ad kalır.
+const BENCH_LABELS_EN = {
+  'GC=F': 'Gold (oz)',
+  'XU100.IS': 'BIST 100',
+  'USDTRY=X': 'USD/TRY',
+}
+
+const benchLabel = (key, name, lang) =>
+  (lang === 'en' ? BENCH_LABELS_EN[key] : null) || name || key
+
 const METRIC_ROWS = [
   { key: 'score', i18nKey: 'colScore', format: 'score' },
-  { key: 'return_1d', label: '1G %', format: 'pct' },
-  { key: 'return_1m', label: '1A %', format: 'pct' },
-  { key: 'return_3m', label: '3A %', format: 'pct' },
-  { key: 'return_6m', label: '6A %', format: 'pct' },
-  { key: 'return_ytd', label: 'YTD %', format: 'pct' },
-  { key: 'return_1y', label: '1Y %', format: 'pct' },
-  { key: 'volatility', label: 'Vol %', format: 'vol' },
+  { key: 'return_1d', label: '1G %', i18nKey: 'col1d', format: 'pct' },
+  { key: 'return_1m', label: '1A %', i18nKey: 'col1m', format: 'pct' },
+  { key: 'return_3m', label: '3A %', i18nKey: 'col3m', format: 'pct' },
+  { key: 'return_6m', label: '6A %', i18nKey: 'col6m', format: 'pct' },
+  { key: 'return_ytd', label: 'YTD %', i18nKey: 'colYtd', format: 'pct' },
+  { key: 'return_1y', label: '1Y %', i18nKey: 'col1y', format: 'pct' },
+  { key: 'volatility', label: 'Vol %', i18nKey: 'colVol', format: 'vol' },
   { key: 'sharpe', label: 'Sharpe', format: 'num' },
   { key: 'sortino', label: 'Sortino', format: 'num' },
   { key: 'calmar', label: 'Calmar', format: 'num' },
-  { key: 'max_drawdown', label: 'Max DD %', format: 'pct' },
+  { key: 'max_drawdown', label: 'Max DD %', i18nKey: 'colMaxDd', format: 'pct' },
   { key: 'alpha', i18nKey: 'colAlpha', format: 'pct' },
   { key: 'beta', i18nKey: 'colBeta', format: 'num' },
   { key: 'investor_count', i18nKey: 'colInvestors', format: 'int' },
   { key: 'portfolio_size', i18nKey: 'colSize', format: 'mcap' },
 ]
 
+// Sayı biçimi arayüz dilini izler (App.jsx'teki numLocale ile aynı kural):
+// EN arayüzde Türkçe ondalık virgülü karışık okunuyordu.
+const numLocale = () => (getLang() === 'en' ? 'en-US' : 'tr-TR')
+
 export function formatPct(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—'
-  const pct = value * 100
+  const raw = value * 100
+  // Gösterilen haneye 0'a yuvarlanan değer işaretsiz basılır ("-0,00%" olmasın)
+  const pct = Number(raw.toFixed(digits)) === 0 ? 0 : raw
   const sign = pct > 0 ? '+' : ''
-  return `${sign}${pct.toFixed(digits)}%`
+  return `${sign}${pct.toLocaleString(numLocale(), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`
 }
 
 export function pctTone(value) {
@@ -53,7 +73,7 @@ export function formatMarketCap(value) {
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-  return value.toLocaleString('tr-TR')
+  return value.toLocaleString(numLocale())
 }
 
 export function scoreTone(score) {
@@ -594,7 +614,7 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
       if (!pts.length) continue
       lines.push({
         key: `b:${key}`,
-        label: b.name || key,
+        label: benchLabel(key, b.name, lang),
         color: LINE_COLORS[colorIdx % LINE_COLORS.length],
         points: pts,
         ret: seriesReturn(pts),
@@ -603,7 +623,7 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
       colorIdx += 1
     }
     return lines
-  }, [selected, activeBench, prices, period, inUsd, usdPoints])
+  }, [selected, activeBench, prices, period, inUsd, usdPoints, lang])
 
   const fundHoldings = useMemo(() => buildFundHoldings(positions), [positions])
 
@@ -760,7 +780,7 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
                 className={`fc-chip ${activeBench.has(key) ? 'active' : ''}`}
                 onClick={() => toggleBench(key)}
               >
-                {b.name}
+                {benchLabel(key, b.name, lang)}
               </button>
             ))}
             {usdAvailable && (

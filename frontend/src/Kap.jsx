@@ -25,6 +25,12 @@ const CATEGORIES = [
 // Uzun liste sayfayı boğuyor; haber akışıyla aynı sınır.
 const PAGE_SIZE = 100
 
+/** Kategori kodunun arayüz dilindeki adı (sekmelerle aynı sözlük). */
+function categoryLabel(category, lang) {
+  const key = CATEGORIES.find((c) => c.key && c.key === category)?.i18nKey
+  return key ? t(lang, key) : null
+}
+
 function formatWhen(iso, lang) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -114,7 +120,14 @@ export default function Kap({ items, generatedAt, loading, error, lang, onOpenCh
                 >
                   {displayCode(item.symbol)}
                 </button>
-                {item.category_label && <span className="kap-badge">{item.category_label}</span>}
+                {/* Rozet, sekmelerle AYNI sözlükten yazılır: EN arayüzde sekme
+                    "Material Event" derken rozet "Özel Durum" kalıyordu. Bilinmeyen
+                    kategoride akışın kendi etiketine düşülür. */}
+                {(categoryLabel(item.category, lang) || item.category_label) && (
+                  <span className="kap-badge">
+                    {categoryLabel(item.category, lang) || item.category_label}
+                  </span>
+                )}
                 {/* KAP'ın kendi "geç bildirim" işareti: yatırımcı için anlamlı bir sinyal,
                     bizim türettiğimiz bir yorum değil. */}
                 {item.is_late && <span className="kap-badge kap-badge-late">{t(lang, 'kapLate')}</span>}

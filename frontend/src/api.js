@@ -1,5 +1,41 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+/* Hata metinleri arayüz diline uyar: bu mesajlar kullanıcıya kırmızı kutuda
+ * aynen gösteriliyor ve İngilizce arayüzde Türkçe çıkıyordu. Sözlüğü buraya
+ * koymak i18n.js'i veri katmanına bağlamadan çeviriyi sağlar (getLang zaten
+ * localStorage'dan okuyan saf bir yardımcı). */
+import { getLang } from "./i18n";
+
+const LOAD_FAILED = {
+  news: ["Haber verisi yüklenemedi", "Could not load news"],
+  funds: ["Fon verisi yüklenemedi", "Could not load fund data"],
+  fundPrices: ["Fon fiyat verisi yüklenemedi", "Could not load fund prices"],
+  series: ["Fiyat serisi yüklenemedi", "Could not load price series"],
+  priceIndex: ["Fiyat dizini yüklenemedi", "Could not load price index"],
+  signalLog: ["Sinyal arşivi yüklenemedi", "Could not load the signal archive"],
+  fx: ["Kur verisi yüklenemedi", "Could not load FX data"],
+  dividends: ["Temettü verisi yüklenemedi", "Could not load dividend data"],
+  macro: ["Makro veri yüklenemedi", "Could not load macro data"],
+  scores: ["Skor geçmişi yüklenemedi", "Could not load score history"],
+  fundFlows: ["Fon akışı verisi yüklenemedi", "Could not load fund flow data"],
+  positions: ["Hisse pozisyonları yüklenemedi", "Could not load stock positions"],
+  backtest: ["Backtest verisi yüklenemedi", "Could not load backtest data"],
+  markets: ["Market listesi yüklenemedi", "Could not load the market list"],
+  overview: ["Günlük özet yüklenemedi", "Could not load the daily overview"],
+  request: ["İstek başarısız", "Request failed"],
+  kap: ["KAP bildirimleri yüklenemedi", "Could not load KAP disclosures"],
+  inflation: ["TÜFE verisi yüklenemedi", "Could not load CPI data"],
+  financials: ["Finansal veri yüklenemedi", "Could not load financial data"],
+  calendar: ["Takvim yüklenemedi", "Could not load the calendar"],
+};
+
+function loadError(key, status) {
+  const [tr, en] = LOAD_FAILED[key] || LOAD_FAILED.request;
+  const text = getLang() === "en" ? en : tr;
+  return new Error(status == null ? text : `${text} (${status})`);
+}
+
+
 // "static" modunda backend yerine build'e gömülü JSON dosyaları okunur
 // (GitHub Pages gibi sunucusuz yayın için).
 export const STATIC_MODE = API_BASE === "static";
@@ -7,7 +43,7 @@ export const STATIC_MODE = API_BASE === "static";
 export async function fetchNews(market) {
   // Haber dosyaları hem dev sunucusunda (public/) hem statik yayında aynı yoldan servis edilir
   const res = await fetch(`${import.meta.env.BASE_URL}data/news_${market}.json`);
-  if (!res.ok) throw new Error(`Haber verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("news", res.status);
   return res.json();
 }
 
@@ -18,7 +54,7 @@ export async function fetchAllNews(markets) {
   const results = await Promise.allSettled(markets.map((m) => fetchNews(m)));
 
   if (results.every((r) => r.status === "rejected")) {
-    throw new Error("Haber verisi yüklenemedi");
+    throw loadError("news");
   }
 
   const seen = new Set();
@@ -46,7 +82,7 @@ export async function fetchFunds() {
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Fon verisi yüklenemedi (${res.status})`);
+    throw body.detail ? new Error(body.detail) : loadError("funds", res.status);
   }
   return res.json();
 }
@@ -55,7 +91,7 @@ export async function fetchFunds() {
 export async function fetchFundPrices() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fund_prices.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Fon fiyat verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("fundPrices", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -79,7 +115,7 @@ export async function fetchStockSeries(symbol) {
     `${import.meta.env.BASE_URL}data/prices/${priceFileName(symbol)}.json`,
   );
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Fiyat serisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("series", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   const data = await res.json();
   return data?.bars || null;
@@ -118,7 +154,7 @@ export async function fetchStockSeriesMany(symbols) {
 export async function fetchPriceIndex() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/prices/index.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Fiyat dizini yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("priceIndex", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -189,7 +225,7 @@ export function fundLogoUrl(manifest, slug) {
 export async function fetchSignalLog() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/signal_log.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Sinyal arşivi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("signalLog", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -198,7 +234,7 @@ export async function fetchSignalLog() {
 export async function fetchFx() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fx.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Kur verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("fx", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -207,7 +243,7 @@ export async function fetchFx() {
 export async function fetchDividends() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/dividends.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Temettü verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("dividends", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -216,7 +252,7 @@ export async function fetchDividends() {
 export async function fetchMacro() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/macro.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Makro veri yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("macro", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -225,7 +261,7 @@ export async function fetchMacro() {
 export async function fetchScoreHistory() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/score_history.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Skor geçmişi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("scores", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -234,7 +270,7 @@ export async function fetchScoreHistory() {
 export async function fetchFundFlows() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/fund_flows.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Fon akışı verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("fundFlows", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -245,7 +281,7 @@ export async function fetchStockPositions() {
   if (res.status === 404) {
     return { generated_at: null, months: [], stocks: {} };
   }
-  if (!res.ok) throw new Error(`Hisse pozisyonları yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("positions", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) {
     return { generated_at: null, months: [], stocks: {} };
   }
@@ -262,7 +298,7 @@ export async function fetchBacktest() {
   // gösterilir. GitHub Pages 404 döner; Vite dev/preview ise SPA fallback yüzünden
   // index.html'i 200 ile döndürdüğünden content-type kontrolü de gerekli.
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Backtest verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("backtest", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
 
   return res.json();
@@ -273,7 +309,7 @@ export async function fetchBacktest() {
 // kapalı bir marketin sekmesi görünüp veri dosyası bulunamazdı.
 export async function fetchEnabledMarkets() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/markets.json`);
-  if (!res.ok) throw new Error(`Market listesi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("markets", res.status);
   return res.json();
 }
 
@@ -289,7 +325,7 @@ export async function fetchDailyOverview(markets, timeframe = "daily") {
     if (results[i].status === "fulfilled") byMarket[market] = results[i].value;
   });
 
-  if (!Object.keys(byMarket).length) throw new Error("Günlük özet yüklenemedi");
+  if (!Object.keys(byMarket).length) throw loadError("overview");
   return byMarket;
 }
 
@@ -302,7 +338,7 @@ export async function fetchScreener(market, { live = false, timeframe = "daily" 
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `İstek başarısız (${res.status})`);
+    throw body.detail ? new Error(body.detail) : loadError("request", res.status);
   }
   return res.json();
 }
@@ -311,7 +347,7 @@ export async function fetchScreener(market, { live = false, timeframe = "daily" 
 export async function fetchKap() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/kap.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`KAP bildirimleri yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("kap", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -323,7 +359,7 @@ export async function fetchKap() {
 export async function fetchInflation() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/inflation.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`TÜFE verisi yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("inflation", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -332,7 +368,7 @@ export async function fetchInflation() {
 export async function fetchFinancials() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/financials.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Finansal veri yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("financials", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
@@ -341,7 +377,7 @@ export async function fetchFinancials() {
 export async function fetchCalendar() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/calendar.json`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Takvim yüklenemedi (${res.status})`);
+  if (!res.ok) throw loadError("calendar", res.status);
   if (!(res.headers.get("content-type") || "").includes("json")) return null;
   return res.json();
 }
