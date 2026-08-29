@@ -44,6 +44,9 @@ const STRINGS = {
     fundsStatus: (count, when) =>
       `${count} likit TEFAS yatırım fonu · Getiri / risk sıralaması${when ? ` · Güncelleme: ${when}` : ''}`,
     fundsLoading: 'Fon verisi yükleniyor...',
+    fundsStale: 'eski veri',
+    fundsStaleHint:
+      'Son taramada TEFAS\'a ulaşılamadı; liste bir önceki taramanın verisiyle gösteriliyor. Sonraki koşuda kendini toparlar.',
     fundsEmpty: "Henüz fon verisi yok. Tarama workflow'u çalışınca burada görünecek.",
     fundsNoMatch: (q) => `"${q}" için fon bulunamadı.`,
     newsStatus: (n, when) =>
@@ -996,6 +999,9 @@ const STRINGS = {
     fundsStatus: (count, when) =>
       `${count} liquid TEFAS funds · Return / risk ranking${when ? ` · Updated: ${when}` : ''}`,
     fundsLoading: 'Loading fund data...',
+    fundsStale: 'stale',
+    fundsStaleHint:
+      'TEFAS could not be reached in the last scan; the list is from the previous run. It recovers on the next scan.',
     fundsEmpty: 'No fund data yet. It will appear after the scan workflow runs.',
     fundsNoMatch: (q) => `No funds matching "${q}".`,
     newsStatus: (n, when) => `${n} headlines · News for signaled tickers · Updated: ${when}`,

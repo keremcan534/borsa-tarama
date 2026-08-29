@@ -8400,6 +8400,14 @@ function App() {
                   ? t(lang, 'fundsLoading')
                   : ''}
             </span>
+            {/* Tarama TEFAS'a ulaşamadığında liste yayındakinden korunuyor
+                (scan_to_json: fetch_previous_funds). Bayatlığı gizlemek, eski
+                rakamı bugünkü sanmaya yol açardı. */}
+            {funds?.stale && (
+              <span className="macro-stale" title={t(lang, 'fundsStaleHint')}>
+                {t(lang, 'fundsStale')}
+              </span>
+            )}
             <div className="actions">
               <button
                 className={`btn ${onlyFundWatchlist ? 'primary' : ''}`}

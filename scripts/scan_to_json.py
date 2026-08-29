@@ -29,7 +29,7 @@ from app.data.kap import fetch_disclosures
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.data.price_files import assert_unique_file_names, price_file_name
-from app.funds.categories import FUND_CATEGORIES, OTHER
+from app.funds.categories import FUND_CATEGORIES, OTHER, categorize
 from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
@@ -82,6 +82,42 @@ FLOW_HISTORY_DAYS = 90
 # fund_prices.json içinde satır içi taşınan seri sayısı (geri uyumluluk; geri
 # kalanı fon başına dosyadan tek tek iner). Puana göre ilk N fon.
 FUND_PRICES_INLINE = 120
+
+
+def fetch_previous_funds() -> dict:
+    """Yayındaki funds.json — tarama başarısız olduğunda listeyi korumak için.
+
+    Neden gerekli: TEFAS, GitHub runner IP'lerinden zaman zaman zaman aşımına
+    uğruyor (2026-08-29: 6 denemenin altısı da ReadTimeout). Eski davranışta bu
+    tek ağ hatası yayındaki fon listesini SIFIRA indiriyordu — kullanıcı için
+    "fonlar kayboldu" demek. Makro panelde aynı sorun `merge_with_previous_macro`
+    ile çözülmüştü; buradaki karşılığı: bir gün eski liste, boş listeden iyidir
+    (tarih zaten arayüzde yazıyor, bayatlık gizlenmiyor).
+    """
+    try:
+        resp = requests.get(f"{SITE_URL}data/funds.json", timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"[FON] yayındaki liste alınamadı ({e})")
+        return {}
+
+
+def fetch_previous_fund_prices() -> dict:
+    """Yayındaki fund_prices.json (benchmark + satır içi seriler).
+
+    Liste korunup fiyat serileri boş kalırsa grafikler kırılırdı; ikisi
+    birlikte korunur.
+    """
+    try:
+        resp = requests.get(f"{SITE_URL}data/fund_prices.json", timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"[FON] yayındaki fiyat serileri alınamadı ({e})")
+        return {}
 
 
 def fetch_previous_flows() -> dict:
@@ -247,7 +283,11 @@ def write_fund_category_pages(public_dir: Path, fund_results: list[dict], genera
 
     by_category: dict[str, list[dict]] = {}
     for fund in fund_results:
-        by_category.setdefault(fund.get("category") or OTHER.key, []).append(fund)
+        # `category` taramada mühürlenir; alanı taşımayan eski bir liste
+        # kurtarılmışsa addan türetilir (aksi halde hepsi "diğer"e düşer ve
+        # tek bir kategori sayfası bile basılmazdı).
+        key = fund.get("category") or categorize(fund.get("name"))
+        by_category.setdefault(key, []).append(fund)
 
     category_dir = public_dir / CATEGORY_DIR
     category_dir.mkdir(parents=True, exist_ok=True)
@@ -613,17 +653,36 @@ def main() -> None:
             "metrics": FUND_METRIC_KEYS,
         }
     except Exception as e:
-        print(f"[FON] tarama başarısız ({e}); boş payload yazılıyor")
-        fund_results = []
-        funds_payload = {
-            "market": "FUNDS",
-            "count": 0,
-            "scanned": 0,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "results": [],
-            "error": str(e),
-            "metrics": [],
-        }
+        # Boş payload yazmak yayındaki listeyi siler; önce yayındakini kurtar.
+        previous = fetch_previous_funds()
+        previous_results = previous.get("results") or []
+        if previous_results:
+            fund_results = previous_results
+            funds_payload = {
+                **previous,
+                # Bayatlık gizlenmez: arayüz tarihi zaten gösteriyor, bayrak da
+                # açıkça duruyor. Sessizce eski veriyi bugünkü gibi sunmak
+                # kullanıcıyı yanıltırdı.
+                "stale": True,
+                "error": str(e),
+            }
+            print(
+                f"[FON] tarama başarısız ({e}); yayındaki "
+                f"{len(previous_results)} fonluk liste korundu "
+                f"({previous.get('generated_at', '?')[:10]} tarihli)"
+            )
+        else:
+            fund_results = []
+            funds_payload = {
+                "market": "FUNDS",
+                "count": 0,
+                "scanned": 0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "results": [],
+                "error": str(e),
+                "metrics": [],
+            }
+            print(f"[FON] tarama başarısız ({e}) ve kurtarılacak liste yok; boş payload")
     funds_path = out_dir / "funds.json"
     funds_path.write_text(dump_json(funds_payload), encoding="utf-8")
     print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
@@ -660,6 +719,16 @@ def main() -> None:
     # fona çıktı; hepsini tek dosyaya koymak onu ~800 KB'tan ~4,7 MB'a şişirirdi
     # ve kullanıcı tek bir fonun grafiğini açmak için tamamını indirirdi. Hisse
     # serilerinde aynı sorun aynı şekilde çözülmüştü (bkz. app/data/price_files.py).
+    # Tarama başarısız olup liste yayındakinden kurtarıldıysa serileri de oradan
+    # kurtar: liste dolu ama grafikler boşsa fon sayfaları yarım görünürdü.
+    if not fund_series and funds_payload.get("stale"):
+        recovered = fetch_previous_fund_prices()
+        fund_series = recovered.get("series") or {}
+        if not benchmarks:
+            benchmarks = recovered.get("benchmarks") or {}
+        if fund_series:
+            print(f"[FON] yayındaki {len(fund_series)} fiyat serisi korundu")
+
     fund_price_dir = out_dir / "fund-prices"
     fund_price_dir.mkdir(parents=True, exist_ok=True)
     assert_unique_file_names(fund_series.keys())
