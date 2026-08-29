@@ -3114,9 +3114,11 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
           <span className="today-card-label">K/Z</span>
           <strong className={`today-card-value pct ${pctTone(totals.plPct)}`}>{formatPct(totals.plPct)}</strong>
         </div>
-        {/* Reel getiri: TL'de %40 nominal, enflasyon %45'se KAYIPTIR. Kart yalnızca
-            TÜFE serisi o dönemi kapsıyorsa çıkar; kapsamıyorsa hiç gösterilmez. */}
-        {realReturn?.realPct != null && (
+        {/* Reel getiri: TL'de %40 nominal, enflasyon %45'se KAYIPTIR. TÜFE serisi
+            dönemi kapsamıyorsa rakam hesaplanmaz — ama kart TÜMDEN kaybolunca
+            kullanıcı özelliğin var olduğunu bile görmüyordu (seri 8 ay geride
+            olduğundan 2026 alımlarında hep bu durum). Kart kalır, sebep yazılır. */}
+        {realReturn?.realPct != null ? (
           <div className="today-card" title={t(lang, 'realReturnHint')}>
             <span className="today-card-label">{t(lang, 'realReturn')}</span>
             <strong className={`today-card-value pct ${pctTone(realReturn.realPct)}`}>
@@ -3128,6 +3130,14 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
                 : t(lang, 'cpiSource', inflation.source || '—', inflation.as_of || '—')}
             </span>
           </div>
+        ) : (
+          inflation?.as_of && (
+            <div className="today-card" title={t(lang, 'realReturnHint')}>
+              <span className="today-card-label">{t(lang, 'realReturn')}</span>
+              <strong className="today-card-value">—</strong>
+              <span className="today-card-note">{t(lang, 'realReturnStale', inflation.as_of)}</span>
+            </div>
+          )
         )}
         <div className="today-card">
           <span className="today-card-label">{t(lang, 'paPositions')}</span>

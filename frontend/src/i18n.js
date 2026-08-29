@@ -493,6 +493,8 @@ const STRINGS = {
     colRsDyn: (p) => `Endeks Farkı (${p})`,
     // Fon dönem kolonları: TR kısaltmaları (A=ay, G=gün, Y=yıl) İngilizce
     // arayüzde yanlış okunuyordu ("1A" -> annual sanılıyor).
+    realReturnStale: (asOf) =>
+      `TÜFE serisi ${asOf} ayına kadar geliyor; bu tarihten sonraki alımlar için reel getiri hesaplanmıyor (tahmin etmek rakamı olduğundan güvenilir gösterirdi).`,
     macroCsvIndicator: 'Gösterge',
     macroCsvLast: 'Son',
     macroCsvCorr: 'BIST korelasyon',
@@ -1420,6 +1422,8 @@ const STRINGS = {
     changeColLabels: { daily: 'Today', weekly: 'Last Week', monthly: 'Last Month', quarterly: 'Last Quarter' },
     rsColPeriods: { daily: '3m', weekly: '6m', monthly: '1y', quarterly: '1y' },
     colRsDyn: (p) => `vs Index (${p})`,
+    realReturnStale: (asOf) =>
+      `The CPI series only runs through ${asOf}; real return is not computed for purchases after that (estimating it would make the figure look more reliable than it is).`,
     macroCsvIndicator: 'Indicator',
     macroCsvLast: 'Last',
     macroCsvCorr: 'BIST correlation',

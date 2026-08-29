@@ -61,6 +61,19 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 4px;
+  /* Sekme şeridi dar ekranda kendi içinde kayar: rozetli dört sekme (Karne'de
+     "3 Aylık 1566") 390px'e sığmayıp SAYFAYI yatay kaydırıyordu. */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex: none;
 }
 
 .tab {
