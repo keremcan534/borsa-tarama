@@ -338,6 +338,45 @@ BIST100/USD/altın benchmark) üretir. Arayüzde **Fonlar** listesi ve **Karşı
 sekmesi (normalize getiri eğrisi, dönem seçimi, metrik tablosu) bunları kullanır.
 API: `GET /api/funds` (canlı tarama ~3 dk sürebilir; TEFAS rate-limit).
 
+### Kapsam: 120 kapağı kaldırıldı (674 fon)
+
+Liste puana göre ilk **120** fonda kesiliyordu. Ölçüldü (2026-08, TEFAS YAT):
+2041 fonun 1546'sı ÖZEL değil, bunların **689'u** büyüklük (≥100M TL) ve
+yatırımcı (≥500) eşiklerini geçiyor — yani kapak **569 fonu görünmez kılıyordu**.
+Kaçırılanlar niş de değildi: **13 gümüş fonunun 13'ü** (GTZ 13,2 milyar TL /
+62 bin yatırımcı, YZG 11,5 milyar, IOG 14 milyar), 163 serbest fonun 144'ü,
+111 para piyasası fonunun 86'sı listede yoktu. Kullanıcı aradığı fonu
+bulamıyorsa site onun için yok demektir; eşikler zaten savunulabilir bir evren
+tanımlıyor, üstüne bir de sayı kapağı koymak keyfiydi (`MAX_FUNDS = None`).
+
+**Fiyat serileri fon başına ayrı dosyada** (`data/fund-prices/KOD.json`): 674
+fonun serisi tek dosyada ~4,2 MB ederdi ve kullanıcı tek bir fonun grafiğini
+açmak için tamamını indirirdi — hisse serilerinde çözülen sorunun aynısı
+(`app/data/price_files.py`). `fund_prices.json` benchmark'ları ve en çok
+bakılan 120 fonun serisini satır içi taşımayı sürdürür; arayüz eksik kalanı
+açıldığında tek tek ister (`ensureFundSeries`).
+
+### Fon Kategorileri ve Kategori Sayfaları
+Kategori kuralı tek kaynakta: **`app/funds/categories.py`**. Tarama sonuca
+`category` alanını yazar; Fon Ligi, kategori sayfaları ve arayüz filtresi aynı
+sınıflandırmayı görür (eskiden kural hem arayüzde hem `screen.py`'de ayrı
+duruyordu ve ayrışabilirlerdi).
+
+**Gümüş, altından ayrı bir kategori.** Kural eskiden `KIYMETLİ MADEN|ALTIN|GÜMÜŞ`
+tek ligdi; oysa TEFAS'ta 13 halka açık gümüş fonu var ve "gümüş fonu" ayrı bir
+arama niyeti. Sıra anlamlıdır: "GÜMÜŞ FON SEPETİ" hem gümüş hem sepettir, doğru
+cevap gümüştür — madenler sepet/serbest'ten önce gelir. Ad ASCII'ye katlanarak
+eşleştirilir (`LİKİT`/`LIKIT`, `DEĞİŞKEN`/`DEGISKEN` aynı sonucu verir).
+
+`app/reports/fund_category_pages.py` her kategori için `/fon-kategori/<slug>.html`
+üretir (gümüş, altın, hisse senedi, para piyasası, serbest, katılım, endeks,
+borçlanma, fon sepeti, yabancı/eurobond, karma/değişken). Hisse sayfalarıyla
+(`symbol_pages.py`) aynı gerekçe: uygulama SPA olduğundan `?v=funds`
+indekslenebilir içerik üretmiyor ve "gümüş fonu hangisi", "en iyi hisse senedi
+fonu" gibi aramaların ineceği hedef sayfa yoktu. Sayfa tek başına ayakta durur
+(JavaScript yok, veri gömülü), **fonu olmayan kategori hiç basılmaz**, site
+haritasına `build_site_meta` manifestten ekler.
+
 ### Risk-Ayarlı Metrikler (Sortino / Calmar / Jensen alfası)
 Sharpe tek başına iki soruyu cevaplamıyordu: "bu oynaklığın hangi tarafı canımı
 yaktı?" ve "getirinin ne kadarı zaten piyasadan geliyordu?". `app/funds/metrics.py`

@@ -21,10 +21,10 @@ export default defineConfig({
         // her deploy'da hepsi değiştiğinden her ziyaretçi her deploy sonrası ~800
         // dosyayı yeniden indiriyordu. Yavaş bağlantıda bu güncelleme hiç bitmiyor
         // ve kullanıcı haftalarca eski uygulama sürümüne takılı kalıyordu.
-        globIgnores: ['hisse/**', 'rapor/**'],
+        globIgnores: ['hisse/**', 'rapor/**', 'fon-kategori/**'],
         // Precache dışı sayfalara SPA fallback uygulanmasın: /hisse/X.html ve
         // /rapor/Y.html gerçek dosyalar, index.html değil.
-        navigateFallbackDenylist: [/\/(data|hisse|rapor)\//],
+        navigateFallbackDenylist: [/\/(data|hisse|rapor|fon-kategori)\//],
       },
       manifest: {
         name: 'Borsa Tarama',

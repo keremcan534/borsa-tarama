@@ -528,7 +528,7 @@ function RiskReturnScatter({ universe, selected, lang }) {
  * Fonaly tarzı yan yana karşılaştırma: fon seçimi, normalize getiri eğrisi,
  * benchmark katmanları ve metrik tablosu.
  */
-export default function FundCompare({ funds, prices, positions, lang, loading, error, seedSymbols }) {
+export default function FundCompare({ funds, prices, positions, lang, loading, error, seedSymbols, onNeedSeries }) {
   const list = funds?.results || []
   const [selected, setSelected] = useState([])
   const [period, setPeriod] = useState('3m')
@@ -624,6 +624,12 @@ export default function FundCompare({ funds, prices, positions, lang, loading, e
     }
     return lines
   }, [selected, activeBench, prices, period, inUsd, usdPoints, lang])
+
+  // Seçilen fonun serisi fund_prices.json'da olmayabilir (satır içi yalnızca ilk
+  // 120 fon); talep üzerine indirilir, yoksa grafik sessizce boş kalırdı.
+  useEffect(() => {
+    if (selected.length) onNeedSeries?.(selected)
+  }, [selected, onNeedSeries])
 
   const fundHoldings = useMemo(() => buildFundHoldings(positions), [positions])
 

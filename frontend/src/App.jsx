@@ -14,6 +14,7 @@ import {
   fetchMacro,
   fetchScoreHistory,
   fetchFundPrices,
+  fetchFundSeriesMany,
   fetchFunds,
   fetchScreener,
   fetchStockPositions,
@@ -1930,8 +1931,8 @@ function FundModal({ fund, news, lang, onClose, onCompare, prices, pricesLoading
 
   // Kategori (addan) + kategori içi puan sırası: fon "ligindeki" yerini gösterir
   const catInfo = useMemo(() => {
-    const category = categorizeFund(fund.name)
-    const peers = (funds?.results || []).filter((f) => categorizeFund(f.name) === category)
+    const category = fundCategory(fund)
+    const peers = (funds?.results || []).filter((f) => fundCategory(f) === category)
     const sorted = [...peers].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
     const rank = sorted.findIndex((f) => f.symbol === fund.symbol) + 1
     return { category, count: peers.length, rank }
@@ -3082,7 +3083,7 @@ function PortfolioAnalytics({ rows, totals, stockMap, lang, inflation }) {
     for (const r of known) {
       let label
       if (r.isStock) label = sectorLabel(stockMap?.get(r.symbol)?.sector || t(lang, 'paOther'), lang)
-      else if (r.fund) label = t(lang, catI18nKey(categorizeFund(r.fund.name)))
+      else if (r.fund) label = t(lang, catI18nKey(fundCategory(r.fund)))
       else label = t(lang, 'paOther')
       m.set(label, (m.get(label) || 0) + r.value)
     }
@@ -4504,7 +4505,11 @@ function BacktestView({ lang, data, market, timeframe, loading, error }) {
 // para piyasasıdır, katılım değil).
 const FUND_CATEGORY_RULES = [
   { key: 'money', i18nKey: 'catMoney', re: /PARA PİYASASI|LİKİT/ },
-  { key: 'gold', i18nKey: 'catGold', re: /KIYMETLİ MADEN|ALTIN|GÜMÜŞ/ },
+  // Gümüş, altından AYRI: TEFAS'ta 13 halka açık gümüş fonu var ve "gümüş fonu"
+  // ayrı bir arama niyeti. Madenler sepet/serbest'ten ÖNCE gelmeli — "GÜMÜŞ FON
+  // SEPETİ" hem gümüş hem sepettir, doğru cevap gümüştür.
+  { key: 'silver', i18nKey: 'catSilver', re: /GÜMÜŞ/ },
+  { key: 'gold', i18nKey: 'catGold', re: /KIYMETLİ MADEN|ALTIN/ },
   { key: 'basket', i18nKey: 'catBasket', re: /FON SEPETİ|SEPET FONU/ },
   { key: 'hedge', i18nKey: 'catHedge', re: /SERBEST/ },
   { key: 'foreign', i18nKey: 'catForeign', re: /EUROBOND|YABANCI|DÖVİZ|(YABANCI )?BORÇLANMA.*DÖVİZ/ },
@@ -4516,10 +4521,13 @@ const FUND_CATEGORY_RULES = [
 ]
 
 const FUND_CATEGORY_ORDER = [
-  'equity', 'index', 'bond', 'gold', 'money', 'mixed',
+  'equity', 'index', 'bond', 'gold', 'silver', 'money', 'mixed',
   'participation', 'basket', 'hedge', 'foreign', 'other',
 ]
 
+/** Fon adından kategori. Tarama artık kategoriyi payload'a yazıyor
+ * (app/funds/categories.py); bu kural yalnızca o alanı taşımayan eski veri
+ * için yedektir — iki taraf ayrışırsa aynı fon iki yerde farklı ligde görünür. */
 function categorizeFund(name) {
   const upper = (name || '').toLocaleUpperCase('tr-TR')
   for (const rule of FUND_CATEGORY_RULES) {
@@ -4527,6 +4535,9 @@ function categorizeFund(name) {
   }
   return 'other'
 }
+
+/** Fonun kategorisi: önce taramanın mühürlediği alan, yoksa addan türet. */
+const fundCategory = (fund) => fund?.category || categorizeFund(fund?.name)
 
 const catI18nKey = (key) => FUND_CATEGORY_RULES.find((r) => r.key === key)?.i18nKey || 'catOther'
 
@@ -4557,7 +4568,7 @@ function FundLeague({ funds, lang, loading, onOpenFund }) {
   const groups = useMemo(() => {
     const byCat = new Map()
     for (const f of funds?.results || []) {
-      const cat = categorizeFund(f.name)
+      const cat = fundCategory(f)
       if (!byCat.has(cat)) byCat.set(cat, [])
       byCat.get(cat).push(f)
     }
@@ -7373,6 +7384,38 @@ function App() {
       .finally(() => setStockPricesLoading(false))
   }, [])
 
+  /* Fon serileri: fund_prices.json artık yalnızca en çok bakılan 120 fonu
+   * satır içi taşıyor (liste 674 fona çıktı, hepsi ~4,2 MB ederdi). Eksik kalan
+   * fonun serisi açıldığında tek tek inip aynı `series` sözlüğüne karışır —
+   * böylece tüketiciler (FundCompare, FundModal, portföy) değişmeden çalışır. */
+  const requestedFundSeries = useRef(new Set())
+
+  const ensureFundSeries = useCallback((codes) => {
+    const eksik = [...new Set(codes)].filter(
+      (code) => code && !requestedFundSeries.current.has(code),
+    )
+    if (!eksik.length) return
+    for (const code of eksik) requestedFundSeries.current.add(code)
+    setFundPricesLoading(true)
+    fetchFundSeriesMany(eksik)
+      .then((gelen) => {
+        if (!Object.keys(gelen).length) return
+        setFundPrices((prev) => ({
+          ...(prev || {}),
+          series: { ...(prev?.series || {}), ...gelen },
+        }))
+      })
+      .catch(() => {})
+      .finally(() => setFundPricesLoading(false))
+  }, [])
+
+  // Açılan fonun serisi elde yoksa indir
+  useEffect(() => {
+    if (chartFund?.symbol && !fundPrices?.series?.[chartFund.symbol]) {
+      ensureFundSeries([chartFund.symbol])
+    }
+  }, [chartFund, fundPrices, ensureFundSeries])
+
   // Mini grafikler görünür alana girdikçe tek tek ister (Sparkline -> onNeed).
   const ensureOneSeries = useCallback((sym) => ensureSeries([sym]), [ensureSeries])
 
@@ -8543,6 +8586,7 @@ function App() {
           loading={fundsLoading || fundPricesLoading}
           error={fundsError}
           seedSymbols={compareSeed}
+          onNeedSeries={ensureFundSeries}
         />
       )}
 

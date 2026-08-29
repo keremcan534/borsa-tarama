@@ -31,20 +31,28 @@ def main() -> None:
     # Hisse sayfaları taramada üretiliyor (veri orada); burada yalnızca site
     # haritasına ekleniyor. Manifest yoksa (tarama henüz koşmamışsa) harita eski
     # haliyle üretilir — sitemap'in hiç yazılmaması daha kötü olurdu.
-    symbol_urls: list[str] = []
-    manifest = public_dir / "hisse" / "index.json"
-    if manifest.exists():
+    def manifest_urls(directory: str) -> list[str]:
+        manifest = public_dir / directory / "index.json"
+        if not manifest.exists():
+            return []
         try:
-            symbol_urls = json.loads(manifest.read_text(encoding="utf-8")).get("urls") or []
+            return json.loads(manifest.read_text(encoding="utf-8")).get("urls") or []
         except (OSError, json.JSONDecodeError) as e:
-            print(f"[SITE-META] hisse manifesti okunamadı ({e}); sitemap'e eklenmedi")
+            print(f"[SITE-META] {directory} manifesti okunamadı ({e}); sitemap'e eklenmedi")
+            return []
+
+    symbol_urls = manifest_urls("hisse")
+    fund_category_urls = manifest_urls("fon-kategori")
 
     (rapor_dir / "index.html").write_text(build_archive_index(dates), encoding="utf-8")
-    (public_dir / "sitemap.xml").write_text(build_sitemap(dates, symbol_urls), encoding="utf-8")
+    (public_dir / "sitemap.xml").write_text(
+        build_sitemap(dates, symbol_urls, fund_category_urls), encoding="utf-8"
+    )
     (public_dir / "robots.txt").write_text(build_robots(), encoding="utf-8")
     print(
-        f"[SITE-META] {len(dates)} rapor kopyalandı, {len(symbol_urls)} hisse sayfası "
-        "haritaya eklendi; arşiv + sitemap + robots üretildi"
+        f"[SITE-META] {len(dates)} rapor kopyalandı, {len(symbol_urls)} hisse + "
+        f"{len(fund_category_urls)} fon kategorisi sayfası haritaya eklendi; "
+        "arşiv + sitemap + robots üretildi"
     )
 
     # Backtest ayrı ve seyrek bir workflow'da üretilip repoya commit'lendiğinden

@@ -150,6 +150,48 @@ export async function fetchStockSeriesMany(symbols) {
   return out;
 }
 
+/* ---------------------------- Fon fiyat serileri ----------------------------
+ * Fon listesi 120 kapağından ~690'a çıkınca (bkz. app/funds/screen.py MAX_FUNDS)
+ * tüm serileri tek dosyada tutmak onu ~800 KB'tan ~4,2 MB'a çıkarırdı. Hisse
+ * serilerindeki çözümün aynısı: fon başına ayrı dosya, açılan fon kadar indir.
+ * `fund_prices.json` en çok bakılan 120 fonun serisini ve benchmark'ları
+ * taşımayı sürdürür; eksik kalan fon buradan tek tek istenir. */
+
+/** Tek bir fonun fiyat serisi ([[tarih, fiyat], ...]). Yoksa null. */
+export async function fetchFundSeries(code) {
+  const res = await fetch(
+    `${import.meta.env.BASE_URL}data/fund-prices/${priceFileName(code)}.json`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Fon fiyat serisi yüklenemedi (${res.status})`);
+  if (!(res.headers.get("content-type") || "").includes("json")) return null;
+  const data = await res.json();
+  return data?.points || null;
+}
+
+/** Birden çok fonu sınırlı eşzamanlılıkla çeker (hisse tarafıyla aynı desen). */
+export async function fetchFundSeriesMany(codes) {
+  const out = {};
+  const queue = [...codes];
+
+  async function worker() {
+    while (queue.length) {
+      const code = queue.shift();
+      try {
+        const points = await fetchFundSeries(code);
+        if (points) out[code] = points;
+      } catch {
+        /* tek fonun hatası diğerlerini düşürmesin */
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(SERIES_CONCURRENCY, queue.length) }, worker),
+  );
+  return out;
+}
+
 /** Serisi olan semboller (portföy sayfasındaki hisse listesi). Seri taşımaz. */
 export async function fetchPriceIndex() {
   const res = await fetch(`${import.meta.env.BASE_URL}data/prices/index.json`);

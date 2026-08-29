@@ -29,9 +29,16 @@ from app.data.kap import fetch_disclosures
 from app.data.macro import CORRELATION_BARS, build_macro_payload
 from app.data.markets import enabled_markets, load_symbols
 from app.data.price_files import assert_unique_file_names, price_file_name
+from app.funds.categories import FUND_CATEGORIES, OTHER
 from app.funds.screen import FUND_METRIC_KEYS, run_fund_screener
 from app.news.collect import build_news_payload
 from app.reports.generate import SITE_URL, build_report_html
+from app.reports.fund_category_pages import (
+    CATEGORY_DIR,
+    build_category_index,
+    build_category_page,
+    category_url,
+)
 from app.reports.symbol_pages import build_symbol_index, build_symbol_page, symbol_slug, symbol_url
 from app.screener.engine import run_analysis
 from app.screener.filters import passes_filters
@@ -71,6 +78,10 @@ def dump_json(value) -> str:
 
 # Fon akışı arşivi bu kadar günü aşınca en eski günler düşer
 FLOW_HISTORY_DAYS = 90
+
+# fund_prices.json içinde satır içi taşınan seri sayısı (geri uyumluluk; geri
+# kalanı fon başına dosyadan tek tek iner). Puana göre ilk N fon.
+FUND_PRICES_INLINE = 120
 
 
 def fetch_previous_flows() -> dict:
@@ -221,6 +232,44 @@ def write_symbol_pages(public_dir: Path, market_payloads: dict, financials: dict
         encoding="utf-8",
     )
     print(f"[HİSSE SAYFASI] {len(entries)} sayfa -> {symbol_dir}")
+
+
+def write_fund_category_pages(public_dir: Path, fund_results: list[dict], generated_at: str) -> None:
+    """Kategori başına statik HTML sayfası + dizin + manifest üretir.
+
+    Hisse sayfalarıyla aynı desen: sayfalar burada basılır, site haritasına
+    `build_site_meta` manifestten ekler — iki script birbirinin veri yapısını
+    bilmek zorunda kalmaz. Fonu olmayan kategori sayfası HİÇ basılmaz.
+    """
+    if not fund_results:
+        print("[FON KATEGORİ] fon listesi boş; sayfa üretilmedi")
+        return
+
+    by_category: dict[str, list[dict]] = {}
+    for fund in fund_results:
+        by_category.setdefault(fund.get("category") or OTHER.key, []).append(fund)
+
+    category_dir = public_dir / CATEGORY_DIR
+    category_dir.mkdir(parents=True, exist_ok=True)
+
+    urls: list[str] = []
+    counts: dict[str, int] = {}
+    for category in FUND_CATEGORIES:
+        funds = by_category.get(category.key) or []
+        if not funds:
+            continue  # boş kategori sayfası "içerik var" yalanı olurdu
+        counts[category.key] = len(funds)
+        html = build_category_page(category.key, funds, generated_at=generated_at)
+        (category_dir / f"{category.slug}.html").write_text(html, encoding="utf-8")
+        urls.append(category_url(category.slug))
+
+    (category_dir / "index.html").write_text(
+        build_category_index(counts, generated_at=generated_at), encoding="utf-8"
+    )
+    (category_dir / "index.json").write_text(
+        dump_json({"generated_at": generated_at, "urls": urls}), encoding="utf-8"
+    )
+    print(f"[FON KATEGORİ] {len(urls)} kategori sayfası -> {category_dir}")
 
 
 def main() -> None:
@@ -579,6 +628,11 @@ def main() -> None:
     funds_path.write_text(dump_json(funds_payload), encoding="utf-8")
     print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
 
+    # Kategori SEO sayfaları: "gümüş fonu", "en iyi hisse fonu" gibi aramaların
+    # ineceği hedef sayfa yoktu (uygulama SPA; ?v=funds indekslenebilir içerik
+    # üretmiyor). Hisse sayfalarıyla aynı gerekçe, aynı desen.
+    write_fund_category_pages(out_dir.parent, fund_results, funds_payload["generated_at"])
+
     # Karşılaştırma benchmark'ları (normalize eğri için). Başarısız olanlar sessizce atlanır.
     benchmarks: dict[str, dict] = {}
     for symbol, name in (
@@ -602,15 +656,36 @@ def main() -> None:
         except Exception as e:
             print(f"[FON] benchmark {symbol} alınamadı: {e}")
 
+    # Fiyat serileri FON BAŞINA ayrı dosyada. Kapak kalkınca liste 120'den ~690
+    # fona çıktı; hepsini tek dosyaya koymak onu ~800 KB'tan ~4,7 MB'a şişirirdi
+    # ve kullanıcı tek bir fonun grafiğini açmak için tamamını indirirdi. Hisse
+    # serilerinde aynı sorun aynı şekilde çözülmüştü (bkz. app/data/price_files.py).
+    fund_price_dir = out_dir / "fund-prices"
+    fund_price_dir.mkdir(parents=True, exist_ok=True)
+    assert_unique_file_names(fund_series.keys())
+    for code, points in fund_series.items():
+        (fund_price_dir / f"{price_file_name(code)}.json").write_text(
+            dump_json({"symbol": code, "points": points}), encoding="utf-8"
+        )
+    (fund_price_dir / "index.json").write_text(
+        dump_json({"generated_at": funds_payload["generated_at"], "symbols": sorted(fund_series)}),
+        encoding="utf-8",
+    )
+
+    # fund_prices.json benchmark'ları ve EN ÇOK AÇILAN fonların serilerini taşımayı
+    # sürdürür: yeni arayüz eksik seriyi tek tek ister, güncellemeyi henüz almamış
+    # bir istemcide de en çok bakılan fonların grafiği çalışmaya devam eder.
+    top_codes = [r["symbol"] for r in fund_results[:FUND_PRICES_INLINE]]
     prices_payload = {
         "generated_at": funds_payload["generated_at"],
-        "series": fund_series,
+        "series": {c: fund_series[c] for c in top_codes if c in fund_series},
         "benchmarks": benchmarks,
     }
     prices_path = out_dir / "fund_prices.json"
     prices_path.write_text(dump_json(prices_payload), encoding="utf-8")
     print(
-        f"[FON] {len(fund_series)} fiyat serisi + {len(benchmarks)} benchmark -> {prices_path}"
+        f"[FON] {len(fund_series)} fiyat serisi -> {fund_price_dir} "
+        f"({len(prices_payload['series'])} tanesi + {len(benchmarks)} benchmark {prices_path.name} içinde)"
     )
 
     # Fon akışı arşivi: gün başına yatırımcı sayısı, fon büyüklüğü ve fiyat birikir.

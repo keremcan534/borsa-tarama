@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import statistics
 from datetime import date, timedelta
 
@@ -10,6 +9,7 @@ import pandas as pd
 
 from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS
+from app.funds.categories import categorize
 from app.funds.metrics import annualized_return, compute_fund_metrics
 
 # Arayüzün kolon olarak gösterdiği metrikler. API ve statik JSON aynı listeyi
@@ -40,8 +40,8 @@ BENCHMARK_SYMBOL = BENCHMARKS["bist100"]
 # takip ediyorlar ve fon ücretlerinden SONRAKİ getiriyi veriyorlar — yani bir fon
 # yatırımcısının gerçek alternatifi. Sabit bir oran yazmak yerine bunu ölçüyoruz;
 # faiz değiştiğinde kod dokunulmadan kendi kendine güncelleniyor.
-# (Ad bazlı tespit arayüzdeki FUND_CATEGORY_RULES 'money' kuralının aynısı.)
-MONEY_MARKET_RE = re.compile(r"PARA P[İI]YASASI|L[İI]K[İI]T")
+# Ad bazlı tespit tek kaynaktan: app/funds/categories.py 'money' kuralı. Eskiden
+# aynı regex hem burada hem arayüzde ayrı ayrı duruyordu ve ayrışabilirlerdi.
 # Medyanın anlamlı olması için asgari fon sayısı
 MIN_MONEY_MARKET_FUNDS = 3
 # Vekil oranın makul aralığı: bunun dışındakiler veri artefaktıdır, oranı bozmasın
@@ -56,8 +56,16 @@ MIN_PORTFOLIO_SIZE = 100_000_000  # 100M TRY
 # aldığı fonları gömüyordu. Yatırımcı sayısı, "TEFAS/Midas'ta alınabilir ve gerçekten
 # alınıyor"un elimizdeki en dürüst vekili (Midas'ın resmi fon listesi API'si yok).
 MIN_INVESTORS = 500
-# Sonuç listesi üst sınırı (UI + JSON boyutu)
-MAX_FUNDS = 120
+# Sonuç listesi üst sınırı. None = sınır yok (varsayılan).
+#
+# Eskiden 120'ydi ve liste puana göre kesiliyordu. Ölçüldü (2026-08, TEFAS YAT):
+# 2041 fonun 1546'sı ÖZEL değil, bunların 689'u büyüklük + yatırımcı eşiklerini
+# geçiyor — yani kapak 569 fonu görünmez kılıyordu. Kaçırılanlar niş de değildi:
+# 13 gümüş fonunun 13'ü (GTZ 13,2 milyar TL / 62 bin yatırımcı), 163 serbest
+# fonun 144'ü, 111 para piyasası fonunun 86'sı listede yoktu. Kullanıcı aradığı
+# fonu bulamıyorsa site onun için yok demektir; yukarıdaki eşikler zaten
+# savunulabilir bir evren tanımlıyor, üstüne bir de sayı kapağı koymak keyfiydi.
+MAX_FUNDS: int | None = None
 # Geçmiş penceresi (takvim günü) — 1y getiri + vol için
 LOOKBACK_DAYS = 400
 
@@ -134,8 +142,7 @@ def estimate_risk_free_rate(
     """
     rates = []
     for code, series in series_by_code.items():
-        name = (name_map.get(code) or "").upper()
-        if not MONEY_MARKET_RE.search(name):
+        if categorize(name_map.get(code)) != "money":
             continue
         rate = annualized_return(series)
         if rate is None:
@@ -165,7 +172,7 @@ def run_fund_screener(
     as_of: date | None = None,
     lookback_days: int = LOOKBACK_DAYS,
     min_portfolio_size: float = MIN_PORTFOLIO_SIZE,
-    max_funds: int = MAX_FUNDS,
+    max_funds: int | None = MAX_FUNDS,
     df: pd.DataFrame | None = None,
     benchmark: pd.Series | None = None,
     risk_free: float | None = None,
@@ -244,7 +251,7 @@ def run_fund_screener(
         money_market = {
             code: group.set_index("date")["price"].astype(float)
             for code, group in work.groupby("fund_code")
-            if code in liquid_codes and MONEY_MARKET_RE.search((name_map.get(code) or "").upper())
+            if code in liquid_codes and categorize(name_map.get(code)) == "money"
         }
         risk_free = estimate_risk_free_rate(money_market, name_map)
         if risk_free is None:
@@ -291,6 +298,9 @@ def run_fund_screener(
                 "portfolio_size": size_map.get(code),
                 "investor_count": investor_map.get(code),
                 "tefas_url": f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={code}",
+                # Kategori burada mühürlenir: Fon Ligi, kategori SEO sayfaları ve
+                # arayüz filtresi aynı sınıflandırmayı görsün (funds/categories.py).
+                "category": categorize(name_map.get(code)),
                 **metrics,
             }
         )
@@ -298,7 +308,7 @@ def run_fund_screener(
             series_by_code[code] = _series_to_points(series)
 
     results.sort(key=lambda r: (r.get("score") or 0, r.get("return_1y") or -999), reverse=True)
-    trimmed = results[:max_funds]
+    trimmed = results[:max_funds] if max_funds else results
     if include_series:
         keep = {r["symbol"] for r in trimmed}
         return trimmed, {k: v for k, v in series_by_code.items() if k in keep}

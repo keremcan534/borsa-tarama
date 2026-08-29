@@ -26,6 +26,8 @@ table{width:100%;border-collapse:collapse;font-size:14px;background:var(--surfac
 border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:12px 0}
 th,td{padding:8px 12px;text-align:right;border-bottom:1px solid var(--border)}
 th:first-child,td:first-child{text-align:left}
+th.left,td.left{text-align:left}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 thead th{color:var(--text);font-weight:500}
 tbody tr:last-child td{border-bottom:none}
 .new{color:var(--new);font-weight:700;font-size:11px;margin-left:6px}
@@ -180,17 +182,28 @@ def build_archive_index(dates: list[str]) -> str:
 """
 
 
-def build_sitemap(dates: list[str], symbol_urls: list[str] | None = None) -> str:
-    """Site haritası: ana sayfa, rapor arşivi ve hisse sayfaları.
+def build_sitemap(
+    dates: list[str],
+    symbol_urls: list[str] | None = None,
+    fund_category_urls: list[str] | None = None,
+) -> str:
+    """Site haritası: ana sayfa, rapor arşivi, hisse ve fon kategorisi sayfaları.
 
     Hisse sayfaları eklenmeden önce haritada 30 URL vardı ve 28'i tarih damgalı
     rapordu — yani "THYAO teknik analiz" gibi sorgular için hedef sayfa yoktu.
+    Fon kategorisi sayfaları aynı boşluğun fon tarafını kapatır ("gümüş fonu",
+    "en iyi hisse senedi fonu").
+
+    Dizin sayfası (`hisse/`, `fon-kategori/`) yalnızca altında sayfa VARSA
+    eklenir: var olmayan bir URL'i haritaya yazmak tarayıcıya 404 verdirir.
     """
     urls = (
         [SITE_URL, f"{SITE_URL}rapor/"]
         + [f"{SITE_URL}rapor/{d}.html" for d in sorted(dates, reverse=True)]
         + ([f"{SITE_URL}hisse/"] if symbol_urls else [])
         + sorted(symbol_urls or [])
+        + ([f"{SITE_URL}fon-kategori/"] if fund_category_urls else [])
+        + sorted(fund_category_urls or [])
     )
     entries = "\n".join(f"  <url><loc>{u}</loc></url>" for u in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{entries}\n</urlset>\n'
