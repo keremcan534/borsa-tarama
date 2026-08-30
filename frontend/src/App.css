@@ -27,10 +27,27 @@
   padding-inline: 10px;
 }
 
+/* Marka: elle çizilmiş nazar. Tek bir PNG (brand-mark.png) MASKE olarak
+   kullanılır, rengi --brand-ink'ten gelir — böylece koyu temada açık mavi,
+   açık temada lacivert görünür ve iki ayrı dosya taşımaya gerek kalmaz.
+   Maskenin adresi BASE_URL'e bağlı olduğundan --brand-mark değişkenini JSX
+   satır içi veriyor (GitHub Pages alt dizinde yayınlanıyor). */
 .logo {
   width: 44px;
   height: 44px;
-  filter: drop-shadow(0 4px 12px rgba(124, 58, 237, 0.35));
+  flex-shrink: 0;
+  background-color: var(--brand-ink);
+  -webkit-mask: var(--brand-mark) center / contain no-repeat;
+  mask: var(--brand-mark) center / contain no-repeat;
+  filter: drop-shadow(0 4px 12px rgba(30, 47, 158, 0.35));
+}
+
+/* mask-image desteklenmiyorsa (çok eski tarayıcı) düz renk bir kare kalırdı;
+   o durumda görseli olduğu gibi göster. */
+@supports not (mask-image: url('')) {
+  .logo {
+    background: var(--brand-mark) center / contain no-repeat;
+  }
 }
 
 .brand h1 {

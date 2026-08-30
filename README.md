@@ -578,19 +578,35 @@ Sayfa metni elle guncellenirse `ABOUT_UPDATED` tarihi de guncellenmeli.
 arayüzde `TickerLogo`. Kullanıcı "isimlerin yanındaki monogramlar yapay duruyor, gerçek
 logo çekmenin yolu yok mu" dedi; var.
 
-Yöntem `build_sectors.py` ile aynı felsefe: logo, şirketin `website` alanından
-(yfinance `.info`) türetilir ve **build zamanında BİR KEZ** indirilip repoya konur.
-Çalışma anında sıfır harici istek olur — hem hız, hem gizlilik (kimse hangi hisseye
-baktığını üçüncü bir sunucuya sızdırmaz). Logo neredeyse hiç değişmez, her taramada
-yeniden çekmek anlamsız; sektör haritası gibi statiktir.
+Yöntem `build_sectors.py` ile aynı felsefe: logo, şirketin alan adından türetilir ve
+**build zamanında BİR KEZ** indirilip repoya konur. Çalışma anında sıfır harici istek
+olur — hem hız, hem gizlilik (kimse hangi hisseye baktığını üçüncü bir sunucuya
+sızdırmaz). Logo neredeyse hiç değişmez, her taramada yeniden çekmek anlamsız;
+sektör haritası gibi statiktir.
 
-Kaynak Google favicon servisi (`s2/favicons?domain=...&sz=128`). **Gerçek ayraç HTTP
-durum kodudur** (bilinmeyen alan adı 404, bilinen 200 + görsel), byte boyutu DEĞİL:
-ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu olan gerçek
-şirketleri eliyordu (100'de 48'i boşuna atlanmıştı, eşik kaldırılınca 83 oldu).
+### Alan adı: KAP (yfinance değil)
+İlk sürüm alan adını yfinance `.info`'nun `website` alanından okuyordu ve BIST'te
+tıkanıyordu: Yahoo bu alanı BIST şirketlerinin çoğunda doldurmuyor, üstelik sembol
+başına ~1 sn + rate-limit riski var. Sonuç **610 sembolde yalnızca 83 logo (%14)**
+idi — kullanıcının "BIST'te çoğu şirketin logosu yok" dediği tablo buydu.
 
-- BIST 100: **83/100** sembolde gerçek logo (kalan 17 web sitesi vermiyor ya da
-  faviconu yok -> nötr harf rozetine düşer, mevcut davranış). Toplam ~430 KB.
+Artık birincil kaynak KAP: her şirketin "Genel Bilgiler" sayfasındaki **İnternet
+Adresi** alanı borsaya bildirilen resmî adres. `scripts/build_company_domains.py`
+bunu bir kez toplayıp `app/data/company_domains.json`'a yazar (610 sembolün
+**588'i**); `build_logos.py` önce oradan okur, yalnızca eksikte yfinance'e düşer.
+
+### Logo: iki kaynak
+1. Google favicon servisi (`s2/favicons?domain=...&sz=128`). **Gerçek ayraç HTTP
+   durum kodudur** (bilinmeyen alan adı 404, bilinen 200 + görsel), byte boyutu
+   DEĞİL: ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu
+   olan gerçek şirketleri eliyordu.
+2. Google'ın tanımadığı alan adları için şirketin **kendi ana sayfasındaki**
+   `<link rel="icon">` / `apple-touch-icon`. Google Koç Holding'i bile tanımıyor;
+   bu ikinci geçiş kalan 110 şirketin ~%40'ını kurtarıyor. En büyük boyutlu ikon
+   seçilir (tabloda 26 pikselde net görünsün diye).
+
+- BIST: **~500/610** sembolde gerçek logo (%14'ten yükseldi). Kalanların ya web
+  sitesi KAP'ta yok ya da sitesi ikon vermiyor -> nötr harf rozetine düşer.
 - Logosu olmayan sembol manifestte YOKtur; ETF/emtia/kripto ve TEFAS fonları da
   (şirket sitesi olmadığından) monogram gösterir.
 - `TickerLogo` gerçek logoyu bir `<img>` olarak çizer; yüklenemezse `onError` ile
@@ -599,9 +615,54 @@ ilk sürümde bir byte eşiği vardı ve Tüpraş gibi yalnızca 16x16 faviconu 
   bu doğrulama ortamında hiç çalışmıyordu — logolar minik olduğundan (~2 KB, kalıcı
   cache) eager yüklemenin maliyeti önemsiz, doğrulanabilirliği net.
 - Manifest tüm ağaca React Context ile dağıtılır (TickerLogo 23 yerde prop'suz çağrılıyor).
-- Yeniden çalıştır: `python scripts/build_logos.py` (eksikleri tamamlar; sembol
-  listeleri değişince). S&P 500 için de çalıştırılabilir ama şimdilik yalnızca BIST
-  indirildi (ana pazar; 500 ABD logosu repoyu ~1 MB büyütür).
+- Yeniden çalıştır: önce `python scripts/build_company_domains.py` (yalnızca yeni
+  şirket geldiyse), sonra `python scripts/build_logos.py` — ikisi de eksikleri
+  tamamlar, baştan indirmez. S&P 500 için de çalıştırılabilir ama şimdilik yalnızca
+  BIST indirildi (ana pazar; 500 ABD logosu repoyu ~1 MB büyütür).
+- Logolar service worker precache'ine GİRMEZ (`globIgnores`): 500 minik dosyayı
+  ilk açılışta indirmenin anlamı yok, satır render olunca tek tek geliyorlar.
+
+## Marka: Nazar Logosu ve Yıldızlı Zemin
+Kaynak görseller `assets/brand/` altında sürüm kontrolünde durur — ikisini de site
+sahibi verdi (elle çizilmiş nazar boncuğu + Samanyolu fotoğrafı); kullanım hakkı
+onun sorumluluğunda, repoda başka bir yerden alınmış görsel yok.
+`scripts/build_brand_assets.py` onlardan `frontend/public/` içindeki türevleri
+üretir. Türevler de repoya konur — CI'da Pillow gerekmez, çalışma anında hiçbir
+görsel işlenmez. (Eski `frontend/generate_icons.py` mor sütun-grafik ikonunu
+çiziyordu; yerini bu script aldı.)
+
+### Logo
+Çizim tek renk mürekkep + saydam zemin. Arayüzde bir `<img>` DEĞİL, **CSS maskesi**
+olarak kullanılıyor (`.logo`, `mask-image` + `background-color: var(--brand-ink)`):
+lacivert mürekkep koyu temada neredeyse görünmez olurdu, maske sayesinde renk temaya
+bağlanıyor ve tek dosya yetiyor. Maskenin adresi `BASE_URL`'e bağlı olduğundan
+(`/borsa-tarama/`) CSS'e gömülemiyor, JSX satır içi `--brand-mark` değişkeniyle
+geçiyor. `mask-image` desteklenmeyen tarayıcıda `@supports` ile düz görsele düşer.
+
+Aynı çizim PWA ikonlarına (192/512/maskable), favicon'a ve paylaşım kartına
+(`og-image.png`) gece mavisi zemin üzerinde açık mavi olarak basılır. Maskable
+ikonda çizim tuvalin %60'ında kalır (işletim sistemi köşeleri kırpıyor).
+`og-image.png` adı DEĞİŞMEMELİ: arşivdeki yüzlerce rapor sayfası bu adrese bağlı.
+
+### Zemin
+Yıldızlı gökyüzü sabit, tam ekran, en arkada (`z-index: -2`; aurora lekeleri onun
+üstünde). Fare gezdikçe Escape from Tarkov menüsündeki gibi ağır ağır kayar.
+
+- **Bulanıklık görsele PİŞİRİLMİŞ gelir**, CSS `filter: blur()` ile verilmez: filtre
+  her karede tüm ekranı yeniden bulanıklaştırırdı ve zemin fareyle sürekli kayıyor.
+  Bulanık görsel çok iyi sıkıştığından dosya da küçülüyor (1,1 MB -> 48 KB webp).
+- Bulanıklık miktarı ölçülerek seçildi: 16 piksel yıldızları tamamen eritip zemini
+  renkli bir lekeye çeviriyordu; 6 piksel "bulanık ama hâlâ yıldızlı gökyüzü"
+  dengesini tutuyor.
+- Parallax React state TUTMAZ: fare saniyede ~120 olay üretir, her biri için render
+  tetiklemek tüm tabloyu yeniden çizerdi. `NightSky` yalnızca iki CSS değişkeni
+  (`--sky-x/--sky-y`) yazar, kaydırmayı compositor yapar. Fare durunca rAF döngüsü
+  kendini durdurur (pil).
+- Kapalı olduğu durumlar: `prefers-reduced-motion` (hareket rahatsızlık verebilir)
+  ve dokunmatik cihaz (`pointer: coarse` — imleç yok, dinleyici de olmasın).
+- Okunabilirlik `--sky-veil`/`--sky-veil-edge` perdesiyle korunur: açık temada
+  neredeyse örtücü (koyu metin), koyu temada ince (yıldızlar görünsün). Kartlar
+  zaten opak `--surface` taşıdığından tablo/metin zeminden etkilenmez.
 
 ## Fon Logoları
 `scripts/build_fund_logos.py` -> `frontend/public/fund-logos/*.png` + manifest ->

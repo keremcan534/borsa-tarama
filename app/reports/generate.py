@@ -12,13 +12,22 @@ SITE_URL = "https://keremcan534.github.io/borsa-tarama/"
 MARKET_TITLES = {"bist100": "BIST 100", "sp500": "S&P 500"}
 TIMEFRAME_TITLES = {"daily": "Günlük", "weekly": "Haftalık", "monthly": "Aylık"}
 
+# Uygulamayla aynı yıldızlı zemin: bu sayfalar aramadan gelen ziyaretçinin gördüğü
+# İLK sayfa; bambaşka görünmeleri siteyi iki ayrı yer gibi gösteriyordu. Görsel
+# zaten bulanık kaydedildiğinden burada `filter` yok, parallax da yok (statik
+# sayfada JS çalıştırmıyoruz). Perde, uygulamadaki --sky-veil ile aynı mantık.
 _PAGE_CSS = """
 :root{color-scheme:light dark;--bg:#f8fafc;--surface:#fff;--text:#4b5563;--text-h:#0f172a;
---border:#e2e8f0;--accent:#7c3aed;--new:#16a34a}
+--border:#e2e8f0;--accent:#7c3aed;--new:#16a34a;
+--veil:rgba(248,250,252,.86);--veil-edge:rgba(248,250,252,.95);--sky-opacity:.8}
 @media(prefers-color-scheme:dark){:root{--bg:#0f1115;--surface:#171a21;--text:#9ca3af;
---text-h:#f3f4f6;--border:#2a2e38;--accent:#a78bfa;--new:#4ade80}}
+--text-h:#f3f4f6;--border:#2a2e38;--accent:#a78bfa;--new:#4ade80;
+--veil:rgba(9,13,24,.42);--veil-edge:rgba(9,13,24,.76);--sky-opacity:1}}
 body{font:16px/1.6 system-ui,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);
 margin:0;padding:24px 16px 60px}
+body::before{content:'';position:fixed;inset:0;z-index:-1;opacity:var(--sky-opacity);
+background:radial-gradient(120% 85% at 50% 8%,var(--veil),var(--veil-edge)),
+url(__SITE__bg-night.webp) center 62%/cover no-repeat}
 main{max-width:860px;margin:0 auto}
 h1,h2,h3{color:var(--text-h);line-height:1.3}
 a{color:var(--accent)}
@@ -35,7 +44,7 @@ tbody tr:last-child td{border-bottom:none}
 .cta{display:inline-block;background:var(--accent);color:#fff;padding:10px 18px;border-radius:9px;
 text-decoration:none;font-weight:600;margin:8px 0}
 footer{margin-top:32px;font-size:12px;opacity:.7}
-"""
+""".replace("__SITE__", SITE_URL)
 
 
 def _fmt_date_tr(date_str: str) -> str:

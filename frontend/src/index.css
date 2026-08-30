@@ -10,6 +10,13 @@
   --up: #16a34a;
   --down: #dc2626;
   --row-hover: #f1f5f9;
+  /* Nazar logosu tek bir PNG maskesidir; rengi buradan gelir (bkz. .logo). */
+  --brand-ink: #1e2f9e;
+  /* Yıldızlı zeminin üstündeki perde: açık temada neredeyse örtücü, yoksa koyu
+     gökyüzü üzerinde koyu metin okunmaz olurdu. */
+  --sky-veil: rgba(248, 250, 252, 0.86);
+  --sky-veil-edge: rgba(248, 250, 252, 0.95);
+  --sky-opacity: 0.8;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -35,6 +42,10 @@
     --up: #4ade80;
     --down: #f87171;
     --row-hover: #1e222b;
+    --brand-ink: #a2c4ff;
+    --sky-veil: rgba(9, 13, 24, 0.42);
+    --sky-veil-edge: rgba(9, 13, 24, 0.76);
+    --sky-opacity: 1;
   }
 }
 
@@ -51,6 +62,10 @@
   --up: #4ade80;
   --down: #f87171;
   --row-hover: #1e222b;
+  --brand-ink: #a2c4ff;
+  --sky-veil: rgba(9, 13, 24, 0.42);
+  --sky-veil-edge: rgba(9, 13, 24, 0.76);
+  --sky-opacity: 1;
 }
 
 :root[data-theme='light'] {
@@ -65,6 +80,13 @@
   --up: #16a34a;
   --down: #dc2626;
   --row-hover: #f1f5f9;
+  /* Nazar logosu tek bir PNG maskesidir; rengi buradan gelir (bkz. .logo). */
+  --brand-ink: #1e2f9e;
+  /* Yıldızlı zeminin üstündeki perde: açık temada neredeyse örtücü, yoksa koyu
+     gökyüzü üzerinde koyu metin okunmaz olurdu. */
+  --sky-veil: rgba(248, 250, 252, 0.86);
+  --sky-veil-edge: rgba(248, 250, 252, 0.95);
+  --sky-opacity: 0.8;
 }
 
 * {
@@ -90,6 +112,43 @@ h1, h2, h3 {
   z-index: 1;
 }
 
+/* Yıldızlı gece zemini: sabit, tam ekran, İÇERİĞİN EN ARKASINDA (z-index:-2 —
+   aurora'nın da altında). Görsel BULANIK OLARAK PİŞİRİLMİŞ gelir
+   (scripts/build_brand_assets.py); burada `filter: blur()` kullanılsaydı fare
+   her kıpırdadığında tarayıcı tüm ekranı yeniden bulanıklaştırırdı.
+
+   Escape from Tarkov menüsündeki gibi fare gezdikçe kayar: JS yalnızca iki CSS
+   değişkeni (--sky-x/--sky-y) yazar, kaydırmayı compositor yapar. scale(1.14)
+   fazlalık payı — %3,5'e kadar kayarken kenarlar açılmasın diye. */
+.night-sky {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.night-sky img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Dağ siluetini alt kenarda tut: geniş ekranda `cover` görselin altını da
+     üstünü de kırpıyor, ortalanınca manzara tamamen kayboluyordu. */
+  object-position: center 62%;
+  opacity: var(--sky-opacity);
+  transform: translate3d(var(--sky-x, 0%), var(--sky-y, 0%), 0) scale(1.14);
+  will-change: transform;
+}
+
+/* Perde: metnin zemin üstünde okunur kalmasını sağlar. Merkezde daha ince,
+   kenarlarda daha kalın — yıldızlar ortada görünsün, kartların arkası sakin olsun. */
+.night-sky::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 85% at 50% 8%, var(--sky-veil), var(--sky-veil-edge));
+}
+
 /* Ambient aurora: içeriğin arkasında sabit, bulanık renk lekeleri; yavaş süzülür.
    z-index:-1 ile html'in düz --bg zemininin üstünde ama tüm içeriğin arkasında. */
 .aurora {
@@ -103,6 +162,9 @@ h1, h2, h3 {
     radial-gradient(44% 48% at 80% 88%, rgba(99, 102, 241, 0.13), transparent 72%),
     radial-gradient(38% 44% at 8% 84%, rgba(217, 70, 239, 0.11), transparent 72%);
   filter: blur(36px) saturate(1.15);
+  /* Yıldızlı zemin geldiğinden lekeler artık ana dekor değil, üzerine hafif bir
+     renk sisi: tam güçte kalsaydı gökyüzünü tamamen boyuyordu. */
+  opacity: 0.5;
   animation: auroraDrift 28s ease-in-out infinite alternate;
   will-change: transform;
 }

@@ -904,20 +904,88 @@ function saveSavedScreens(list) {
   localStorage.setItem('saved_screens', JSON.stringify(list))
 }
 
+/**
+ * Marka işareti: elle çizilmiş nazar boncuğu.
+ *
+ * Görsel bir <img> DEĞİL, CSS maskesi olarak veriliyor (bkz. App.css .logo):
+ * çizim tek renk mürekkep olduğundan maske + `background-color` ikilisi rengi
+ * temaya bağlıyor — koyu temada lacivert mürekkep neredeyse görünmez olurdu.
+ * Maskenin adresi BASE_URL'e bağlı (GitHub Pages alt dizin), o yüzden CSS
+ * dosyasına gömülemiyor, buradan değişkenle geçiyor.
+ */
+const BRAND_MARK_URL = `url(${import.meta.env.BASE_URL}brand-mark.png)`
+
 function Logo() {
+  // Dekoratif (aria-hidden): yanındaki <h1> zaten marka adını yazıyor, ekran
+  // okuyucuya iki kez söyletmenin anlamı yok.
+  return <span className="logo" style={{ '--brand-mark': BRAND_MARK_URL }} aria-hidden="true" />
+}
+
+// Farenin ekrandaki konumu zeminde en fazla bu kadar kaydırır (viewport yüzdesi).
+// scale(1.14) fazlalık payıyla birlikte kenarların açılmayacağı güvenli sınır.
+const SKY_SHIFT_X = 3.4
+const SKY_SHIFT_Y = 2.2
+// Hedefe yaklaşma oranı (kare başına). Düşük değer = Tarkov menüsündeki gibi
+// ağır, gecikmeli takip; 1 olsaydı zemin fareye yapışır, his kaybolurdu.
+const SKY_EASING = 0.055
+
+/**
+ * Yıldızlı gece zemini + fareyle kayan parallax.
+ *
+ * Neden CSS değişkeni yazıyoruz da React state tutmuyoruz: fare hareketi saniyede
+ * ~120 olay üretir; her biri için render tetiklemek tüm tabloyu yeniden çizerdi.
+ * Burada React ağacı hiç değişmez, yalnızca compositor'ın okuduğu iki değişken
+ * güncellenir.
+ *
+ * Kapalı olduğu durumlar:
+ * - `prefers-reduced-motion`: hareket rahatsızlık verebiliyor, zemin sabit kalır.
+ * - Dokunmatik (`pointer: coarse`): imleç yok, dinleyici de olmasın.
+ */
+function NightSky() {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof window.matchMedia !== 'function') return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!window.matchMedia('(pointer: fine)').matches) return
+
+    let targetX = 0
+    let targetY = 0
+    let x = 0
+    let y = 0
+    let frame = 0
+
+    const step = () => {
+      x += (targetX - x) * SKY_EASING
+      y += (targetY - y) * SKY_EASING
+      el.style.setProperty('--sky-x', `${(-x * SKY_SHIFT_X).toFixed(3)}%`)
+      el.style.setProperty('--sky-y', `${(-y * SKY_SHIFT_Y).toFixed(3)}%`)
+      // Hedefe yeterince yaklaşınca döngüyü bırak: fare durduğunda boşuna kare
+      // harcamayalım (pil).
+      frame =
+        Math.abs(targetX - x) > 0.002 || Math.abs(targetY - y) > 0.002
+          ? requestAnimationFrame(step)
+          : 0
+    }
+
+    const onMove = (event) => {
+      targetX = (event.clientX / window.innerWidth - 0.5) * 2
+      targetY = (event.clientY / window.innerHeight - 0.5) * 2
+      if (!frame) frame = requestAnimationFrame(step)
+    }
+
+    window.addEventListener('pointermove', onMove, { passive: true })
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
   return (
-    <svg className="logo" viewBox="0 0 40 40" aria-hidden="true">
-      <defs>
-        <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="var(--accent)" />
-          <stop offset="100%" stopColor="var(--accent-2)" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="36" height="36" rx="9" fill="url(#lg)" />
-      <rect x="9" y="21" width="5" height="10" rx="1.5" fill="white" opacity="0.9" />
-      <rect x="17.5" y="15" width="5" height="16" rx="1.5" fill="white" opacity="0.9" />
-      <rect x="26" y="9" width="5" height="22" rx="1.5" fill="white" opacity="0.9" />
-    </svg>
+    <div className="night-sky" ref={ref} aria-hidden="true">
+      <img src={`${import.meta.env.BASE_URL}bg-night.webp`} alt="" />
+    </div>
   )
 }
 
@@ -8161,9 +8229,10 @@ function App() {
   return (
     <LogoContext.Provider value={logoCtx}>
     <div className="layout">
-      {/* Ambient aurora arka plan: içeriğin arkasında yavaşça süzülen bulanık
-          renk lekeleri (mesh gradient). Kartların gerisinde kalır, okunabilirliği
-          bozmaz. */}
+      {/* Zemin iki katman: en arkada fareyle kayan yıldızlı gökyüzü, onun üstünde
+          yavaşça süzülen bulanık renk lekeleri (aurora). İkisi de içeriğin
+          gerisinde kalır, okunabilirliği bozmaz. */}
+      <NightSky />
       <div className="aurora" aria-hidden="true" />
       {/* Mobilde menü açıkken arkaya tıklamak kapatır */}
       {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
