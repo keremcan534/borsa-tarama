@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLang, t } from './i18n'
 import { SHARE_CARD_ROWS, ShareBar } from './share'
 
@@ -184,13 +184,34 @@ function buildFundHoldings(positions) {
   return holdings
 }
 
+// Bu genişliğin altında grafik "1 birim = 1 piksel" kipine geçer.
+const NARROW_CHART_WIDTH = 560
+
 export function CompareChart({ lines, lang, currency = '₺' }) {
-  const W = 720
-  const H = 280
-  const pad = { t: 16, r: 16, b: 28, l: 44 }
+  const [hover, setHover] = useState(null)
+
+  // viewBox SABİT 720x280 idi; SVG %100 genişlikte çizildiğinden telefonda
+  // ölçek 0,39'a iniyor ve kullanıcı biriminde yazılmış eksen yazıları ekranda
+  // 4 piksel kalıyordu — okunmuyordu. Dar ekranda viewBox'ı ölçülen kutu
+  // genişliğine eşitleyince 1 kullanıcı birimi = 1 CSS pikseli olur.
+  const wrapRef = useRef(null)
+  const [boxW, setBoxW] = useState(0)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => setBoxW(Math.round(entry.contentRect.width)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const narrow = boxW > 0 && boxW < NARROW_CHART_WIDTH
+  const W = narrow ? boxW : 720
+  const H = narrow ? 240 : 280
+  // Dar ekranda sol eksen yazısı da küçülür; 44 birim orada gereksiz yer kaplar.
+  const pad = { t: 16, r: 16, b: 28, l: narrow ? 38 : 44 }
   const innerW = W - pad.l - pad.r
   const innerH = H - pad.t - pad.b
-  const [hover, setHover] = useState(null)
 
   const all = lines.flatMap((l) => l.points)
   if (all.length < 2) {
@@ -271,7 +292,7 @@ export function CompareChart({ lines, lang, currency = '₺' }) {
   const tipFlip = hover ? hover.x > W * 0.5 : false
 
   return (
-    <div className="fc-chart-wrap">
+    <div className="fc-chart-wrap" ref={wrapRef}>
       <svg
         className="fc-chart"
         viewBox={`0 0 ${W} ${H}`}

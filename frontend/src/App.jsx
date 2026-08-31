@@ -4801,14 +4801,45 @@ function heatFill(change) {
   return `rgba(${rgb}, ${alpha})`
 }
 
+// Bu genişliğin altında ısı haritası "1 birim = 1 piksel" kipine geçer.
+const NARROW_MAP_WIDTH = 560
+
+// Bu genişliğin altında baloncuk grafiği daha az ama daha büyük balon çizer.
+const NARROW_BUBBLE_WIDTH = 480
+
 /**
  * Piyasa ısı haritası: seçili marketin taranan hisselerini sektöre göre gruplayıp
  * piyasa değeriyle orantılı kutulara böler; renk bugünkü değişimi verir (Finviz
  * tarzı). Veri "Bugün" özetiyle aynı kaynaktan (overview[market].stocks).
  */
 function MarketMap({ overview, market, lang, onOpenChart }) {
-  const W = 1000
-  const H = 560
+  // viewBox SABİT 1000x560 idi ve SVG %100 genişlikte çiziliyordu; telefonda
+  // kutu 280px'e inince ölçek 0,28'e düşüyor, kullanıcı biriminde yazılmış
+  // 12/9/11 puntoluk yazılar ekranda 3-4 piksel kalıyordu — ölçüldü, hisse
+  // kodları okunamıyordu. Aynı ölçek, "etiketi bas" eşiklerini de (46/26,
+  // 30/16) sahte biçimde küçültüp 8 pikselik kutulara 5 harfli kod bastırıyor,
+  // etiketler kutudan taşıyordu.
+  //
+  // Çözüm: dar ekranda viewBox'ı ÖLÇÜLEN kutu genişliğine eşitle. Böylece
+  // 1 kullanıcı birimi = 1 CSS pikseli olur; puntolar da eşikler de gerçek
+  // değerlerine döner, tek bir sayı bile değiştirmeden.
+  const wrapRef = useRef(null)
+  const [boxW, setBoxW] = useState(0)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => setBoxW(Math.round(entry.contentRect.width)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const narrow = boxW > 0 && boxW < NARROW_MAP_WIDTH
+  const W = narrow ? boxW : 1000
+  // Dar ekranda harita dikey uzar: aynı kutu sayısı yatayda sıkışırsa
+  // kutular yine etiket alamayacak kadar incelir.
+  const H = narrow ? Math.round(boxW * 1.7) : 560
+
   const layout = useMemo(() => {
     const all = (overview?.[market]?.stocks || []).filter((s) => s.change != null)
     const capped = all.filter((s) => s.market_cap > 0)
@@ -4850,15 +4881,16 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
       tiles.push({ sector: sr, cells: inner })
     }
     return { tiles, equalWeight }
-  }, [overview, market])
+  }, [overview, market, W, H])
 
   if (!layout) return <div className="empty-box">{t(lang, 'mapEmpty')}</div>
 
   return (
-    <div className="marketmap-wrap">
+    <div className="marketmap-wrap" ref={wrapRef}>
       <svg
         className="marketmap"
         viewBox={`0 0 ${W} ${H}`}
+        style={{ aspectRatio: `${W} / ${H}` }}
         role="img"
         aria-label={t(lang, 'tabMap')}
         preserveAspectRatio="none"
@@ -4871,8 +4903,13 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
               </text>
             )}
             {cells.map((c) => {
-              const big = c.w > 46 && c.h > 26
-              const mid = c.w > 30 && c.h > 16
+              // Eşik sabit genişlik yerine SEMBOLÜN kendi genişliğine bakar:
+              // "AKBNK" ile "TUPRS" aynı kutuya sığarken 6 harfli bir kod
+              // sığmayıp kutunun dışına taşıyordu (ölçüldü: 320px'te 5 etiket).
+              const sym = displaySymbol(c.symbol)
+              const fits = (fs) => c.w >= sym.length * fs * 0.78 + 4 && c.h >= fs * 2
+              const big = fits(12) && c.h > 26
+              const mid = fits(9) && c.h > 16
               return (
                 <g key={c.symbol} className="marketmap-tile" onClick={() => onOpenChart(c.symbol)}>
                   <rect
@@ -4893,7 +4930,7 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
                       textAnchor="middle"
                       style={{ fontSize: big ? 12 : 9 }}
                     >
-                      {displaySymbol(c.symbol)}
+                      {sym}
                     </text>
                   )}
                   {big && (
@@ -4965,18 +5002,25 @@ function MarketBubbles({ overview, market, lang, onOpenChart }) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const ctx = canvas.getContext('2d')
 
-    const caps = stocks.map((s) => s.market_cap || 1) // piyasa değeri yoksa eşit boy
-    const sMin = Math.sqrt(Math.min(...caps))
-    const sMax = Math.sqrt(Math.max(...caps))
     const maxAbs = Math.max(...stocks.map((s) => Math.abs(s.change)), 0.01)
 
     let bubbles = []
     const build = () => {
+      // Telefonda 120 balon kanvasa sığmıyordu: hepsi 10-19 piksel yarıçapa
+      // iniyor, aşağıdaki etiket eşiğini (r > 20) HİÇBİRİ geçemiyordu — ölçüldü,
+      // 320px'te 120 balonun 120'si etiketsizdi, grafik isimsiz bir renk
+      // lekesine dönüşüyordu. Dar ekranda en büyük hisseleri göster: az balon =
+      // büyük balon = okunur etiket (ve 24px'lik dokunma hedefi).
+      const narrow = W < NARROW_BUBBLE_WIDTH
+      const list = narrow ? stocks.slice(0, 28) : stocks
+      const caps = list.map((s) => s.market_cap || 1) // piyasa değeri yoksa eşit boy
+      const sMin = Math.sqrt(Math.min(...caps))
+      const sMax = Math.sqrt(Math.max(...caps))
       // Balon sayısı arttıkça yarıçaplar küçülür; 100 hisse de kanvasa sığar
-      const density = Math.sqrt(48 / Math.max(stocks.length, 1))
-      const rMin = Math.max(10, (W / 46) * density)
+      const density = Math.sqrt(48 / Math.max(list.length, 1))
+      const rMin = Math.max(narrow ? 16 : 10, (W / 46) * density)
       const rMax = Math.min(70, Math.max(rMin + 8, (W / 9) * density))
-      bubbles = stocks.map((s) => {
+      bubbles = list.map((s) => {
         const tt = (Math.sqrt(s.market_cap || 1) - sMin) / (sMax - sMin || 1)
         const r = rMin + tt * (rMax - rMin)
         return {
