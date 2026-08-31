@@ -83,6 +83,11 @@
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
+  /* Flex ÖĞESİ olduğunda (bkz. .fl-sort) yukarıdaki max-width yetmiyor: flex
+     öğesinin varsayılan min-width:auto değeri içeriğinden küçülmesini engelliyor
+     ve max-width'i eziyor. Ölçüldü — Fon Ligi'nde şerit 320px ekranda 307px
+     kalıp sayfayı 56px kaydırıyordu. */
+  min-width: 0;
 }
 
 .tabs::-webkit-scrollbar {
@@ -2933,6 +2938,9 @@ button.today-card.fund-card:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* .status-bar'ın flex öğesi: min-width:auto ile 320px ekranda 280px'lik
+     kutusuna sığmayıp 356px kalıyordu (bkz. .tabs'taki aynı not). */
+  min-width: 0;
 }
 
 .fl-sort-label {
@@ -2942,7 +2950,10 @@ button.today-card.fund-card:hover {
 
 .fl-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* min(...,100%): 320px'lik asgari ray, 320px telefonda içerik kutusundan
+     (280px) geniş kalıp sayfayı kaydırıyordu. min() rayın dar ekranda
+     kutuya inmesine izin verir, geniş ekranda davranış aynı. */
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 14px;
   margin-top: 4px;
 }
@@ -3147,7 +3158,7 @@ tr.alert-hit td {
 
 .pa-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 20px;
 }
 
@@ -4438,7 +4449,7 @@ tr.alert-hit td {
 
 .about-sources {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 14px;
   margin-bottom: 8px;
 }
