@@ -911,6 +911,22 @@ th.sorted {
 .modal-actions {
   display: flex;
   gap: 8px;
+  /* Dar ekranda dugmeler kendi ICLERINDE sariliyordu: olculdu, 390px'te dortu de
+     82px yuksekliginde (3 satir) cikip basligi duzensiz bir bloga ceviriyordu.
+     Satir sarmasi dugme metninde degil, dugmeler ARASINDA olmali. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.modal-actions .btn {
+  white-space: nowrap;
+}
+
+/* Sembol ile eylem seridi dar ekranda alt alta gecsin. */
+@media (max-width: 520px) {
+  .modal-head {
+    flex-wrap: wrap;
+  }
 }
 
 .chart-frame {
@@ -4784,4 +4800,37 @@ tr.alert-hit td {
   color: var(--muted);
   margin-top: 2px;
   line-height: 1.35;
+}
+
+/* ---------- dokunma hedefi tabani (mobil) ---------- */
+/* Olculdu (320px, gercek tarayici): metin gorunumlu dugmeler 21-23 px
+   yuksekliginde, .star-btn ise 18 px genisliginde kaliyordu. WCAG 2.5.8
+   asgari 24x24 CSS px ister. Gorunum degismesin diye kutu buyutulmuyor,
+   yalnizca asgari olcu ve dikey ortalama veriliyor. */
+.link-btn,
+.kap-symbol,
+.fl-more,
+.link-symbol,
+.symbol-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.star-btn {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.kap-subject,
+.news-title {
+  min-height: 24px;
+}
+
+/* Fon akisi tablosundaki fon kodu dugmelerinin sinifi yok; hucreden hedefliyoruz. */
+.flow-fund button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  min-width: 24px;
 }
