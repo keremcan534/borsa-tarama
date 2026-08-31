@@ -4804,6 +4804,24 @@ function heatFill(change) {
 // Bu genişliğin altında ısı haritası "1 birim = 1 piksel" kipine geçer.
 const NARROW_MAP_WIDTH = 560
 
+// Sektör başlığı 11 punto KALIN + BÜYÜK HARF + 0,04em harf aralığı
+// (App.css .marketmap-sector). Bu üçü birlikte karakter başına ~0,80em eder;
+// ilk denemedeki 0,62 küçük harf oranıydı ve başlıklar hâlâ çakışıyordu.
+const SECTOR_LABEL_CHAR_W = 11 * 0.8
+
+/** Sektör adını kutuya sığacak kadar kısaltır (sığıyorsa aynen döner). */
+function fitSectorLabel(label, maxWidth) {
+  const maxChars = Math.floor(maxWidth / SECTOR_LABEL_CHAR_W)
+  if (maxChars >= label.length) return label
+  // Parantezin İÇİNE düşen kesme işe yaramıyor: "Tüketim (Savunmacı)" ile
+  // "Tüketim (Döngüsel)" ikisi de "Tüketim (…" olup ayırt edilemez hale
+  // geliyordu. Sığmıyorsa önce parantezli eki tümden at.
+  const base = label.replace(/\s*\(.*$/, '')
+  if (maxChars >= base.length) return base
+  if (maxChars < 3) return ''
+  return `${base.slice(0, maxChars - 1).trimEnd()}…`
+}
+
 // Bu genişliğin altında baloncuk grafiği daha az ama daha büyük balon çizer.
 const NARROW_BUBBLE_WIDTH = 480
 
@@ -4899,7 +4917,11 @@ function MarketMap({ overview, market, lang, onOpenChart }) {
           <g key={sector.sector}>
             {sector.sector !== '—' && sector.w > 90 && sector.h > 34 && (
               <text className="marketmap-sector" x={sector.x + 6} y={sector.y + 12}>
-                {sectorLabel(sector.sector, lang)}
+                {/* Sektör adı kutu genişliğine göre kısaltılır: eşik yalnızca
+                    kutuya bakıyordu, "TÜKETİM (SAVUNMACI)" gibi uzun adlar
+                    komşu sektörün başlığının üstüne biniyor, sağ kenardaki de
+                    haritanın dışında kalıyordu. */}
+                {fitSectorLabel(sectorLabel(sector.sector, lang), sector.w - 12)}
               </text>
             )}
             {cells.map((c) => {
