@@ -498,8 +498,11 @@ function compareRows(a, b, key, dir) {
   if (key === 'symbol') {
     return dir === 'asc' ? a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol)
   }
-  const av = a[key]
-  const bv = b[key]
+  // Ertesi gün tahmini bir nesne (değer + kalite); sıralama beklenen
+  // değişime göre yapılır. Tahmini olmayan fon en sona düşer (aşağıdaki
+  // eksik-değer kuralı).
+  const av = key === 'next_day' ? a.next_day?.change : a[key]
+  const bv = key === 'next_day' ? b.next_day?.change : b[key]
   const aMissing = av == null || Number.isNaN(av)
   const bMissing = bv == null || Number.isNaN(bv)
   if (aMissing || bMissing) return aMissing && bMissing ? 0 : aMissing ? 1 : -1
@@ -745,10 +748,68 @@ const COLUMNS = [
   { key: 'stoch_rsi_k', label: 'Stoch RSI %K' },
 ]
 
+/**
+ * Tahminin rengi: yön BANDI AŞIYORSA anlamlı sayılır.
+ *
+ * Genel `pctTone` ±%2 ölü bölgeye sahip ve bu HİSSE günlük değişimi için
+ * ölçülmüş bir eşik; fonda %2'lik günlük hareket olağanüstüdür, o eşikle
+ * tahminlerin tamamı nötr çıkıyordu. Burada ölçüt fonun kendi belirsizliği:
+ * "+%0,77 ± 0,46" yönü ayırt edilebilir (yeşil), "+%0,35 ± 1,23" gürültüden
+ * ayrılamaz (nötr). Eşik uydurma değil, modelin ölçülmüş hatası.
+ */
+function forecastTone(forecast) {
+  if (!forecast || forecast.change == null) return 'flat'
+  if (Math.abs(forecast.change) <= (forecast.band ?? 0)) return 'flat'
+  return forecast.change > 0 ? 'pos' : 'neg'
+}
+
+/** "2026-08-27" -> "27.08.2026" (kart alt başlığında ISO tarih yabancı duruyordu). */
+function formatIsoDate(iso, lang) {
+  if (!iso) return ''
+  const parsed = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return iso
+  return parsed.toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')
+}
+
+/**
+ * Fonun ertesi gün tahmini: beklenen değişim + ölçülmüş belirsizlik.
+ *
+ * Tek bir sayı yerine ARALIK gösteriliyor ("+%0,75 ± 0,52"): bandın kendisi
+ * modelin örneklem dışı ortalama mutlak hatası, yani "ne kadar
+ * yanılabiliriz"in ölçülmüş cevabı. Dört ondalıklı tek bir sayı yazmak
+ * (rakiplerde olduğu gibi) sahip olmadığımız bir kesinliği iddia etmek olurdu.
+ *
+ * Tahmini olmayan fon "—" gösterir: model o fonu açıklayamadığı için alan hiç
+ * üretilmemiştir (bkz. app/funds/forecast.py kalite kapısı).
+ */
+function FundNextDay({ forecast, lang }) {
+  if (!forecast || forecast.change == null) {
+    return <span className="muted" title={t(lang, 'nextDayNone')}>—</span>
+  }
+  const title = t(
+    lang,
+    'nextDayTitle',
+    Math.round(forecast.direction_rate * 100),
+    formatRatioPct(forecast.band, 2),
+    forecast.samples,
+    t(lang, `nextDayDriver_${forecast.driver}`),
+    forecast.as_of,
+  )
+  return (
+    <span className="next-day" title={title}>
+      <span className={`pct ${forecastTone(forecast)}`}>{formatPct(forecast.change, 2)}</span>
+      <span className="next-day-band">± {formatRatioPct(forecast.band, 2)}</span>
+    </span>
+  )
+}
+
 const FUND_COLUMNS = [
   { key: 'symbol', label: 'Fon', i18nKey: 'colFund', align: 'left' },
   { key: 'score', label: 'Puan', i18nKey: 'colScore' },
   { key: 'return_1d', label: 'Bugün %', i18nKey: 'colChange' },
+  // TEFAS fiyatı bir gün gecikmeli yayımlar; bugünkü piyasa hareketi yarınki
+  // fiyata yansır. Kolon o hesabı gösterir (bkz. app/funds/forecast.py).
+  { key: 'next_day', label: 'Yarın ~', i18nKey: 'colNextDay', titleKey: 'colNextDayTitle' },
   { key: 'investor_count', label: 'Yatırımcı', i18nKey: 'colInvestors' },
   { key: 'return_1m', label: '1A %', i18nKey: 'col1m' },
   { key: 'return_3m', label: '3A %', i18nKey: 'col3m' },
@@ -8096,6 +8157,18 @@ function App() {
     return list
   }, [funds, fundSearch, fundSort, onlyFundWatchlist, fundWatchlist])
 
+  // Tahmin kartı için: yalnızca tahmini OLAN fonlar, beklenen değişime göre
+  // sıralı. Tablonun sıralaması kullanıcının seçimine bağlı; kart her zaman
+  // "yarın en çok artması beklenenler" demeli.
+  const forecastRows = useMemo(
+    () =>
+      (funds?.results || [])
+        .filter((f) => f.next_day && f.next_day.change != null)
+        .sort((a, b) => b.next_day.change - a.next_day.change),
+    [funds],
+  )
+  const forecastAsOf = forecastRows[0]?.next_day?.as_of || null
+
   function toggleSort(key) {
     setSort((prev) =>
       prev.key === key
@@ -8549,12 +8622,51 @@ function App() {
                       sub: f.name,
                       value: f.score != null ? String(f.score) : '—',
                       note: f.return_1y == null ? undefined : formatPct(f.return_1y, 1),
-                      tone: pctTone(f.return_1y),
+                      noteTone: pctTone(f.return_1y),
                     })),
                   }}
                   shareText={t(lang, 'shareFundsText', fundRows.length)}
                   onMessage={flashShareMsg}
                 />
+              )}
+              {/* Paylaşılan şey listenin kendisi değil ERTESİ GÜN TAHMİNİ:
+                  insanların paylaştığı kart bu. Ayrı düğme, çünkü içeriği de
+                  sırası da farklı (beklenen değişime göre sıralı). */}
+              {forecastRows.length > 0 && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={async () => {
+                    const blob = await cardToBlob((canvas, mark) =>
+                      drawListCard(
+                        canvas,
+                        {
+                          title: t(lang, 'nextDayCardTitle'),
+                          subtitle: t(lang, 'nextDayCardSubtitle', formatIsoDate(forecastAsOf, lang)),
+                          valueLabel: t(lang, 'colNextDay'),
+                          rows: forecastRows.slice(0, SHARE_CARD_ROWS).map((f) => ({
+                            label: f.symbol,
+                            sub: f.name,
+                            value: formatPct(f.next_day.change, 2),
+                            // Bant kartta da duruyor: tek sayı paylaşmak
+                            // sahip olmadığımız bir kesinliği iddia etmek olurdu.
+                            note: `± ${formatRatioPct(f.next_day.band, 2)}`,
+                            tone: forecastTone(f.next_day),
+                            noteTone: undefined,
+                          })),
+                          lang,
+                        },
+                        mark,
+                      ),
+                    )
+                    if (blob) {
+                      downloadBlob(blob, `fon-tahmin-${new Date().toISOString().slice(0, 10)}.png`)
+                      flashShareMsg(t(lang, 'nextDayCardSaved'))
+                    }
+                  }}
+                >
+                  🔮 {t(lang, 'nextDayCard')}
+                </button>
               )}
               <button
                 className="btn"
@@ -8659,6 +8771,9 @@ function App() {
                       </td>
                       <td>
                         <span className={`pct ${pctTone(f.return_1d)}`}>{formatPct(f.return_1d, 2)}</span>
+                      </td>
+                      <td>
+                        <FundNextDay forecast={f.next_day} lang={lang} />
                       </td>
                       <td>{f.investor_count == null ? '—' : f.investor_count.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')}</td>
                       <td>
@@ -8967,9 +9082,10 @@ function App() {
                 filename: `tarama-${market}-${timeframe}-${new Date().toISOString().slice(0, 10)}.png`,
                 rows: rows.slice(0, SHARE_CARD_ROWS).map((r) => ({
                   label: displaySymbol(r.symbol),
+                  sub: r.name,
                   value: r.score != null ? String(r.score) : '—',
                   note: r.change == null ? undefined : formatPct(r.change, 2),
-                  tone: pctTone(r.change),
+                  noteTone: pctTone(r.change),
                 })),
               }}
               shareText={t(lang, 'shareScreenerText', rows.length, mLabel(activeMarket, lang))}

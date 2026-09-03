@@ -120,8 +120,9 @@ export function drawListCard(canvas, { title, subtitle, rows, valueLabel, lang }
   ctx.fillText(ellipsize(ctx, title, innerW), 80, 186)
 
   if (subtitle) {
+    // Alt başlık da ölçülür: tahmin kartında "…1 gün ge…" diye kesiliyordu.
     ctx.fillStyle = 'rgba(255,255,255,0.5)'
-    ctx.font = '400 30px system-ui, sans-serif'
+    fitFont(ctx, subtitle, innerW, '400', 30, 20)
     ctx.fillText(ellipsize(ctx, subtitle, innerW), 80, 186 + titleSize * 0.62)
   }
 
@@ -155,20 +156,21 @@ export function drawListCard(canvas, { title, subtitle, rows, valueLabel, lang }
     }
 
     ctx.textAlign = 'right'
-    // Renk YÖNÜ olan sayıya ait. Not varsa yön nottadır (değişim yüzdesi),
-    // değer nötr kalır: puanı değişime göre boyamak iki farklı büyüklüğü
-    // karıştırıyordu — aynı kartta "92" bir satırda beyaz, başka satırda yeşil
-    // çıkıyor ve puanlar farklı türdenmiş gibi duruyordu.
-    const toneColor = row.tone === 'pos' ? '#4ade80' : row.tone === 'neg' ? '#f87171' : null
+    // Renk, YÖNÜ olan sayıya ait ve hangisinin yönü olduğunu ÇAĞIRAN söyler:
+    // puan kartında yön değişimde (`noteTone`), tahmin kartında değerin
+    // kendisinde (`tone`) — tahmin kartındaki not yalnızca "± bant", onun bir
+    // yönü yok. Tek kurala bağlamak ikisinden birini hep yanlış boyuyordu.
+    const color = (name) =>
+      name === 'pos' ? '#4ade80' : name === 'neg' ? '#f87171' : null
     if (row.note) {
       // Not, DEĞERİN SOLUNDA aynı hizada. Önceden değerin üstünde, kutunun üst
       // kenarına yapışık çiziliyordu ve satıra değil aradaki boşluğa aitmiş
       // gibi duruyordu.
-      ctx.fillStyle = toneColor || 'rgba(255,255,255,0.5)'
+      ctx.fillStyle = color(row.noteTone) || 'rgba(255,255,255,0.5)'
       ctx.font = '400 26px system-ui, sans-serif'
       ctx.fillText(row.note, SHARE_CARD_W - 110 - valueW - 18, mid)
     }
-    ctx.fillStyle = row.note ? '#ffffff' : toneColor || '#ffffff'
+    ctx.fillStyle = color(row.tone) || '#ffffff'
     ctx.font = '700 36px system-ui, sans-serif'
     ctx.fillText(row.value, SHARE_CARD_W - 110, mid)
     ctx.textAlign = 'left'

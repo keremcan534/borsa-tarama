@@ -350,6 +350,21 @@ const STRINGS = {
     shareScreenerText: (n, m) => `${m} taramasında teknik görünümü güçlü ${n} hisse:`,
     shareFundsText: (n) => `TEFAS fon taraması: getiri/risk puanına göre sıralı ${n} fon.`,
     shareFundsSubtitle: 'Getiri/risk puanına göre sıralı',
+    colNextDay: 'Yarın ~',
+    colNextDayTitle:
+      'TEFAS fon fiyatını bir gün gecikmeli yayımlar; bugünkü piyasa hareketi yarınki fiyata yansır. Bu kolon o hesabı gösterir — kehanet değil.',
+    nextDayNone: 'Bu fon için model yeterince isabetli değil; tahmin üretilmedi.',
+    nextDayTitle: (dir, band, n, driver, day) =>
+      `Yön isabeti %${dir} · ortalama sapma ${band} · ${n} günlük geçmiş · başlıca etken: ${driver} · ${day} hareketine göre`,
+    nextDayDriver_bist: 'BIST 100',
+    nextDayDriver_gold: 'altın',
+    nextDayDriver_usd: 'dolar kuru',
+    nextDayDriver_birikim: 'birikim (faiz taşıma)',
+    nextDayCard: 'Yarın kartı',
+    nextDayCardSaved: 'Yarın tahmini kartı indirildi.',
+    nextDayCardTitle: 'Yarın için fon tahmini',
+    nextDayCardSubtitle: (day) => `${day} hareketine göre · fiyatlar 1 gün gecikmeli`,
+
     shareChangeLabel: 'Son kapanışa göre günlük değişim',
     shareDisclaimer: 'Yatırım tavsiyesi değildir · Teknik göstergelere dayalı veri',
     curLabel: 'Para birimi',
@@ -1290,6 +1305,21 @@ const STRINGS = {
     shareScreenerText: (n, m) => `${n} stocks with strong technicals in the ${m} screen:`,
     shareFundsText: (n) => `TEFAS fund screen: ${n} funds ranked by return/risk score.`,
     shareFundsSubtitle: 'Ranked by return/risk score',
+    colNextDay: 'Tomorrow ~',
+    colNextDayTitle:
+      'TEFAS publishes fund prices with a one-day lag, so today\u2019s market move lands in tomorrow\u2019s price. This column computes that — it is not a prophecy.',
+    nextDayNone: 'The model is not accurate enough for this fund; no estimate produced.',
+    nextDayTitle: (dir, band, n, driver, day) =>
+      `Direction hit rate ${dir}% · mean deviation ${band} · ${n} days of history · main driver: ${driver} · based on ${day} move`,
+    nextDayDriver_bist: 'BIST 100',
+    nextDayDriver_gold: 'gold',
+    nextDayDriver_usd: 'USD rate',
+    nextDayDriver_birikim: 'accrual (carry)',
+    nextDayCard: 'Tomorrow card',
+    nextDayCardSaved: 'Tomorrow estimate card downloaded.',
+    nextDayCardTitle: 'Fund estimates for tomorrow',
+    nextDayCardSubtitle: (day) => `Based on ${day} · prices lag by 1 day`,
+
     shareChangeLabel: 'Daily change vs previous close',
     shareDisclaimer: 'Not investment advice · Data based on technical indicators',
     curLabel: 'Currency',

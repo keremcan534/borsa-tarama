@@ -4861,3 +4861,20 @@ tr.alert-hit td {
   min-height: 24px;
   min-width: 24px;
 }
+
+/* ---------- fon ertesi gün tahmini ---------- */
+/* Tahmin tek sayı değil ARALIK: bandın kendisi modelin ölçülmüş ortalama
+   hatası. Bant, tahminin altında ve soluk — asıl okunacak sayı değişimdir. */
+.next-day {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
+.next-day-band {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
