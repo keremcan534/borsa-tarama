@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
 from app.data.benchmarks import BENCHMARKS, benchmark_summary, fetch_benchmark
+from app.funds.forecast import daily_returns, fit_forecast, latest_common_day
 from app.data.dividends import build_dividend_payload
 from app.data.fetchers.yfinance_fetcher import YFinanceFetcher
 from app.data.calendars import build_calendar_payload
@@ -268,6 +269,59 @@ def write_symbol_pages(public_dir: Path, market_payloads: dict, financials: dict
         encoding="utf-8",
     )
     print(f"[HİSSE SAYFASI] {len(entries)} sayfa -> {symbol_dir}")
+
+
+BENCHMARK_FACTORS = {"bist": "XU100.IS", "gold": "GC=F", "usd": "USDTRY=X"}
+
+
+def attach_fund_forecasts(
+    fund_results: list[dict], fund_series: dict, benchmarks: dict
+) -> tuple[int, str | None]:
+    """Fonlara ertesi gün tahminini ekler (bkz. app/funds/forecast.py).
+
+    TEFAS fiyatı bir gün gecikmeli yayımladığından bugünkü piyasa hareketi
+    yarınki fon fiyatına yansıyor; tahmin bunun hesabı. Kalite kapısını
+    geçemeyen fona alan YAZILMAZ — arayüz o fonda tahmin göstermez.
+    """
+    missing = [s for s in BENCHMARK_FACTORS.values() if s not in benchmarks]
+    if missing:
+        print(f"[TAHMİN] benchmark eksik ({', '.join(missing)}); tahmin üretilmedi")
+        return 0, None
+
+    factor_ret = {
+        name: daily_returns({d: px for d, px in benchmarks[symbol]["points"]})
+        for name, symbol in BENCHMARK_FACTORS.items()
+    }
+    as_of = latest_common_day(factor_ret)
+    if not as_of:
+        print("[TAHMİN] benchmark serileri kesişmiyor; tahmin üretilmedi")
+        return 0, None
+
+    made = 0
+    for row in fund_results:
+        points = fund_series.get(row["symbol"])
+        if not points:
+            continue
+        forecast = fit_forecast(daily_returns({d: px for d, px in points}), factor_ret, as_of)
+        if forecast is None:
+            continue
+        # NaN/Inf JSON'a yazılamaz ve tarayıcıda tüm dosyayı bozar
+        # (bkz. sanitize_for_json'ın çıkış noktası).
+        values = (forecast.change, forecast.band, forecast.direction_rate, forecast.mae_gain)
+        if not all(math.isfinite(v) for v in values):
+            continue
+        row["next_day"] = {
+            "change": round(forecast.change, 6),
+            "band": round(forecast.band, 6),
+            "direction_rate": round(forecast.direction_rate, 3),
+            "mae_gain": round(forecast.mae_gain, 3),
+            "samples": forecast.samples,
+            "driver": forecast.driver,
+            "as_of": forecast.as_of,
+        }
+        made += 1
+    print(f"[TAHMİN] {made}/{len(fund_results)} fona ertesi gün tahmini ({as_of} hareketiyle)")
+    return made, as_of
 
 
 def write_fund_category_pages(public_dir: Path, fund_results: list[dict], generated_at: str) -> None:
@@ -683,15 +737,6 @@ def main() -> None:
                 "metrics": [],
             }
             print(f"[FON] tarama başarısız ({e}) ve kurtarılacak liste yok; boş payload")
-    funds_path = out_dir / "funds.json"
-    funds_path.write_text(dump_json(funds_payload), encoding="utf-8")
-    print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
-
-    # Kategori SEO sayfaları: "gümüş fonu", "en iyi hisse fonu" gibi aramaların
-    # ineceği hedef sayfa yoktu (uygulama SPA; ?v=funds indekslenebilir içerik
-    # üretmiyor). Hisse sayfalarıyla aynı gerekçe, aynı desen.
-    write_fund_category_pages(out_dir.parent, fund_results, funds_payload["generated_at"])
-
     # Karşılaştırma benchmark'ları (normalize eğri için). Başarısız olanlar sessizce atlanır.
     benchmarks: dict[str, dict] = {}
     for symbol, name in (
@@ -728,6 +773,20 @@ def main() -> None:
             benchmarks = recovered.get("benchmarks") or {}
         if fund_series:
             print(f"[FON] yayındaki {len(fund_series)} fiyat serisi korundu")
+
+    # Ertesi gün tahmini benchmark'lara BAĞLI, o yüzden funds.json bu noktada
+    # yazılıyor: tahminler eklenmeden yazılsaydı dosya tahminsiz kalırdı.
+    made, _ = attach_fund_forecasts(fund_results, fund_series, benchmarks)
+    funds_payload["forecast_count"] = made
+
+    funds_path = out_dir / "funds.json"
+    funds_path.write_text(dump_json(funds_payload), encoding="utf-8")
+    print(f"[FON] {funds_payload['count']} fon -> {funds_path}")
+
+    # Kategori SEO sayfaları: "gümüş fonu", "en iyi hisse fonu" gibi aramaların
+    # ineceği hedef sayfa yoktu (uygulama SPA; ?v=funds indekslenebilir içerik
+    # üretmiyor). Hisse sayfalarıyla aynı gerekçe, aynı desen.
+    write_fund_category_pages(out_dir.parent, fund_results, funds_payload["generated_at"])
 
     fund_price_dir = out_dir / "fund-prices"
     fund_price_dir.mkdir(parents=True, exist_ok=True)

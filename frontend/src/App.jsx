@@ -38,13 +38,17 @@ import StockCompare from './StockCompare'
 import StockPositions from './StockPositions'
 import { getLang, setLang as persistLang, t } from './i18n'
 import {
-  downloadCsv,
-  drawListCard,
   SHARE_CARD_H,
   SHARE_CARD_ROWS,
   SHARE_CARD_W,
-  ShareBar,
-} from './share'
+  cardToBlob,
+  downloadBlob,
+  downloadCsv,
+  drawChrome,
+  drawFooter,
+  drawListCard,
+} from './share-card'
+import { ShareBar } from './share'
 
 /* ---------------------------- Menü ikonları ----------------------------
  * Emoji yerine ince çizgi SVG. Sebep: emoji her işletim sisteminde farklı
@@ -331,7 +335,7 @@ function convertSeries(points, currency, fx, symbol) {
  * dolaştığında uyarının onunla birlikte gitmesi gerekir. */
 
 
-function drawShareCard(canvas, { symbol, stock, score, lang }) {
+function drawShareCard(canvas, { symbol, stock, score, lang }, mark) {
   const ctx = canvas.getContext('2d')
   canvas.width = SHARE_CARD_W
   canvas.height = SHARE_CARD_H
@@ -340,34 +344,21 @@ function drawShareCard(canvas, { symbol, stock, score, lang }) {
   const change = stock?.change
   const up = (change ?? 0) >= 0
 
-  // Arka plan: koyu, hafif degrade (açık/koyu temadan bağımsız sabit görsel kimlik)
-  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_W, SHARE_CARD_H)
-  bg.addColorStop(0, '#12141a')
-  bg.addColorStop(1, '#1c2030')
-  ctx.fillStyle = bg
-  ctx.fillRect(0, 0, SHARE_CARD_W, SHARE_CARD_H)
-
-  // Üstte ince vurgu şeridi
-  const accent = ctx.createLinearGradient(0, 0, SHARE_CARD_W, 0)
-  accent.addColorStop(0, '#7c3aed')
-  accent.addColorStop(1, '#a855f7')
-  ctx.fillStyle = accent
-  ctx.fillRect(0, 0, SHARE_CARD_W, 10)
-
-  ctx.textAlign = 'left'
-  ctx.fillStyle = 'rgba(255,255,255,0.55)'
-  ctx.font = '600 30px system-ui, sans-serif'
-  ctx.fillText(t(lang, 'brand').toUpperCase(), 80, 110)
+  // Zemin, marka işareti ve alt bilgi liste kartıyla ORTAK: iki kart yan yana
+  // paylaşıldığında aynı yerden çıktıkları belli olmalı.
+  drawChrome(ctx, mark, lang)
 
   // Sembol
   ctx.fillStyle = '#ffffff'
   ctx.font = '800 140px system-ui, sans-serif'
   ctx.fillText(name, 80, 270)
 
-  // Günlük değişim (kartın ana rakamı)
+  // Günlük değişim (kartın ana rakamı). formatPct ile: elle toFixed yapılınca
+  // ondalık AYRACI hep nokta oluyordu ("+1.75%") ve aynı sayı liste kartında
+  // virgüllü ("+1,75%") çıkıyordu — iki kart yan yana tutarsız görünüyordu.
   ctx.fillStyle = up ? '#4ade80' : '#f87171'
   ctx.font = '800 110px system-ui, sans-serif'
-  ctx.fillText(change == null ? '—' : `${up ? '+' : ''}${(change * 100).toFixed(2)}%`, 80, 410)
+  ctx.fillText(change == null ? '—' : formatPct(change, 2), 80, 410)
   ctx.fillStyle = 'rgba(255,255,255,0.5)'
   ctx.font = '400 32px system-ui, sans-serif'
   ctx.fillText(t(lang, 'shareChangeLabel'), 80, 460)
@@ -379,46 +370,34 @@ function drawShareCard(canvas, { symbol, stock, score, lang }) {
     ['RSI', stock?.rsi == null ? '—' : formatNum(stock.rsi, 1)],
     [t(lang, 'colPe'), stock?.pe == null ? '—' : formatNum(stock.pe, 1)],
   ]
-  let y = 540
+  // Kutu yüksekliği ve adımı alt bilgiye ÇARPMAYACAK şekilde: eskisinde
+  // (540'tan başlayıp 112 adımla) dördüncü kutu 988'e kadar iniyor, 962'deki
+  // tarih satırının üstüne biniyordu.
+  const boxH = 86
+  const boxGap = 14
+  let y = 512
   for (const [label, value] of metrics) {
     ctx.fillStyle = 'rgba(255,255,255,0.06)'
-    ctx.fillRect(80, y, SHARE_CARD_W - 160, 96)
+    ctx.fillRect(80, y, SHARE_CARD_W - 160, boxH)
     ctx.fillStyle = 'rgba(255,255,255,0.6)'
     ctx.font = '500 34px system-ui, sans-serif'
-    ctx.fillText(label, 110, y + 60)
+    ctx.fillText(label, 110, y + 56)
     ctx.textAlign = 'right'
     ctx.fillStyle = '#ffffff'
     ctx.font = '700 40px system-ui, sans-serif'
-    ctx.fillText(value, SHARE_CARD_W - 110, y + 60)
+    ctx.fillText(value, SHARE_CARD_W - 110, y + 56)
     ctx.textAlign = 'left'
-    y += 112
+    y += boxH + boxGap
   }
 
-  // Tarih + zorunlu uyarı (görselden koparılamaz)
-  ctx.fillStyle = 'rgba(255,255,255,0.45)'
-  ctx.font = '400 28px system-ui, sans-serif'
-  ctx.fillText(new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR'), 80, SHARE_CARD_H - 120)
-
-  ctx.fillStyle = 'rgba(255,255,255,0.38)'
-  ctx.font = '400 24px system-ui, sans-serif'
-  ctx.fillText(t(lang, 'shareDisclaimer'), 80, SHARE_CARD_H - 70)
+  drawFooter(ctx, lang)
 }
 
-/** Kartı PNG olarak indirir. */
-function downloadShareCard(opts) {
-  const canvas = document.createElement('canvas')
-  drawShareCard(canvas, opts)
-  canvas.toBlob((blob) => {
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${displaySymbol(opts.symbol)}-${new Date().toISOString().slice(0, 10)}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  }, 'image/png')
+/** Kartı PNG olarak indirir. Marka işareti yüklenene kadar bekler. */
+async function downloadShareCard(opts) {
+  const blob = await cardToBlob((canvas, mark) => drawShareCard(canvas, opts, mark))
+  if (!blob) return
+  downloadBlob(blob, `${displaySymbol(opts.symbol)}-${new Date().toISOString().slice(0, 10)}.png`)
 }
 
 /* ---------- Portföy çeşitliliği (korelasyon + sektör yoğunluğu) ----------
@@ -6567,6 +6546,7 @@ function MacroView({ data, loading, lang, calendar }) {
           card={{
             title: t(lang, 'macroTitle'),
             subtitle: periodLabel,
+            valueLabel: periodLabel,
             filename: `makro-${new Date().toISOString().slice(0, 10)}.png`,
             rows: (data.items || []).slice(0, SHARE_CARD_ROWS).map((i) => ({
               label: lang === 'en' ? i.name_en : i.name,
@@ -6904,6 +6884,7 @@ function DividendsView({ data, loading, lang, onOpenChart }) {
           card={{
             title: t(lang, 'dvdTitle'),
             subtitle: t(lang, 'dvdColYield'),
+            valueLabel: t(lang, 'dvdColYield'),
             filename: `temettu-${scope}-${new Date().toISOString().slice(0, 10)}.png`,
             rows: items
               .filter((i) => i.yield_ttm != null)
@@ -8558,10 +8539,14 @@ function App() {
                   csv={{ filename: 'fonlar.csv', header: fundsCsv.header, rows: () => fundsCsv.rows() }}
                   card={{
                     title: t(lang, 'tabFunds'),
-                    subtitle: t(lang, 'colScore'),
+                    subtitle: t(lang, 'shareFundsSubtitle'),
+                    // Sağdaki büyük sayının ne olduğu kartta yazmalı: "99" tek
+                    // başına, kartı sosyal medyada gören kişiye bir şey demiyor.
+                    valueLabel: t(lang, 'colScore'),
                     filename: `fonlar-${new Date().toISOString().slice(0, 10)}.png`,
                     rows: fundRows.slice(0, SHARE_CARD_ROWS).map((f) => ({
                       label: f.symbol,
+                      sub: f.name,
                       value: f.score != null ? String(f.score) : '—',
                       note: f.return_1y == null ? undefined : formatPct(f.return_1y, 1),
                       tone: pctTone(f.return_1y),
@@ -8978,6 +8963,7 @@ function App() {
               card={{
                 title: t(lang, 'shareScreenerTitle'),
                 subtitle: `${mLabel(activeMarket, lang)} · ${tfLabel(activeTimeframe, lang)}`,
+                valueLabel: t(lang, 'colScore'),
                 filename: `tarama-${market}-${timeframe}-${new Date().toISOString().slice(0, 10)}.png`,
                 rows: rows.slice(0, SHARE_CARD_ROWS).map((r) => ({
                   label: displaySymbol(r.symbol),

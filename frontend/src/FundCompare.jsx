@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLang, t } from './i18n'
-import { SHARE_CARD_ROWS, ShareBar } from './share'
+import {
+  SHARE_CARD_ROWS,
+} from './share-card'
+import { ShareBar } from './share'
 
 const MAX_FUNDS = 5
 
